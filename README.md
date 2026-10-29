@@ -1,4 +1,4 @@
-# PTP-KPU Sulut (Pengelolaan Tata Persuratan & Realisasi Anggaran)
+# PTP-KPU Sulut (Digitalisasi proses kinerja kantor KPU-SULUT)
 ### Sistem Informasi Terintegrasi Komisi Pemilihan Umum Provinsi Sulawesi Utara
 **Struktur Monorepo (Frontend + Backend FastAPI + Local Database + Local AI Model)**
 
