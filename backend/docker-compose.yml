@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  mysql_db:
+    image: mysql:8.0
+    container_name: kpu_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: kpu_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - kpu-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: kpu_backend_api
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=mysql+aiomysql://root:root@mysql_db:3306/kpu_db
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    depends_on:
+      - mysql_db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kpu-network
+
+volumes:
+  mysql_data:
+
+networks:
+  kpu-network:
+    driver: bridge

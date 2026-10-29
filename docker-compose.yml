@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  # 1. Basis Data MySQL Lokal Kantor KPU
+  mysql-db:
+    image: mysql:8.0
+    container_name: kpu-mysql-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ""
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: kpu_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/database_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  # 2. Local AI Model Server (Ollama)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: kpu-ollama-local
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+
+  # 3. Backend API FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: kpu-backend-api
+    restart: always
+    environment:
+      - DATABASE_URL=mysql+aiomysql://root:@mysql-db:3306/kpu_db
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:latest
+      - SECRET_KEY=kpu_sulut_secret_key_2026_change_in_production
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mysql-db
+      - ollama
+    volumes:
+      - ./backend:/app
+
+  # 4. Frontend Web App (Vite React)
+  frontend:
+    image: node:22-alpine
+    container_name: kpu-frontend-web
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  ollama_models:
