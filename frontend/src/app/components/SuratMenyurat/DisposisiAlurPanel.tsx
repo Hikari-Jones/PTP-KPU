@@ -8,15 +8,18 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import type { SuratItem, DisposisiFormState } from "./types"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { ReadOnlyFieldset } from "../ui/read-only"
 
 interface DisposisiAlurPanelProps {
   theme: "light" | "dark"
   surat: SuratItem
+  readOnly?: boolean
   onSaveDisposisi: (suratId: string, disposisiData: DisposisiFormState) => void
   onUpdateStatus: (suratId: string, status: SuratItem["status"], keterangan: string) => void
 }
 
-export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStatus }: DisposisiAlurPanelProps) {
+export function DisposisiAlurPanel({ theme, surat, readOnly = false, onSaveDisposisi, onUpdateStatus }: DisposisiAlurPanelProps) {
   const isDark = theme === "dark"
 
   const [tujuanUnit, setTujuanUnit] = useState(surat.disposisi?.tujuanUnit || "RENDATIN (Perencanaan, Data dan Informasi)")
@@ -44,6 +47,9 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
 
   return (
     <div className="space-y-6">
+      {/* Dokumen surat yang didisposisikan: dapat dibaca langsung sebelum mengisi disposisi */}
+      <SuratDokumenViewer theme={theme} surat={surat} />
+
       {/* Visual Workflow Steps (Alur Surat Masuk) */}
       <div className={`p-4 rounded-2xl border ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
         <h4 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 mb-3">
@@ -104,6 +110,7 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
         </div>
       </div>
 
+      <ReadOnlyFieldset readOnly={readOnly} className="space-y-6">
       {/* Form Perekaman Disposisi Pimpinan */}
       <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
         <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
@@ -269,6 +276,7 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
           </div>
         </CardContent>
       </Card>
+      </ReadOnlyFieldset>
     </div>
   )
 }

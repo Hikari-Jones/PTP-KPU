@@ -66,12 +66,12 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
                 name="Ahmad Kurniawan",
                 nip=nip_clean,
                 email="ahmad.kurniawan@kpu.go.id",
-                role="Operator",
+                role="Pegawai",
                 jabatan="Staf Bidang Teknis Penyelenggaraan",
                 subbagian="Teknis Penyelenggaraan Pemilu",
                 id_bagian=2
             )
-            token = create_access_token({"sub": nip_clean, "role": "Operator", "id": 2})
+            token = create_access_token({"sub": nip_clean, "role": "Pegawai", "id": 2})
             return LoginResponse(access_token=token, user=user_profile)
         else:
             raise HTTPException(
@@ -96,7 +96,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         if bagian:
             subbagian_nama = bagian.nama_bagian
 
-    norm_role = "Admin" if (user.role and user.role.lower() == "admin") else "Operator"
+    norm_role = "Admin" if (user.role and user.role.lower() == "admin") else "Pegawai"
     user_out = UserProfileOut(
         id_pegawai=user.id_pegawai,
         name=user.nama,

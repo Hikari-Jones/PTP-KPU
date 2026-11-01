@@ -18,6 +18,7 @@ import { Badge } from "../ui/badge"
 import type { AkunAnggaran, TransaksiRealisasi } from "./types"
 import { TambahRealisasiModal } from "./TambahRealisasiModal"
 import { LaporanBulananModal } from "./LaporanBulananModal"
+import { useAuth } from "../../context/AuthContext"
 
 export type RealisasiSubTab = "ringkasan" | "transaksi" | "laporan" | "verifikasi"
 
@@ -209,6 +210,7 @@ const INITIAL_AKUN: AkunAnggaran[] = [
 
 export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate }: Props) {
   const isDark = theme === "dark"
+  const readOnly = !useAuth().canEdit("anggaran")
 
   const [akunList] = useState<AkunAnggaran[]>(INITIAL_AKUN)
   const [transaksiList, setTransaksiList] = useState<TransaksiRealisasi[]>(INITIAL_TRANSAKSI_FIGMA)
@@ -317,13 +319,13 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
 
         {/* Global Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
+          {!readOnly && <button
             onClick={() => setIsFormOpen(true)}
             className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Tambah Realisasi</span>
-          </button>
+          </button>}
 
           <button
             onClick={() => setIsLaporanOpen(true)}
@@ -867,13 +869,13 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                 </div>
               </div>
 
-              <button
+              {!readOnly && <button
                 onClick={() => setIsFormOpen(true)}
                 className="btn-kpu-red px-3.5 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Transaksi</span>
-              </button>
+              </button>}
             </CardContent>
           </Card>
 

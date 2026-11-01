@@ -7,9 +7,9 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
   const [users, setUsers] = useState([
     { id: 1, name: "Admin KPU Sulut", email: "admin@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
-    { id: 2, name: "Ahmad Kurniawan", email: "ahmad.kurniawan@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
-    { id: 3, name: "Siti Rahmawati", email: "siti.rahma@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Hukum" },
-    { id: 4, name: "Budi Santoso", email: "budi.santoso@kpu.go.id", role: "Operator", status: "Non-Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
+    { id: 2, name: "Ahmad Kurniawan", email: "ahmad.kurniawan@kpu.go.id", role: "Pegawai", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
+    { id: 3, name: "Siti Rahmawati", email: "siti.rahma@kpu.go.id", role: "Pegawai", status: "Aktif", subbagian: "Hukum" },
+    { id: 4, name: "Budi Santoso", email: "budi.santoso@kpu.go.id", role: "Pegawai", status: "Non-Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
   ])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -17,7 +17,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
   const [nip, setNip] = useState("")
   const [email, setEmail] = useState("")
   const [subbagian, setSubbagian] = useState("RENDATIN (Perencanaan, Data dan Informasi)")
-  const [role, setRole] = useState<"Admin" | "Operator">("Operator")
+  const [role, setRole] = useState<"Admin" | "Pegawai">("Pegawai")
   const [successToast, setSuccessToast] = useState<string | null>(null)
 
   const toggleStatus = (id: number) => {
@@ -58,7 +58,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
             Manajemen User & Hak Akses
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-            Kelola daftar operator instansi dan penetapan role Admin/Operator PTP-KPU
+            Kelola daftar pegawai instansi dan penetapan role Admin/Pegawai PTP-KPU
           </p>
         </div>
         <button
@@ -198,11 +198,11 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
                     <input
                       type="radio"
                       name="role"
-                      value="Operator"
-                      checked={role === "Operator"}
-                      onChange={() => setRole("Operator")}
+                      value="Pegawai"
+                      checked={role === "Pegawai"}
+                      onChange={() => setRole("Pegawai")}
                     />
-                    <span>Operator</span>
+                    <span>Pegawai</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

@@ -19,6 +19,7 @@ import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import type { TahunAnggaranItem } from "./types"
+import { useAuth } from "../../context/AuthContext"
 
 interface Props {
   theme: "light" | "dark"
@@ -175,6 +176,7 @@ const toDisplayDate = (inputDate: string) => {
 
 export function TahunAnggaranView({ theme }: Props) {
   const isDark = theme === "dark"
+  const readOnly = !useAuth().canEdit("anggaran")
   const [dataList, setDataList] = useState<TahunAnggaranItem[]>(INITIAL_TA)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("Semua Status")
@@ -440,13 +442,13 @@ export function TahunAnggaranView({ theme }: Props) {
           </button>
 
           {/* Tambah Tahun Anggaran Button */}
-          <button
+          {!readOnly && <button
             onClick={handleOpenAdd}
             className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-md shadow-red-600/20"
           >
             <Plus className="w-4 h-4" />
             <span>Tambah Tahun Anggaran</span>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -512,6 +514,7 @@ export function TahunAnggaranView({ theme }: Props) {
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
+                        {!readOnly && <>
                         <button
                           onClick={() => handleOpenEdit(row)}
                           title="Edit"
@@ -532,6 +535,7 @@ export function TahunAnggaranView({ theme }: Props) {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
+                        </>}
                       </div>
                     </TableCell>
                   </TableRow>

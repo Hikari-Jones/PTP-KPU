@@ -8,7 +8,7 @@ import {
   X,
   FolderOpen,
   Lock,
-  Globe,
+
   FileArchive,
   Trash2,
   EyeOff,
@@ -31,7 +31,7 @@ interface ArsipItem {
   tahun: number
   bulan: number
   date: string
-  akses: "publik" | "internal" | "terbatas"
+  akses: "internal" | "terbatas"
   uploadedBy: string
   uploadedAt: string
 }
@@ -51,7 +51,11 @@ function readSavedArsip(): { active: ArsipItem[]; deleted: DeletedArsipItem[] } 
         const state = parsed as { active: unknown; deleted: unknown }
         if (Array.isArray(state.active) && Array.isArray(state.deleted)) {
           const renameSubBagian = <T extends ArsipItem>(item: T): T =>
-            item.subBagian === "PERDATIN" ? { ...item, subBagian: "RENDATIN" } : item
+            ({
+              ...item,
+              subBagian: item.subBagian === "PERDATIN" ? "RENDATIN" : item.subBagian,
+              akses: (item.akses as string) === "publik" ? "internal" : item.akses,
+            })
           return {
             active: (state.active as ArsipItem[]).map(renameSubBagian),
             deleted: (state.deleted as DeletedArsipItem[]).map(renameSubBagian),
@@ -114,7 +118,7 @@ const MOCK_ARSIP: ArsipItem[] = [
     tahun: 2024,
     bulan: 11,
     date: "20 Nov 2024",
-    akses: "publik",
+    akses: "internal",
     uploadedBy: "Ahmad Kurniawan",
     uploadedAt: "20 Nov 2024 · 15:05",
   },
@@ -131,7 +135,7 @@ const MOCK_ARSIP: ArsipItem[] = [
     tahun: 2024,
     bulan: 3,
     date: "10 Mar 2024",
-    akses: "publik",
+    akses: "internal",
     uploadedBy: "Rendra Saputra",
     uploadedAt: "10 Mar 2024 · 08:47",
   },
@@ -165,7 +169,7 @@ const MOCK_ARSIP: ArsipItem[] = [
     tahun: 2025,
     bulan: 7,
     date: "10 Jul 2025",
-    akses: "publik",
+    akses: "internal",
     uploadedBy: "Ahmad Kurniawan",
     uploadedAt: "10 Jul 2025 · 09:00",
   },
@@ -199,7 +203,7 @@ const MOCK_ARSIP: ArsipItem[] = [
     tahun: 2026,
     bulan: 1,
     date: "05 Jan 2026",
-    akses: "publik",
+    akses: "internal",
     uploadedBy: "Rendra Saputra",
     uploadedAt: "05 Jan 2026 · 10:00",
   },
@@ -250,7 +254,7 @@ const MOCK_ARSIP: ArsipItem[] = [
     tahun: 2024,
     bulan: 11,
     date: "22 Nov 2024",
-    akses: "publik",
+    akses: "internal",
     uploadedBy: "Rendra Saputra",
     uploadedAt: "22 Nov 2024 · 13:40",
   },
@@ -267,7 +271,7 @@ const MOCK_ARSIP: ArsipItem[] = [
     tahun: 2024,
     bulan: 4,
     date: "18 Apr 2024",
-    akses: "publik",
+    akses: "internal",
     uploadedBy: "Dr. Meity Tinangon, S.H.",
     uploadedAt: "18 Apr 2024 · 09:20",
   },
@@ -283,15 +287,13 @@ const BULAN_LIST = [
 const EVENT_LIST = ["Operasional 2025", "Operasional 2026", "Pileg 2024", "Pilgub 2024", "Pilkada 2024", "Pilkada 2026"]
 const SUBBAGIAN_LIST = ["SDM", "RENDATIN", "Teknis", "Hukum", "Keuangan", "UMLOG"]
 
-type AksesType = "publik" | "internal" | "terbatas"
+type AksesType = "internal" | "terbatas"
 
-const AKSES_DARK: Record<AksesType, { bg: string; text: string; icon: typeof Globe }> = {
-  publik: { bg: "bg-white/10 border-white/20", text: "text-white", icon: Globe },
+const AKSES_DARK: Record<AksesType, { bg: string; text: string; icon: typeof Lock }> = {
   internal: { bg: "bg-neutral-800 border-neutral-700", text: "text-gray-200", icon: EyeOff },
   terbatas: { bg: "bg-red-600 text-white border-red-600 shadow-xs shadow-red-600/30", text: "text-white", icon: Lock },
 }
 const AKSES_LIGHT: Record<AksesType, { bg: string; text: string }> = {
-  publik: { bg: "bg-white border-slate-300 shadow-xs", text: "text-slate-800" },
   internal: { bg: "bg-slate-900 border-slate-900", text: "text-white" },
   terbatas: { bg: "bg-red-600 border-red-600 text-white shadow-xs shadow-red-600/20", text: "text-white" },
 }
@@ -459,7 +461,7 @@ function UnggahDokumenModal({
           <div>
             <label className={labelCls}>Level Akses <span className="text-red-500">*</span></label>
             <div className="flex gap-2">
-              {(["publik", "internal", "terbatas"] as AksesType[]).map(a => (
+              {(["internal", "terbatas"] as AksesType[]).map(a => (
                 <button key={a} type="button" onClick={() => setAkses(a)}
                   className={`flex-1 py-2 rounded-lg text-xs font-bold border capitalize transition-all cursor-pointer ${
                     akses === a ? "bg-red-600 text-white border-red-600 shadow-md shadow-red-600/20"
@@ -645,7 +647,7 @@ export function ArsipView({ theme }: { theme: "light" | "dark" }) {
       <div className={`flex items-start gap-3 p-3.5 rounded-xl border text-xs mb-5 ${isDark ? "bg-red-950/20 border-red-500/30 text-gray-200" : "bg-red-50/70 border-red-200 text-slate-800"}`}>
         <ShieldCheck className={`w-4 h-4 mt-0.5 shrink-0 ${isDark ? "text-red-400" : "text-red-600"}`} />
         <span className="leading-relaxed">
-          Arsip <strong>Publik</strong> dan <strong>Internal</strong> dapat diakses seluruh sub bagian (SDM, RENDATIN, Teknis, Hukum, Keuangan, UMLOG).
+          Arsip <strong>Internal</strong> dapat diakses seluruh sub bagian (SDM, RENDATIN, Teknis, Hukum, Keuangan, UMLOG).
           Arsip <strong>Terbatas</strong> hanya dapat diakses oleh sub bagian pemilik dokumen atau Administrator.
         </span>
       </div>
@@ -753,7 +755,6 @@ export function ArsipView({ theme }: { theme: "light" | "dark" }) {
               className={selectCls}
             >
               <option value="" className={isDark ? "bg-[#111827] text-white" : "bg-white text-slate-800"}>Semua Akses</option>
-              <option value="publik" className={isDark ? "bg-[#111827] text-white" : "bg-white text-slate-800"}>Publik</option>
               <option value="internal" className={isDark ? "bg-[#111827] text-white" : "bg-white text-slate-800"}>Internal</option>
               <option value="terbatas" className={isDark ? "bg-[#111827] text-white" : "bg-white text-slate-800"}>Terbatas</option>
             </select>

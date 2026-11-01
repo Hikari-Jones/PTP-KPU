@@ -109,7 +109,7 @@ async def run_setup():
                 session.add(p)
                 await session.flush()
             p_map[nip] = p.id_pegawai
-        print("  ✓ Akun Administrator dan Operator siap.")
+        print("  ✓ Akun Administrator dan Pegawai siap.")
 
         # C. Master Klasifikasi Arsip
         klas_list = [

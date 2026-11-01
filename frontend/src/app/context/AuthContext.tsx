@@ -4,15 +4,34 @@ export interface UserProfile {
   name: string
   nip: string
   email: string
-  role: "Admin" | "Operator" | "User"
+  role: "Admin" | "Pegawai"
   jabatan: string
   subbagian: string
+}
+
+export type ModuleKey = "anggaran" | "surat"
+
+/**
+ * Sub bagian yang berwenang mengelola (menambah/mengubah/menghapus) data tiap modul.
+ * Sub bagian lain tetap dapat membuka modul tersebut dalam mode baca saja.
+ */
+const MODULE_EDITORS: Record<ModuleKey, string[]> = {
+  anggaran: ["Keuangan", "RENDATIN"],
+  surat: ["UMLOG", "Umum"],
+}
+
+export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {
+  if (!user) return false
+  if (user.role === "Admin") return true
+  const sub = user.subbagian.toLowerCase()
+  return MODULE_EDITORS[module].some((key) => sub.includes(key.toLowerCase()))
 }
 
 interface AuthContextType {
   isAuthenticated: boolean
   userRole: string
   currentUser: UserProfile | null
+  canEdit: (module: ModuleKey) => boolean
   login: (nip: string, pass: string) => { success: boolean; error?: string }
   logout: () => void
 }
@@ -30,9 +49,25 @@ const DEFAULT_USERS: UserProfile[] = [
     name: "Ahmad Kurniawan",
     nip: "199208052021011002",
     email: "ahmad.kurniawan@kpu.go.id",
-    role: "Operator",
+    role: "Pegawai",
     jabatan: "Staf Bidang Teknis Penyelenggaraan",
     subbagian: "Teknis Penyelenggaraan Pemilu",
+  },
+  {
+    name: "Maria Lumentut",
+    nip: "199003122019032001",
+    email: "maria.lumentut@kpu.go.id",
+    role: "Pegawai",
+    jabatan: "Bendahara Pengeluaran",
+    subbagian: "Keuangan",
+  },
+  {
+    name: "Johny Pangemanan",
+    nip: "198811232015031003",
+    email: "johny.pangemanan@kpu.go.id",
+    role: "Pegawai",
+    jabatan: "Pengelola Persuratan",
+    subbagian: "UMLOG (Umum dan Logistik)",
   },
 ]
 
@@ -43,13 +78,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const saved = localStorage.getItem("ptp_kpu_user")
     if (!saved) return null
     const profile = JSON.parse(saved) as UserProfile
-    return profile.subbagian?.startsWith("PERDATIN")
-      ? { ...profile, subbagian: profile.subbagian.replace("PERDATIN", "RENDATIN") }
-      : profile
+    return {
+      ...profile,
+      role: (profile.role as string) === "Admin" ? "Admin" : "Pegawai",
+      subbagian: profile.subbagian?.startsWith("PERDATIN")
+        ? profile.subbagian.replace("PERDATIN", "RENDATIN")
+        : profile.subbagian,
+    }
   })
 
   const isAuthenticated = !!currentUser
   const userRole = currentUser?.role || ""
+  const canEdit = (module: ModuleKey) => canEditModule(currentUser, module)
 
   useEffect(() => {
     if (currentUser) {
@@ -68,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (matchedUser) {
       // Validate password for known users
       if ((matchedUser.role === "Admin" && pass === "admin123") ||
-          (matchedUser.role === "Operator" && (pass === "123456" || pass === "••••••••" || pass.length >= 4))) {
+          (matchedUser.role === "Pegawai" && (pass === "123456" || pass === "••••••••" || pass.length >= 4))) {
         setCurrentUser(matchedUser)
         return { success: true }
       } else {
@@ -82,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: trimmedNip.slice(-4).padStart(8, "KPU"),
         nip: trimmedNip,
         email: `${trimmedNip}@kpu.go.id`,
-        role: "Operator",
+        role: "Pegawai",
         jabatan: "Staf Penyelenggara KPU",
         subbagian: "Sekretariat KPU Sulut",
       }
@@ -99,7 +139,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, userRole, currentUser, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, userRole, currentUser, canEdit, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

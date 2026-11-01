@@ -5,7 +5,7 @@ export function AdminDashboardView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
 
   const systemStats = [
-    { title: "Pengguna Aktif", val: "28 Operator", icon: Users, isRed: true },
+    { title: "Pengguna Aktif", val: "28 Pegawai", icon: Users, isRed: true },
     { title: "Status Server", val: "99.9% Online", icon: Server, isRed: false },
     { title: "Kirim KIRANA Bot", val: "142 Query/Hari", icon: Activity, isRed: true },
     { title: "Total Database", val: "1.4 GB", icon: Database, isRed: false },
