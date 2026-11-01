@@ -13,15 +13,18 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import type { SuratItem } from "./types"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { ReadOnlyFieldset } from "../ui/read-only"
 
 interface TteDistribusiPanelProps {
   theme: "light" | "dark"
   surat: SuratItem
+  readOnly?: boolean
   onSignTte: (suratId: string, passphrase: string, penandatangan: string) => void
   onDistribusi: (suratId: string, metode: "email" | "cetak" | "internal") => void
 }
 
-export function TteDistribusiPanel({ theme, surat, onSignTte, onDistribusi }: TteDistribusiPanelProps) {
+export function TteDistribusiPanel({ theme, surat, readOnly = false, onSignTte, onDistribusi }: TteDistribusiPanelProps) {
   const isDark = theme === "dark"
 
   const [passphrase, setPassphrase] = useState("")
@@ -137,6 +140,9 @@ QR Hash Code  : ${surat.tteInfo?.barcodeData || "KPU-SULUT-TTE-SECURE-HASH-2026-
         </div>
       </div>
 
+      <SuratDokumenViewer theme={theme} surat={surat} />
+
+      <ReadOnlyFieldset readOnly={readOnly} className="space-y-6">
       {/* Box 1: Otorisasi TTE Digital */}
       <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
         <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
@@ -311,6 +317,7 @@ QR Hash Code  : ${surat.tteInfo?.barcodeData || "KPU-SULUT-TTE-SECURE-HASH-2026-
           )}
         </CardContent>
       </Card>
+      </ReadOnlyFieldset>
     </div>
   )
 }

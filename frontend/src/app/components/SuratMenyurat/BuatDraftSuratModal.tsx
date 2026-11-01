@@ -9,8 +9,12 @@ interface BuatDraftSuratModalProps {
   onSubmit: (formData: SuratKeluarFormState) => void
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
 export function BuatDraftSuratModal({ theme, isOpen, onClose, onSubmit }: BuatDraftSuratModalProps) {
-  if (!isOpen) return null
   const isDark = theme === "dark"
 
   const [formData, setFormData] = useState<SuratKeluarFormState>({
@@ -22,6 +26,9 @@ export function BuatDraftSuratModal({ theme, isOpen, onClose, onSubmit }: BuatDr
     catatanInternal: "",
     fileName: "",
   })
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+
+  if (!isOpen) return null
 
   const handleTemplateSelect = (templateType: string) => {
     if (templateType === "edaran") {
@@ -57,6 +64,7 @@ export function BuatDraftSuratModal({ theme, isOpen, onClose, onSubmit }: BuatDr
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
+      setSelectedFile(file)
       setFormData((prev) => ({ ...prev, fileName: file.name }))
     }
   }
@@ -70,6 +78,8 @@ export function BuatDraftSuratModal({ theme, isOpen, onClose, onSubmit }: BuatDr
     onSubmit({
       ...formData,
       fileName: formData.fileName || `Draft_${formData.kategoriSurat.replace(/\s+/g, "_")}.docx`,
+      fileUrl: selectedFile ? URL.createObjectURL(selectedFile) : undefined,
+      fileSize: selectedFile ? formatFileSize(selectedFile.size) : undefined,
     })
     onClose()
   }

@@ -9,10 +9,13 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import type { SuratItem } from "./types"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { ReadOnlyFieldset } from "../ui/read-only"
 
 interface VerifikasiDraftPanelProps {
   theme: "light" | "dark"
   surat: SuratItem
+  readOnly?: boolean
   onApproveDraft: (suratId: string, nomorOtomatis: string) => void
   onRejectRevisiDraft: (suratId: string, catatanRevisi: string) => void
 }
@@ -20,6 +23,7 @@ interface VerifikasiDraftPanelProps {
 export function VerifikasiDraftPanel({
   theme,
   surat,
+  readOnly = false,
   onApproveDraft,
   onRejectRevisiDraft,
 }: VerifikasiDraftPanelProps) {
@@ -149,7 +153,10 @@ export function VerifikasiDraftPanel({
             </div>
           )}
 
+          <SuratDokumenViewer theme={theme} surat={surat} />
+
           {/* Decision Box Actions */}
+          <ReadOnlyFieldset readOnly={readOnly}>
           <div className={`pt-4 border-t ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
             <h4 className="text-xs font-bold mb-3 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
@@ -203,6 +210,7 @@ export function VerifikasiDraftPanel({
               </form>
             )}
           </div>
+          </ReadOnlyFieldset>
         </CardContent>
       </Card>
     </div>

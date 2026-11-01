@@ -1,7 +1,9 @@
 ﻿import { useState } from "react"
 import { CheckCircle2, FileText, Save, Send, Upload, Wallet } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
+import { ReadOnlyFieldset } from "../ui/read-only"
 import { createRealisasiAnggaranApi } from "../../../services/api"
+import { useAuth } from "../../context/AuthContext"
 
 interface AccountOption {
   kode: string
@@ -23,6 +25,7 @@ const ACCOUNT_OPTIONS: AccountOption[] = [
 
 export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
+  const readOnly = !useAuth().canEdit("anggaran")
   const [tanggal, setTanggal] = useState("2025-09-19")
   const [nomorDokumen, setNomorDokumen] = useState("")
   const [kodeAkun, setKodeAkun] = useState("")
@@ -95,6 +98,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
         </p>
       </div>
 
+      <ReadOnlyFieldset readOnly={readOnly}>
       <Card
         className={`overflow-hidden rounded-2xl border shadow-lg ${
           isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white border-slate-200"
@@ -286,6 +290,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
           </div>
         </CardContent>
       </Card>
+      </ReadOnlyFieldset>
     </div>
   )
 }

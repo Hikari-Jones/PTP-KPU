@@ -2,6 +2,7 @@ import { useState } from "react"
 import { BarChart3, Download, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
+import { useAuth } from "../../context/AuthContext"
 
 type Subbagian = "SDM" | "RENDATIN" | "Teknis" | "Hukum" | "Keuangan" | "UMLOG"
 
@@ -53,6 +54,7 @@ const INITIAL_REVISI: RevisiItem[] = [
 
 export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigate?: (tab: string) => void }) {
   const isDark = theme === "dark"
+  const readOnly = !useAuth().canEdit("anggaran")
   const [activeTab, setActiveTab] = useState<"pagu" | "revisi">("pagu")
   const [paguList, setPaguList] = useState<PaguItem[]>(INITIAL_PAGU)
   const [revisiList, setRevisiList] = useState<RevisiItem[]>(INITIAL_REVISI)
@@ -230,9 +232,9 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
           <button type="button" onClick={handleExport} className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold cursor-pointer ${isDark ? "bg-[#0f172a] border-white/10 text-gray-300 hover:bg-[#1e293b]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}>
             <Download className="h-4 w-4" /> Export
           </button>
-          <button type="button" onClick={activeTab === "pagu" ? openAddPagu : openAddRevisi} className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer">
+          {!readOnly && <button type="button" onClick={activeTab === "pagu" ? openAddPagu : openAddRevisi} className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer">
             <Plus className="h-4 w-4" /> {activeTab === "pagu" ? "Tambah Pagu" : "Tambah Revisi"}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -275,7 +277,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                       <TableCell className={`whitespace-nowrap text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{formatRupiah(item.pagu)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.realisasi)}</TableCell>
                       <TableCell><div className="flex min-w-[105px] items-center gap-2"><div className={`h-2 flex-1 overflow-hidden rounded-full ${isDark ? "bg-slate-800" : "bg-slate-200"}`}><div className="h-full rounded-full bg-red-600" style={{ width: `${percentage}%` }} /></div><span className="text-[11px] font-bold text-red-600 dark:text-red-400">{percentage}%</span></div></TableCell>
-                      <TableCell><div className="flex justify-center gap-1"><button onClick={() => openEditPagu(item)} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Edit pagu"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => setPaguList((items) => items.filter((row) => row.id !== item.id))} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Hapus pagu"><Trash2 className="h-3.5 w-3.5" /></button></div></TableCell>
+                      <TableCell><div className="flex justify-center gap-1">{readOnly ? <span className="text-[11px] font-semibold text-slate-400">Baca saja</span> : <><button onClick={() => openEditPagu(item)} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Edit pagu"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => setPaguList((items) => items.filter((row) => row.id !== item.id))} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Hapus pagu"><Trash2 className="h-3.5 w-3.5" /></button></>}</div></TableCell>
                     </TableRow>
                   })}
                 </TableBody>
@@ -302,7 +304,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                     <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.paguSesudah)}</TableCell>
                     <TableCell className={`whitespace-nowrap text-xs font-bold ${difference >= 0 ? "text-red-600 dark:text-red-400" : isDark ? "text-gray-300" : "text-slate-600"}`}>{difference >= 0 ? "+" : "−"}{formatRupiah(Math.abs(difference))}</TableCell>
                     <TableCell className={`max-w-[220px] truncate text-xs ${isDark ? "text-gray-300" : "text-slate-600"}`} title={item.alasan}>{item.alasan}</TableCell>
-                    <TableCell><div className="flex justify-center gap-1"><button onClick={() => openEditRevisi(item)} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Edit revisi"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => setRevisiList((items) => items.filter((row) => row.id !== item.id))} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Hapus revisi"><Trash2 className="h-3.5 w-3.5" /></button></div></TableCell>
+                    <TableCell><div className="flex justify-center gap-1">{readOnly ? <span className="text-[11px] font-semibold text-slate-400">Baca saja</span> : <><button onClick={() => openEditRevisi(item)} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Edit revisi"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => setRevisiList((items) => items.filter((row) => row.id !== item.id))} className="rounded-lg p-1.5 text-red-600 hover:bg-red-500/15 cursor-pointer" title="Hapus revisi"><Trash2 className="h-3.5 w-3.5" /></button></>}</div></TableCell>
                   </TableRow>
                 })}
               </TableBody>

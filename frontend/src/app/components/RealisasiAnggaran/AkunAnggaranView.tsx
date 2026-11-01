@@ -13,6 +13,7 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import type { AkunAnggaran } from "./types"
+import { useAuth } from "../../context/AuthContext"
 
 interface Props {
   theme: "light" | "dark"
@@ -114,6 +115,7 @@ const INITIAL_AKUN_DATA: AkunAnggaran[] = [
 
 export function AkunAnggaranView({ theme }: Props) {
   const isDark = theme === "dark"
+  const readOnly = !useAuth().canEdit("anggaran")
   const [akunList, setAkunList] = useState<AkunAnggaran[]>(INITIAL_AKUN_DATA)
   const [selectedTA, setSelectedTA] = useState("Semua TA")
   const [selectedSubbagian, setSelectedSubbagian] = useState("Semua Subbagian")
@@ -251,13 +253,13 @@ export function AkunAnggaranView({ theme }: Props) {
             <span>Export</span>
           </button>
 
-          <button
+          {!readOnly && <button
             onClick={handleOpenAdd}
             className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Tambah Akun</span>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -397,6 +399,7 @@ export function AkunAnggaranView({ theme }: Props) {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-2">
+                        {readOnly ? <span className="text-[11px] font-semibold text-slate-400">Baca saja</span> : <>
                         <button
                           onClick={() => handleOpenEdit(row)}
                           title="Edit Akun"
@@ -411,6 +414,7 @@ export function AkunAnggaranView({ theme }: Props) {
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                        </>}
                       </div>
                     </TableCell>
                   </TableRow>

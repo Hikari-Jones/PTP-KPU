@@ -1,15 +1,56 @@
-﻿import { useState } from "react"
+﻿import { useEffect, useState } from "react"
 import { Bug, Plus, X, CheckCircle2 } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
+import { useAuth } from "../../context/AuthContext"
+
+interface BugReport {
+  id: string
+  title: string
+  priority: string
+  status: string
+  reportedBy: string
+  reporterNip?: string
+  date: string
+}
+
+const BUG_STORAGE_KEY = "ptp_kpu_bug_reports"
+
+const DEFAULT_REPORTS: BugReport[] = [
+  { id: "BUG-101", title: "Format tanggal pada export CSV rekap surat perlu penyesuaian ISO", priority: "Sedang", status: "Selesai", reportedBy: "Ahmad K.", reporterNip: "199208052021011002", date: "05 Aug 2026" },
+  { id: "BUG-102", title: "Gagal memuat preview PDF pada browser layar kecil", priority: "Tinggi", status: "Diproses", reportedBy: "Siti R.", date: "04 Aug 2026" },
+  { id: "BUG-103", title: "Respons bot KIRANA sedikit terlambat pada perintah jadwal", priority: "Rendah", status: "Terbuka", reportedBy: "Budi S.", date: "02 Aug 2026" },
+]
+
+function readSavedReports(): BugReport[] {
+  try {
+    const saved = localStorage.getItem(BUG_STORAGE_KEY)
+    if (saved) {
+      const parsed: unknown = JSON.parse(saved)
+      if (Array.isArray(parsed)) return parsed as BugReport[]
+    }
+  } catch {
+    // Data rusak di browser tidak boleh menghalangi halaman terbuka.
+  }
+  return DEFAULT_REPORTS
+}
 
 export function BugReportView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
+  const { currentUser, userRole } = useAuth()
+  const isAdmin = userRole === "Admin"
 
-  const [reports, setReports] = useState([
-    { id: "BUG-101", title: "Format tanggal pada export CSV rekap surat perlu penyesuaian ISO", priority: "Sedang", status: "Selesai", reportedBy: "Ahmad K.", date: "05 Aug 2026" },
-    { id: "BUG-102", title: "Gagal memuat preview PDF pada browser layar kecil", priority: "Tinggi", status: "Diproses", reportedBy: "Siti R.", date: "04 Aug 2026" },
-    { id: "BUG-103", title: "Respons bot KIRANA sedikit terlambat pada perintah jadwal", priority: "Rendah", status: "Terbuka", reportedBy: "Budi S.", date: "02 Aug 2026" },
-  ])
+  const [reports, setReports] = useState<BugReport[]>(readSavedReports)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BUG_STORAGE_KEY, JSON.stringify(reports))
+    } catch {
+      // Abaikan bila penyimpanan browser tidak tersedia.
+    }
+  }, [reports])
+
+  // Admin melihat semua laporan; pegawai hanya melihat laporan miliknya sendiri.
+  const visibleReports = isAdmin ? reports : reports.filter((r) => r.reporterNip === currentUser?.nip)
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [title, setTitle] = useState("")
@@ -21,12 +62,13 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
     e.preventDefault()
     if (!title.trim()) return
 
-    const newBug = {
-      id: `BUG-${Math.floor(104 + Math.random() * 50)}`,
+    const newBug: BugReport = {
+      id: `BUG-${Date.now().toString().slice(-6)}`,
       title: title.trim(),
       priority,
       status: "Terbuka",
-      reportedBy: reportedBy.trim() || "Operator",
+      reportedBy: reportedBy.trim() || currentUser?.name || "Pegawai",
+      reporterNip: currentUser?.nip,
       date: new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }),
     }
 
@@ -44,14 +86,16 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
-            Laporan Kendala System & Bug
+            {isAdmin ? "Laporan Kendala System & Bug" : "Laporkan Bug"}
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-            Monitoring isu teknis, log error, dan feedback pengguna aplikasi PTP-KPU Sulut
+            {isAdmin
+              ? "Monitoring isu teknis, log error, dan feedback pengguna aplikasi PTP-KPU Sulut"
+              : "Laporkan kendala atau error yang Anda temui saat menggunakan PTP-KPU Sulut kepada tim IT"}
           </p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => { setReportedBy(currentUser?.name || ""); setIsModalOpen(true) }}
           className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-md"
         >
           <Plus className="w-4 h-4" />
@@ -67,7 +111,12 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
       )}
 
       <div className="space-y-3">
-        {reports.map((bug) => (
+        {visibleReports.length === 0 && (
+          <p className={`text-xs font-medium p-6 text-center rounded-xl border border-dashed ${isDark ? "border-white/10 text-gray-400" : "border-slate-300 text-slate-500"}`}>
+            Anda belum pernah melaporkan kendala.
+          </p>
+        )}
+        {visibleReports.map((bug) => (
           <Card key={bug.id} className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
             <CardContent className="p-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
@@ -138,7 +187,7 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
                 <label className="block mb-1">Nama Pelapor</label>
                 <input
                   type="text"
-                  placeholder="Nama staf operator yang mengalami kendala"
+                  placeholder="Nama pegawai yang mengalami kendala"
                   value={reportedBy}
                   onChange={(e) => setReportedBy(e.target.value)}
                   className={`w-full rounded-xl border px-3 py-2 outline-none ${isDark ? "bg-[#1e293b] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`}

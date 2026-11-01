@@ -98,7 +98,7 @@
 .login-demo summary { display: flex; align-items: center; justify-content: space-between; min-height: 43px; color: var(--login-muted); cursor: pointer; list-style: none; font-size: 11px; }
 .login-demo summary::-webkit-details-marker { display: none; }
 .login-demo[open] summary > svg { transform: rotate(180deg); }
-.login-demo-options { display: flex; gap: 10px; padding-bottom: 16px; }
+.login-demo-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-bottom: 16px; }
 .login-demo-options button { flex: 1; min-height: 36px; padding: 7px; border: 1px solid var(--login-border); border-radius: 6px; background: var(--login-surface); color: var(--login-accent); font-size: 11px; }
 .login-demo-options button:hover:not(:disabled) { border-color: var(--login-accent); }
 .login-demo-options button:disabled { cursor: wait; opacity: .6; }

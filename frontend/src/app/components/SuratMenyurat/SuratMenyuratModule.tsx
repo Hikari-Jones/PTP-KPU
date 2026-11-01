@@ -22,6 +22,9 @@ import { DisposisiAlurPanel } from "./DisposisiAlurPanel"
 import { VerifikasiDraftPanel } from "./VerifikasiDraftPanel"
 import { TteDistribusiPanel } from "./TteDistribusiPanel"
 import { AuditTrailLog } from "./AuditTrailLog"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { useAuth } from "../../context/AuthContext"
+import { ReadOnlyBanner } from "../ui/read-only"
 
 export interface SuratMenyuratModuleProps {
   theme: "light" | "dark"
@@ -30,6 +33,8 @@ export interface SuratMenyuratModuleProps {
 
 export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyuratModuleProps) {
   const isDark = theme === "dark"
+  const { canEdit } = useAuth()
+  const readOnly = !canEdit("surat")
 
   // Master State
   const [suratList, setSuratList] = useState<SuratItem[]>(INITIAL_SURAT_LIST)
@@ -59,6 +64,8 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
       prioritas: form.prioritas,
       status: "menunggu_disposisi",
       fileName: form.fileName,
+      fileUrl: form.fileUrl,
+      fileSize: form.fileSize,
       ringkasanIsi: form.ringkasanIsi,
       history: [
         {
@@ -90,6 +97,8 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
       prioritas: "penting",
       status: "draft",
       fileName: form.fileName,
+      fileUrl: form.fileUrl,
+      fileSize: form.fileSize,
       ringkasanIsi: form.isiSurat,
       history: [
         {
@@ -324,12 +333,15 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
         </div>
       )}
 
+      {readOnly && <ReadOnlyBanner theme={theme} modul="surat menyurat" pengelola="Sub Bagian Umum dan Logistik (UMLOG)" />}
+
       {/* Main Container View Switch */}
       {!selectedSurat ? (
         /* Dashboard Component */
         <SuratDashboard
           theme={theme}
           suratList={suratList}
+          readOnly={readOnly}
           initialTab={subTab === "masuk" ? "masuk" : subTab === "keluar" ? "keluar" : "semua"}
           onOpenInputSuratMasuk={() => setIsInputMasukOpen(true)}
           onOpenBuatDraft={() => setIsBuatDraftOpen(true)}
@@ -381,7 +393,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
           {/* Navigation Tabs for Details */}
           <div className={`flex items-center gap-2 p-1.5 rounded-2xl border ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200"}`}>
             {[
-              { id: "detail", label: "Substansi & Ringkasan", icon: FileText },
+              { id: "detail", label: "Isi Surat & Ringkasan", icon: FileText },
               { id: "disposisi", label: "2. Disposisi & Tindak Lanjut", icon: UserCheck, show: selectedSurat.jenis === "masuk" },
               { id: "verifikasi", label: "3. Verifikasi Draft Surat", icon: FileEdit, show: selectedSurat.jenis !== "masuk" },
               { id: "tte", label: "4. TTE Digital & Distribusi", icon: ShieldCheck, show: selectedSurat.jenis !== "masuk" },
@@ -413,6 +425,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
           {activeDetailTab === "detail" && (
             <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
               <CardContent className="p-6 space-y-6">
+                <SuratDokumenViewer theme={theme} surat={selectedSurat} />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
                     <p className="text-[10px] text-gray-400 font-mono">PENGIRIM</p>
@@ -431,7 +444,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
                 <div>
                   <h4 className="text-xs font-mono text-gray-400 uppercase mb-2">RINGKASAN URAIAN ISI SURAT</h4>
                   <p className={`p-4 rounded-xl border leading-relaxed text-xs ${isDark ? "bg-[#131d30] border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    {selectedSurat.ringkasanIsi || "Belum ada catatan deskripsi tambaha."}
+                    {selectedSurat.ringkasanIsi || "Belum ada catatan deskripsi tambahan."}
                   </p>
                 </div>
               </CardContent>
@@ -442,6 +455,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
             <DisposisiAlurPanel
               theme={theme}
               surat={selectedSurat}
+              readOnly={readOnly}
               onSaveDisposisi={handleSaveDisposisi}
               onUpdateStatus={handleUpdateStatusDisposisi}
             />
@@ -451,6 +465,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
             <VerifikasiDraftPanel
               theme={theme}
               surat={selectedSurat}
+              readOnly={readOnly}
               onApproveDraft={handleApproveDraft}
               onRejectRevisiDraft={handleRejectRevisiDraft}
             />
@@ -460,6 +475,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
             <TteDistribusiPanel
               theme={theme}
               surat={selectedSurat}
+              readOnly={readOnly}
               onSignTte={handleSignTte}
               onDistribusi={handleDistribusiSurat}
             />
