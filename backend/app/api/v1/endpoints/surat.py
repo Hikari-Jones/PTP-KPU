@@ -1,11 +1,24 @@
 ﻿from datetime import datetime, date
+import base64
+import binascii
+import hashlib
+import hmac
+from pathlib import Path
 from typing import List, Optional
+from xml.sax.saxutils import escape
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from pydantic import BaseModel
+from docx import Document
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from app.core.database import get_db
+from app.core.auth import get_current_user, require_admin
+from app.core.config import settings
 from app.models.schema import (
     KodeKlasifikasiArsip,
     JenisSurat,
@@ -20,6 +33,7 @@ from app.models.schema import (
 )
 
 router = APIRouter()
+BASE_DIR = Path(__file__).resolve().parents[4]
 
 # ----------------- Pydantic Schemas -----------------
 class KlasifikasiOut(BaseModel):
@@ -59,8 +73,40 @@ class SuratKeluarCreate(BaseModel):
     tanggal_surat: Optional[str] = None
 
 class FinalisasiRequest(BaseModel):
-    id_pegawai: int = 1
     catatan: Optional[str] = "Penerbitan nomor surat resmi"
+
+
+class DisposisiCreate(BaseModel):
+    id_penerima: int
+    instruksi: str
+    id_parent: Optional[int] = None
+
+
+def _verification_code(surat: SuratKeluar) -> str:
+    if not surat.nomor_surat:
+        raise HTTPException(status_code=409, detail="Surat belum memiliki nomor resmi")
+    payload = f"{surat.id_surat_keluar}:{surat.nomor_surat}"
+    digest = hmac.new(
+        settings.SECRET_KEY.encode(), payload.encode(), hashlib.sha256
+    ).digest()
+    return base64.urlsafe_b64encode(
+        f"{payload}:{digest.hex()}".encode()
+    ).decode().rstrip("=")
+
+
+def _decode_verification_code(code: str) -> tuple[int, str] | None:
+    try:
+        raw = base64.urlsafe_b64decode(code + "=" * (-len(code) % 4)).decode()
+        id_value, nomor, signature = raw.split(":", 2)
+        payload = f"{id_value}:{nomor}"
+        expected = hmac.new(
+            settings.SECRET_KEY.encode(), payload.encode(), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        return int(id_value), nomor
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return None
 
 # ----------------- Endpoints -----------------
 
@@ -117,7 +163,8 @@ async def list_surat_keluar(
 @router.post("/surat-keluar/draft", status_code=status.HTTP_201_CREATED)
 async def create_draft_surat_keluar(
     payload: SuratKeluarCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
 ):
     # Parse date or default to today
     tgl = date.today()
@@ -128,7 +175,7 @@ async def create_draft_surat_keluar(
             pass
 
     surat = SuratKeluar(
-        id_pegawai=payload.id_pegawai,
+        id_pegawai=current_user.id_pegawai,
         id_bagian=payload.id_bagian,
         id_klasifikasi=payload.id_klasifikasi,
         id_jenis_surat=payload.id_jenis_surat,
@@ -169,7 +216,8 @@ async def create_draft_surat_keluar(
 async def finalisasi_surat_atomic(
     id_surat_keluar: int,
     payload: FinalisasiRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_admin),
 ):
     res = await db.execute(select(SuratKeluar).where(SuratKeluar.id_surat_keluar == id_surat_keluar))
     surat = res.scalar_one_or_none()
@@ -229,7 +277,7 @@ async def finalisasi_surat_atomic(
     # Log riwayat status
     riwayat = RiwayatStatusSurat(
         id_surat_keluar=surat.id_surat_keluar,
-        id_pegawai=payload.id_pegawai,
+        id_pegawai=current_user.id_pegawai,
         status_lama="draft",
         status_baru="terbit",
         catatan=payload.catatan or "Penerbitan nomor resmi atomic"
@@ -255,7 +303,183 @@ async def finalisasi_surat_atomic(
         "status": surat.status,
         "tanggal_surat": str(surat.tanggal_surat),
         "tanggal_terbit": str(surat.tanggal_terbit),
+        "verification_code": _verification_code(surat),
     }
+
+
+@router.post("/surat-keluar/{id_surat_keluar}/disposisi", status_code=status.HTTP_201_CREATED)
+async def create_disposisi(
+    id_surat_keluar: int,
+    payload: DisposisiCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    surat = await db.get(SuratKeluar, id_surat_keluar)
+    if not surat:
+        raise HTTPException(status_code=404, detail="Surat keluar tidak ditemukan")
+    penerima = await db.get(Pegawai, payload.id_penerima)
+    if not penerima:
+        raise HTTPException(status_code=404, detail="Pegawai penerima tidak ditemukan")
+    if payload.id_parent is not None:
+        parent = await db.get(Disposisi, payload.id_parent)
+        if not parent or parent.id_surat_keluar != id_surat_keluar:
+            raise HTTPException(status_code=400, detail="Disposisi induk tidak sesuai")
+
+    item = Disposisi(
+        id_surat_keluar=id_surat_keluar,
+        id_pegawai=penerima.id_pegawai,
+        id_pengirim=current_user.id_pegawai,
+        id_parent=payload.id_parent,
+        instruksi=payload.instruksi,
+        tanggal_disposisi=date.today(),
+        status="terkirim",
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return {
+        "id_disposisi": item.id_disposisi,
+        "id_surat_keluar": item.id_surat_keluar,
+        "id_pengirim": item.id_pengirim,
+        "id_penerima": item.id_pegawai,
+        "id_parent": item.id_parent,
+        "instruksi": item.instruksi,
+        "tanggal_disposisi": str(item.tanggal_disposisi),
+        "status": item.status,
+    }
+
+
+@router.get("/surat-keluar/{id_surat_keluar}/disposisi")
+async def list_disposisi(
+    id_surat_keluar: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Disposisi)
+        .where(Disposisi.id_surat_keluar == id_surat_keluar)
+        .order_by(Disposisi.id_disposisi)
+    )
+    return [
+        {
+            "id_disposisi": item.id_disposisi,
+            "id_pengirim": item.id_pengirim,
+            "id_penerima": item.id_pegawai,
+            "id_parent": item.id_parent,
+            "instruksi": item.instruksi,
+            "tanggal_disposisi": str(item.tanggal_disposisi),
+            "status": item.status,
+            "diterima_pada": str(item.diterima_pada) if item.diterima_pada else None,
+        }
+        for item in result.scalars().all()
+    ]
+
+
+@router.post("/disposisi/{id_disposisi}/terima")
+async def accept_disposisi(
+    id_disposisi: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    item = await db.get(Disposisi, id_disposisi)
+    if not item:
+        raise HTTPException(status_code=404, detail="Disposisi tidak ditemukan")
+    if item.id_pegawai != current_user.id_pegawai:
+        raise HTTPException(status_code=403, detail="Disposisi bukan untuk pengguna ini")
+    item.status = "diterima"
+    item.diterima_pada = datetime.now()
+    await db.commit()
+    return {"id_disposisi": item.id_disposisi, "status": item.status}
+
+
+@router.get("/surat-keluar/{id_surat_keluar}/kode-verifikasi")
+async def get_verification_code(
+    id_surat_keluar: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    surat = await db.get(SuratKeluar, id_surat_keluar)
+    if not surat:
+        raise HTTPException(status_code=404, detail="Surat keluar tidak ditemukan")
+    return {
+        "verification_code": _verification_code(surat),
+        "verification_path": f"/api/v1/verifikasi/{_verification_code(surat)}",
+    }
+
+
+@router.get("/verifikasi/{kode_verifikasi}")
+async def verify_surat(kode_verifikasi: str, db: AsyncSession = Depends(get_db)):
+    decoded = _decode_verification_code(kode_verifikasi)
+    if not decoded:
+        raise HTTPException(status_code=404, detail="Kode verifikasi tidak valid")
+    id_surat, nomor_surat = decoded
+    surat = await db.get(SuratKeluar, id_surat)
+    if not surat or surat.nomor_surat != nomor_surat or surat.status != "terbit":
+        raise HTTPException(status_code=404, detail="Surat tidak terverifikasi")
+    return {
+        "valid": True,
+        "id_surat_keluar": surat.id_surat_keluar,
+        "nomor_surat": surat.nomor_surat,
+        "perihal": surat.perihal,
+        "tujuan_surat": surat.tujuan_surat,
+        "tanggal_terbit": str(surat.tanggal_terbit),
+        "message": "Surat terdaftar dan nomor resminya valid",
+    }
+
+
+@router.get("/surat-keluar/{id_surat_keluar}/export")
+async def export_surat(
+    id_surat_keluar: int,
+    format: str = Query("docx", pattern="^(docx|pdf)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    surat = await db.get(SuratKeluar, id_surat_keluar)
+    if not surat:
+        raise HTTPException(status_code=404, detail="Surat keluar tidak ditemukan")
+    if surat.status != "terbit":
+        raise HTTPException(status_code=409, detail="Hanya surat terbit yang dapat diekspor")
+
+    output_dir = (BASE_DIR / settings.UPLOAD_DIR).resolve() / "generated"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_id = str(surat.id_surat_keluar)
+    if format == "docx":
+        target = output_dir / f"surat-{safe_id}.docx"
+        document = Document()
+        section = document.sections[0]
+        section.header.paragraphs[0].text = (
+            "KOMISI PEMILIHAN UMUM\nPROVINSI SULAWESI UTARA"
+        )
+        section.header.paragraphs[0].style = document.styles["Header"]
+        document.add_heading("SURAT DINAS", level=1)
+        document.add_paragraph(f"Nomor: {surat.nomor_surat}")
+        document.add_paragraph(f"Perihal: {surat.perihal}")
+        document.add_paragraph(f"Tujuan: {surat.tujuan_surat}")
+        document.add_paragraph(surat.isi_surat or "")
+        document.save(target)
+        return FileResponse(
+            target,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=target.name,
+        )
+
+    target = output_dir / f"surat-{safe_id}.pdf"
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("KOMISI PEMILIHAN UMUM<br/>PROVINSI SULAWESI UTARA", styles["Title"]),
+        Spacer(1, 18),
+        Paragraph(f"<b>SURAT DINAS</b><br/>Nomor: {surat.nomor_surat}", styles["Normal"]),
+        Spacer(1, 12),
+        Paragraph(f"<b>Perihal:</b> {escape(surat.perihal)}", styles["Normal"]),
+        Paragraph(f"<b>Tujuan:</b> {escape(surat.tujuan_surat)}", styles["Normal"]),
+        Spacer(1, 12),
+        Paragraph(
+            escape(surat.isi_surat or "").replace("\n", "<br/>"),
+            styles["BodyText"],
+        ),
+    ]
+    SimpleDocTemplate(str(target), pagesize=A4).build(story)
+    return FileResponse(target, media_type="application/pdf", filename=target.name)
 
 @router.get("/surat-tugas")
 async def list_surat_tugas(db: AsyncSession = Depends(get_db)):
