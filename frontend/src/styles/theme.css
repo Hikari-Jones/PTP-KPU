@@ -284,22 +284,99 @@ html.light .modal-overlay,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
+  background: #cbd5e1;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-[data-theme="light"] ::-webkit-scrollbar-thumb,
-html.light ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-}
-
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
-html.light ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track,
+html.dark ::-webkit-scrollbar-track,
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb,
+html.dark ::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover,
+html.dark ::-webkit-scrollbar-thumb:hover,
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Explicit visible scrollbar class for tables/containers */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #dc2626 rgba(15, 23, 42, 0.6);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #dc2626;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #ef4444;
+}
+
+.dark .custom-scrollbar,
+[data-theme="dark"] .custom-scrollbar {
+  scrollbar-color: #e11d48 rgba(15, 23, 42, 0.8);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-track,
+[data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+[data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e11d48;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #f43f5e;
+}
+
+.light .custom-scrollbar,
+[data-theme="light"] .custom-scrollbar {
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+/* Utility to completely hide scrollbars while preserving scroll functionality */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
 }
 
 /* ==========================================================================
@@ -350,4 +427,130 @@ button.btn-kpu-red:hover {
 button.btn-kpu-red:active {
   transform: translateY(0) scale(0.97);
   box-shadow: 0 1px 4px 0 rgba(168, 23, 31, 0.3) !important;
+}
+
+/* ==========================================================================
+   High-Contrast Bright Red for Dark Mode (Text, Icons, and Accents)
+   ========================================================================== */
+[data-theme="dark"] .text-red-600,
+html.dark .text-red-600,
+.dark .text-red-600,
+[data-theme="dark"] .text-red-500,
+html.dark .text-red-500,
+.dark .text-red-500 {
+  color: #ff4d4f !important;
+}
+
+[data-theme="dark"] .text-red-700,
+html.dark .text-red-700,
+.dark .text-red-700 {
+  color: #ff7875 !important;
+}
+
+[data-theme="dark"] .text-red-400,
+html.dark .text-red-400,
+.dark .text-red-400 {
+  color: #ff7875 !important;
+}
+
+[data-theme="dark"] .hover\:text-red-700:hover,
+html.dark .hover\:text-red-700:hover,
+.dark .hover\:text-red-700:hover,
+[data-theme="dark"] .hover\:text-red-600:hover,
+html.dark .hover\:text-red-600:hover,
+.dark .hover\:text-red-600:hover {
+  color: #ffa39e !important;
+}
+
+[data-theme="dark"] .hover\:text-red-500:hover,
+html.dark .hover\:text-red-500:hover,
+.dark .hover\:text-red-500:hover {
+  color: #ff7875 !important;
+}
+
+/* Make red icons glow/pop in dark mode */
+[data-theme="dark"] svg.text-red-600,
+html.dark svg.text-red-600,
+.dark svg.text-red-600,
+[data-theme="dark"] svg.text-red-500,
+html.dark svg.text-red-500,
+.dark svg.text-red-500 {
+  color: #ff4d4f !important;
+  filter: drop-shadow(0 0 4px rgba(255, 77, 79, 0.35));
+}
+
+/* ---- Dark mode bright red overrides for all text and icons ---- */
+[data-theme="dark"] .text-primary,
+[data-theme="dark"] .text-secondary,
+[data-theme="dark"] .text-primary *,
+[data-theme="dark"] .text-secondary *,
+[data-theme="dark"] .icon,
+[data-theme="dark"] .icon *,
+[data-theme="dark"] svg,
+[data-theme="dark"] svg * {
+  color: #ff4d4f !important;
+}
+
+/* Ensure hover/focus states also use bright red */
+[data-theme="dark"] .text-primary:hover,
+[data-theme="dark"] .text-secondary:hover,
+[data-theme="dark"] .icon:hover,
+[data-theme="dark"] svg:hover {
+  color: #ff7875 !important; /* lighter red for hover */
+}
+
+/* ---- Exception: icons & text inside red-background elements should be WHITE in dark mode ---- */
+/* Active sidebar nav items */
+[data-theme="dark"] .bg-red-600 svg,
+[data-theme="dark"] .bg-red-600 svg *,
+[data-theme="dark"] .bg-red-600 span,
+[data-theme="dark"] .bg-red-700 svg,
+[data-theme="dark"] .bg-red-700 svg *,
+[data-theme="dark"] .bg-red-700 span,
+/* btn-kpu-red buttons */
+[data-theme="dark"] .btn-kpu-red svg,
+[data-theme="dark"] .btn-kpu-red svg *,
+[data-theme="dark"] .btn-kpu-red span,
+/* Red card icon containers */
+[data-theme="dark"] .bg-red-500 svg,
+[data-theme="dark"] .bg-red-500 svg *,
+[data-theme="dark"] .bg-red-500 span,
+[data-theme="dark"] .bg-red-800 svg,
+[data-theme="dark"] .bg-red-800 svg *,
+[data-theme="dark"] .bg-red-900 svg,
+[data-theme="dark"] .bg-red-900 svg * {
+  color: #fff !important;
+}
+
+/* text-white should stay white regardless of dark mode overrides */
+[data-theme="dark"] .text-white,
+[data-theme="dark"] .text-white svg,
+[data-theme="dark"] .text-white svg *,
+[data-theme="dark"] .text-white span {
+  color: #fff !important;
+}
+
+/* ---- FINAL OVERRIDE: !text-black always stays black (e.g. Sun icon in theme toggle) ---- */
+[data-theme="dark"] .\!text-black,
+[data-theme="dark"] .\!text-black svg,
+[data-theme="dark"] .\!text-black svg *,
+[data-theme="dark"] .\!text-black * {
+  color: #000 !important;
+}
+
+
+/* ---- Theme toggle Sun icon: ONLY in dark mode, black. In light mode, Moon icon stays white ---- */
+[data-theme="dark"] .theme-toggle-icon svg,
+[data-theme="dark"] .theme-toggle-icon svg * {
+  color: #000000 !important;
+  stroke: #000000 !important;
+}
+
+/* Light mode Moon icon in theme toggle: explicitly white */
+:root:not([data-theme="dark"]) .theme-toggle-icon svg,
+:root:not([data-theme="dark"]) .theme-toggle-icon svg *,
+[data-theme="light"] .theme-toggle-icon svg,
+[data-theme="light"] .theme-toggle-icon svg * {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }

@@ -137,65 +137,85 @@ export function SuratDashboard({
       {/* 4 Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Surat Masuk */}
-        <Card className={`transition-all ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
-          <CardContent className="p-5 flex items-center justify-between min-h-[110px]">
-            <div className="flex-1 flex flex-col justify-center space-y-1">
-              <p className={`text-[11px] font-extrabold uppercase tracking-wider ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
                 Total Surat Masuk
               </p>
-              <h2 className={`text-2xl font-black ${isDark ? "text-white" : "text-black"}`}>{totalSuratMasuk} Berkas</h2>
-              <span className="inline-flex items-center text-[10px] text-red-600 dark:text-red-400 font-bold">Ter-registrasi di agenda</span>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {totalSuratMasuk} Berkas
+              </h2>
+              <p className="text-[10px] font-bold mt-1 text-red-600 dark:text-red-400">
+                Ter-registrasi di agenda
+              </p>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
-              <Mail className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Mail className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
         {/* Surat Keluar */}
-        <Card className={`transition-all ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
-          <CardContent className="p-5 flex items-center justify-between min-h-[110px]">
-            <div className="flex-1 flex flex-col justify-center space-y-1">
-              <p className={`text-[11px] font-extrabold uppercase tracking-wider ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
                 Surat Keluar / Nota
               </p>
-              <h2 className={`text-2xl font-black ${isDark ? "text-white" : "text-black"}`}>{totalSuratKeluar} Berkas</h2>
-              <span className="inline-flex items-center text-[10px] text-red-600 dark:text-red-400 font-bold">Telah diterbitkan</span>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {totalSuratKeluar} Berkas
+              </h2>
+              <p className="text-[10px] font-bold mt-1 text-red-600 dark:text-red-400">
+                Telah diterbitkan
+              </p>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Send className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Send className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
         {/* Menunggu Disposisi */}
-        <Card className={`transition-all ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
-          <CardContent className="p-5 flex items-center justify-between min-h-[110px]">
-            <div className="flex-1 flex flex-col justify-center space-y-1">
-              <p className={`text-[11px] font-extrabold uppercase tracking-wider ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
                 Menunggu Disposisi
               </p>
-              <h2 className={`text-2xl font-black ${isDark ? "text-white" : "text-black"}`}>{menungguDisposisi} Surat</h2>
-              <span className="inline-flex items-center text-[10px] text-red-600 dark:text-red-400 font-bold">Perlu arahan pimpinan</span>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {menungguDisposisi} Surat
+              </h2>
+              <p className="text-[10px] font-bold mt-1 text-red-600 dark:text-red-400">
+                Perlu arahan pimpinan
+              </p>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
-              <Clock className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Clock className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
         {/* Menunggu TTE */}
-        <Card className={`transition-all ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
-          <CardContent className="p-5 flex items-center justify-between min-h-[110px]">
-            <div className="flex-1 flex flex-col justify-center space-y-1">
-              <p className={`text-[11px] font-extrabold uppercase tracking-wider ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
                 Menunggu TTE Digital
               </p>
-              <h2 className={`text-2xl font-black ${isDark ? "text-white" : "text-black"}`}>{menungguTTE} Berkas</h2>
-              <span className="inline-flex items-center text-[10px] text-red-600 dark:text-red-400 font-bold">Siap tanda tangan</span>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {menungguTTE} Berkas
+              </h2>
+              <p className="text-[10px] font-bold mt-1 text-red-600 dark:text-red-400">
+                Siap tanda tangan
+              </p>
             </div>
-            <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <FileCheck className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <FileCheck className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>

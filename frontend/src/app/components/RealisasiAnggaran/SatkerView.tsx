@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, MapPin } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
@@ -109,50 +109,97 @@ export function SatkerView({ theme, onNavigate }: Props) {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Total Satker</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{satkers.length} Satuan Kerja</h3>
+        {/* Card 1: TOTAL SATKER */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                TOTAL SATKER
+              </p>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {satkers.length} Satuan Kerja
+              </h2>
+              <p className={`text-[10px] font-bold mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                Wilayah Sulawesi Utara
+              </p>
             </div>
-            <div className="p-3 rounded-xl bg-red-600 text-white shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Building2 className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Total Pagu Gabungan</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{formatRupiah(totalPagu)}</h3>
+        {/* Card 2: TOTAL PAGU GABUNGAN */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                TOTAL PAGU GABUNGAN
+              </p>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {formatRupiah(totalPagu)}
+              </h2>
+              <p className={`text-[10px] font-bold mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                Akumulasi Pagu Satker
+              </p>
             </div>
-            <div className={`p-3 rounded-xl ${isDark ? "bg-white text-slate-950" : "bg-slate-900 text-white"}`}>
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Layers className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Realisasi Wilayah</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{formatRupiah(totalRealisasi)}</h3>
+        {/* Card 3: REALISASI WILAYAH */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                REALISASI WILAYAH
+              </p>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {formatRupiah(totalRealisasi)}
+              </h2>
+              <p className="text-[10px] font-bold flex items-center gap-1 mt-1 text-red-600 dark:text-red-400">
+                <TrendingUp className="w-3.5 h-3.5" /> Total Penyerapan
+              </p>
             </div>
-            <div className="p-3 rounded-xl bg-red-600 text-white shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <TrendingUp className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Rata-rata Serapan</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{avgPct.toFixed(1)}%</h3>
+        {/* Card 4: RATA-RATA SERAPAN */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex flex-col justify-center gap-3 min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="pt-1">
+              <div className="flex items-center justify-between">
+                <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                  RATA-RATA SERAPAN
+                </p>
+                <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline justify-between mt-1">
+                <h2 className={`text-2xl font-black tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                  {avgPct.toFixed(1)}%
+                </h2>
+                <span className={`text-[10px] font-bold ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                  Target: 80%
+                </span>
+              </div>
             </div>
-            <div className={`p-3 rounded-xl ${isDark ? "bg-white text-slate-950" : "bg-slate-900 text-white"}`}>
-              <CheckCircle2 className="w-5 h-5" />
+
+            <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-red-600 transition-all duration-500"
+                style={{ width: `${Math.min(100, avgPct)}%` }}
+              ></div>
             </div>
           </CardContent>
         </Card>

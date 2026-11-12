@@ -89,14 +89,14 @@ function MainLayout() {
         return <LaporanBulananView theme={theme} />
       case "surat":
       case "surat-summary":
-        return <SuratView key="surat-overview" theme={theme} subTab="overview" />
+        return <SuratView key="surat-overview" theme={theme} subTab="overview" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-keluar":
-        return <SuratView key="surat-keluar" theme={theme} subTab="surat-keluar" />
+        return <SuratView key="surat-keluar" theme={theme} subTab="surat-keluar" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-tugas":
       case "surat-masuk":
-        return <SuratView key="surat-tugas" theme={theme} subTab="surat-tugas" />
+        return <SuratView key="surat-tugas" theme={theme} subTab="surat-tugas" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-klasifikasi":
-        return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" />
+        return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-alur":
         return <SuratMenyuratModule theme={theme} subTab="ringkasan" />
       case "arsip":

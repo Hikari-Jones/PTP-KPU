@@ -37,6 +37,7 @@ import {
 export interface SuratViewProps {
   theme?: "light" | "dark"
   subTab?: string
+  onNavigate?: (tab: string) => void
 }
 
 // 10 Comprehensive Initial Letters for Surat Keluar
@@ -321,7 +322,7 @@ const INITIAL_KLASIFIKASI_DATA: KodeKlasifikasiArsip[] = [
   { id_klasifikasi: 15, kode_klasifikasi: "HM.01.1", nama_klasifikasi: "Hubungan Antar Lembaga, Pers & Publikasi Media KPU", kategori_utama: "Partisipasi Masyarakat", retensi_aktif_tahun: 2, retensi_inaktif_tahun: 5, hak_akses: "Publik" },
 ]
 
-export function SuratView({ theme = "dark", subTab = "overview" }: SuratViewProps) {
+export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: SuratViewProps) {
   const isDark = theme === "dark"
 
   const getInitialTab = (
@@ -603,7 +604,13 @@ export function SuratView({ theme = "dark", subTab = "overview" }: SuratViewProp
                     </div>
                   </div>
                   <button
-                    onClick={() => setActiveTab("surat-keluar")}
+                    onClick={() => {
+                      if (onNavigate) {
+                        onNavigate("surat-keluar")
+                      } else {
+                        setActiveTab("surat-keluar")
+                      }
+                    }}
                     className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     <span>Lihat Semua</span>
@@ -721,7 +728,13 @@ export function SuratView({ theme = "dark", subTab = "overview" }: SuratViewProp
                 </div>
               </div>
               <button
-                onClick={() => setActiveTab("surat-tugas")}
+                onClick={() => {
+                  if (onNavigate) {
+                    onNavigate("surat-tugas")
+                  } else {
+                    setActiveTab("surat-tugas")
+                  }
+                }}
                 className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1 cursor-pointer transition-colors self-start sm:self-auto"
               >
                 <span>Buka Modul Surat Tugas</span>

@@ -76,7 +76,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
       <Card className={isDark ? "bg-[#0c1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
         <div className={`p-5 border-b flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-950 shadow-xs">
+            <div className={`theme-toggle-icon p-2.5 rounded-xl shadow-xs ${isDark ? "bg-white" : "bg-slate-900 text-white"}`}>
               {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </div>
             <div>

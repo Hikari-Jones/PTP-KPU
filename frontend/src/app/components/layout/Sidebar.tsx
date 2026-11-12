@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import {
   LayoutDashboard,
   FileCheck,
@@ -80,7 +80,6 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     { id: "admin_dashboard", label: "Dashboard Admin", icon: LayoutGrid },
     { id: "kelola_user", label: "Kelola User", icon: Users },
     { id: "bug_report", label: "Bug Report", icon: Bug },
-    { id: "arsip_admin", label: "Arsip Admin", icon: Database },
   ]
 
   const isDark = theme === "dark"
@@ -120,7 +119,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
         }`}
     >
       {/* Header / Logo */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto no-scrollbar">
         <div
           className={`flex items-center h-16 ${collapsed ? "justify-center p-4" : "justify-between p-4"
             } ${isDark ? "border-b-2 border-red-600/25" : "border-b-2 border-red-600/15"}`}
