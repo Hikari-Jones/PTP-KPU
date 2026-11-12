@@ -12,11 +12,11 @@ export function AuditTrailLog({ theme, surat }: AuditTrailLogProps) {
   const isDark = theme === "dark"
 
   const getActionIcon = (aksi: string) => {
-    if (aksi.includes("Registrasi")) return <FileText className="w-4 h-4 text-red-500" />
+    if (aksi.includes("Registrasi")) return <FileText className="w-4 h-4 text-red-600 dark:text-red-400" />
     if (aksi.includes("Disposisi")) return <User className="w-4 h-4 text-red-600 dark:text-red-400" />
-    if (aksi.includes("Draft") || aksi.includes("Revisi")) return <FileEdit className="w-4 h-4 text-red-500" />
-    if (aksi.includes("TTE") || aksi.includes("Approval")) return <ShieldCheck className="w-4 h-4 text-emerald-500" />
-    if (aksi.includes("Pengiriman")) return <Send className="w-4 h-4 text-emerald-500" />
+    if (aksi.includes("Draft") || aksi.includes("Revisi")) return <FileEdit className="w-4 h-4 text-red-600 dark:text-red-400" />
+    if (aksi.includes("TTE") || aksi.includes("Approval")) return <ShieldCheck className="w-4 h-4 text-red-600 dark:text-red-400" />
+    if (aksi.includes("Pengiriman")) return <Send className="w-4 h-4 text-red-600 dark:text-red-400" />
     return <History className="w-4 h-4 text-slate-400" />
   }
 
@@ -31,11 +31,11 @@ export function AuditTrailLog({ theme, surat }: AuditTrailLogProps) {
       </div>
 
       <CardContent className="p-5">
-        <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-red-500 before:via-red-400 before:to-emerald-500">
+        <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-red-600 before:via-red-500 before:to-red-700">
           {surat.history.map((log, index) => (
             <div key={log.id || index} className="relative group">
               {/* Point Indicator */}
-              <div className="absolute -left-[27px] top-1.5 w-3 h-3 rounded-full border-2 border-[#0d1322] bg-red-500 shadow-sm group-hover:scale-125 transition-transform" />
+              <div className="absolute -left-[27px] top-1.5 w-3 h-3 rounded-full border-2 border-[#0d1322] bg-red-600 shadow-sm group-hover:scale-125 transition-transform" />
 
               <div
                 className={`p-4 rounded-xl border transition-all ${isDark ? "bg-[#131d30]/60 border-[#1e293b] hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:border-slate-300"

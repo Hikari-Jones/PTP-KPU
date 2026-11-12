@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Bug, Plus, X, CheckCircle2 } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { useAuth } from "../../context/AuthContext"
@@ -117,10 +117,19 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
           </p>
         )}
         {visibleReports.map((bug) => (
-          <Card key={bug.id} className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
-            <CardContent className="p-4 flex items-center justify-between gap-4">
+          <Card
+            key={bug.id}
+            className={`p-3 transition-all ${
+              isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
+            } backdrop-blur-md shadow-lg rounded-2xl`}
+          >
+            <div
+              className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${
+                isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"
+              }`}
+            >
               <div className="flex items-center gap-3.5">
-                <div className="p-2.5 rounded-xl bg-red-600 text-white shadow-xs">
+                <div className="w-11 h-11 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
                   <Bug className="w-5 h-5" />
                 </div>
                 <div>
@@ -138,7 +147,7 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
               <span className={`status-badge px-2.5 py-1 rounded-full border text-xs font-semibold ${bug.status === "Selesai" ? "bg-black text-white border-black dark:border-slate-700" : "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800"}`}>
                 {bug.status}
               </span>
-            </CardContent>
+            </div>
           </Card>
         ))}
       </div>

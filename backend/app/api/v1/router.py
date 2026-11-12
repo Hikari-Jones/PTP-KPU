@@ -1,5 +1,5 @@
 ﻿from fastapi import APIRouter
-from app.api.v1.endpoints import bagian, pegawai, arsip, anggaran, surat, ai, auth, satker
+from app.api.v1.endpoints import bagian, pegawai, arsip, anggaran, surat, ai, auth, satker, files
 
 api_router = APIRouter()
 
@@ -9,6 +9,7 @@ async def status():
 
 # Authentication
 api_router.include_router(auth.router, prefix="/auth", tags=["Autentikasi"])
+api_router.include_router(files.router)
 
 # Master & Pegawai
 api_router.include_router(bagian.router, prefix="/bagian", tags=["Bagian"])

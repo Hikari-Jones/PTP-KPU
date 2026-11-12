@@ -141,6 +141,13 @@ class Pegawai(Base):
     disposisi: Mapped[List["Disposisi"]] = relationship(
         "Disposisi",
         back_populates="pegawai",
+        foreign_keys="Disposisi.id_pegawai",
+    )
+
+    disposisi_dikirim: Mapped[List["Disposisi"]] = relationship(
+        "Disposisi",
+        back_populates="pengirim",
+        foreign_keys="Disposisi.id_pengirim",
     )
 
     dokumen_arsip: Mapped[List["DokumenArsip"]] = relationship(
@@ -758,6 +765,22 @@ class Disposisi(Base):
         nullable=False,
     )
 
+    id_pengirim: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("pegawai.id_pegawai", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=True,
+    )
+
+    id_parent: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("disposisi.id_disposisi", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="terkirim", server_default="terkirim"
+    )
+
+    diterima_pada: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     instruksi: Mapped[str] = mapped_column(
         Text,
         nullable=False,
@@ -777,7 +800,47 @@ class Disposisi(Base):
     pegawai: Mapped["Pegawai"] = relationship(
         "Pegawai",
         back_populates="disposisi",
+        foreign_keys=[id_pegawai],
     )
+
+    pengirim: Mapped[Optional["Pegawai"]] = relationship(
+        "Pegawai",
+        foreign_keys=[id_pengirim],
+        back_populates="disposisi_dikirim",
+    )
+
+    parent: Mapped[Optional["Disposisi"]] = relationship(
+        "Disposisi",
+        remote_side=[id_disposisi],
+        back_populates="children",
+    )
+
+    children: Mapped[List["Disposisi"]] = relationship(
+        "Disposisi",
+        back_populates="parent",
+        cascade="all, delete-orphan",
+    )
+
+
+class FileRecord(Base):
+    __tablename__ = "file_record"
+
+    id_file: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    relative_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
+    uploaded_by: Mapped[int] = mapped_column(
+        ForeignKey("pegawai.id_pegawai", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp()
+    )
+
+    uploader: Mapped["Pegawai"] = relationship("Pegawai")
 
 
 # =========================================================

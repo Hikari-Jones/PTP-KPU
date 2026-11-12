@@ -9,6 +9,7 @@ from jose import jwt
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.schema import Pegawai, Bagian
+from app.core.auth import get_current_user
 
 router = APIRouter()
 
@@ -112,15 +113,14 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     return LoginResponse(access_token=token, user=user_out)
 
 @router.get("/me", response_model=UserProfileOut)
-async def get_me(db: AsyncSession = Depends(get_db)):
-    # Return default admin for office testing
+async def get_me(current_user: Pegawai = Depends(get_current_user)):
     return UserProfileOut(
-        id_pegawai=1,
-        name="Admin KPU Sulut",
-        nip="198507182020031001",
-        email="admin@kpu.go.id",
-        role="Admin",
-        jabatan="Administrator Sistem",
-        subbagian="RENDATIN (Perencanaan, Data dan Informasi)",
-        id_bagian=1
+        id_pegawai=current_user.id_pegawai,
+        name=current_user.nama,
+        nip=current_user.nip or "",
+        email=f"{(current_user.nip or '').lower()}@kpu.go.id",
+        role=current_user.role,
+        jabatan=current_user.jabatan or "",
+        subbagian=current_user.bagian.nama_bagian if current_user.bagian else "",
+        id_bagian=current_user.id_bagian,
     )

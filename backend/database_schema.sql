@@ -243,9 +243,13 @@ CREATE TABLE IF NOT EXISTS disposisi (
     id_disposisi INT AUTO_INCREMENT PRIMARY KEY,
     id_surat_keluar INT NOT NULL,
     id_pegawai INT NOT NULL,
+    id_pengirim INT NULL,
+    id_parent INT NULL,
 
     instruksi TEXT NOT NULL,
     tanggal_disposisi DATE NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'terkirim',
+    diterima_pada DATETIME NULL,
 
     CONSTRAINT fk_disposisi_suratkeluar
         FOREIGN KEY (id_surat_keluar)
@@ -257,6 +261,18 @@ CREATE TABLE IF NOT EXISTS disposisi (
         FOREIGN KEY (id_pegawai)
         REFERENCES pegawai(id_pegawai)
         ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_disposisi_pengirim
+        FOREIGN KEY (id_pengirim)
+        REFERENCES pegawai(id_pegawai)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_disposisi_parent
+        FOREIGN KEY (id_parent)
+        REFERENCES disposisi(id_disposisi)
+        ON DELETE CASCADE
         ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -346,6 +362,28 @@ CREATE TABLE IF NOT EXISTS dokumen_arsip (
     INDEX ix_dokumen_arsip_surat_keluar (id_surat_keluar),
     INDEX ix_dokumen_arsip_klasifikasi (id_klasifikasi)
 
+) ENGINE=InnoDB;
+
+
+-- =========================================================
+-- 12. PHYSICAL FILE STORAGE
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS file_record (
+    id_file INT AUTO_INCREMENT PRIMARY KEY,
+    original_name VARCHAR(255) NOT NULL,
+    stored_name VARCHAR(255) NOT NULL UNIQUE,
+    relative_path VARCHAR(500) NOT NULL,
+    mime_type VARCHAR(150) NULL,
+    file_size BIGINT NOT NULL,
+    category VARCHAR(50) NOT NULL DEFAULT 'general',
+    uploaded_by INT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_file_record_uploader
+        FOREIGN KEY (uploaded_by)
+        REFERENCES pegawai(id_pegawai)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 

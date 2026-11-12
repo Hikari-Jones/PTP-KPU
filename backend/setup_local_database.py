@@ -80,7 +80,8 @@ async def run_setup():
             ("BAG-02", "Subbagian RENDATIN (Perencanaan, Data dan Informasi)"),
             ("BAG-03", "Subbagian Teknis Penyelenggaraan Pemilu"),
             ("BAG-04", "Subbagian Hukum dan Pengawasan"),
-            ("BAG-05", "Subbagian Keuangan, Umum dan Logistik (UMLOG)"),
+            ("BAG-05", "Subbagian Umum dan Logistik (UMLOG)"),
+            ("BAG-06", "Subbagian Keuangan"),
         ]
         b_map = {}
         for kode, nama in bagian_list:
@@ -90,15 +91,53 @@ async def run_setup():
                 b = Bagian(kode_bagian=kode, nama_bagian=nama)
                 session.add(b)
                 await session.flush()
+            else:
+                if b.nama_bagian != nama:
+                    b.nama_bagian = nama
+                    await session.flush()
             b_map[kode] = b.id_bagian
-        print("  ✓ 5 Subbagian KPU Provinsi Sulut siap.")
+        print("  ✓ 6 Subbagian KPU Provinsi Sulut siap (Keuangan & UMLOG terpisah).")
 
-        # B. Master Pegawai
+        # B. Master Pegawai (1 Kabag, 1 Kasubbag, 2 Pegawai di Setiap Bagian)
         pegawai_list = [
+            # Akun Utama Bawaan (Admin Default)
             ("198507182020031001", "Admin KPU Sulut", "Administrator Sistem", "admin123", "admin", b_map["BAG-02"]),
+
+            # BAG-01: Subbagian SDM dan Partisipasi Masyarakat
+            ("197801152003121001", "Drs. Jerry Mandey, M.Si", "Kepala Bagian SDM dan Partisipasi Masyarakat", "123456", "admin", b_map["BAG-01"]),
+            ("198203102008011002", "Meyke Tumengkol, S.Sos", "Kasubbag SDM dan Partisipasi Masyarakat", "123456", "operator", b_map["BAG-01"]),
+            ("199106142015031004", "Farly Pontoh, S.Kom", "Staf Pengelola Kepegawaian", "123456", "operator", b_map["BAG-01"]),
+            ("199508192020122005", "Priscilia Rompas, S.Pd", "Staf Sosialisasi Pendidikan Pemilih", "123456", "operator", b_map["BAG-01"]),
+
+            # BAG-02: Subbagian RENDATIN (Perencanaan, Data dan Informasi)
+            ("197604122002121001", "Ir. Ronny Lumempow, MT", "Kepala Bagian Perencanaan, Data dan Informasi", "123456", "admin", b_map["BAG-02"]),
+            ("198307192009021002", "Christian Runtu, ST", "Kasubbag Perencanaan, Data dan Informasi", "123456", "operator", b_map["BAG-02"]),
+            ("199302172017011004", "Michael Poluan, S.Kom", "Pranata Komputer / Analis Data", "123456", "operator", b_map["BAG-02"]),
+            ("199609252022032005", "Natasya Pangemanan, S.Stat", "Pengolah Data SIDALIH", "123456", "operator", b_map["BAG-02"]),
+
+            # BAG-03: Subbagian Teknis Penyelenggaraan Pemilu
+            ("197709282005011001", "Drs. Franky Mokodompit, M.Si", "Kepala Bagian Teknis Penyelenggaraan", "123456", "admin", b_map["BAG-03"]),
+            ("198112042006041002", "Hendrik Sumendap, SH", "Kasubbag Teknis Penyelenggaraan Pemilu", "123456", "operator", b_map["BAG-03"]),
             ("199208052021011002", "Ahmad Kurniawan", "Staf Teknis Penyelenggaraan", "123456", "operator", b_map["BAG-03"]),
+            ("199410112019022004", "Ingrid Sondakh, S.Sos", "Staf Pengelola Sistem SILOG", "123456", "operator", b_map["BAG-03"]),
+
+            # BAG-04: Subbagian Hukum dan Pengawasan
+            ("197903212006041001", "Donald Kalalo, SH, MH", "Kepala Bagian Hukum dan Pengawasan", "123456", "admin", b_map["BAG-04"]),
+            ("198309142009121002", "Richard Senduk, SH", "Kasubbag Hukum dan Pengawasan", "123456", "operator", b_map["BAG-04"]),
             ("199403152021022003", "Siti Rahmawati", "Staf Subbagian Hukum", "123456", "operator", b_map["BAG-04"]),
+            ("199512302020121005", "Aldo Maramis, SH", "Staf Dokumentasi JDIH KPU", "123456", "operator", b_map["BAG-04"]),
+
+            # BAG-05: Subbagian Umum dan Logistik (UMLOG)
+            ("197508052001121001", "Dra. Jenny Walangitan, MM", "Kepala Bagian Umum dan Logistik", "123456", "admin", b_map["BAG-05"]),
+            ("198404182009022003", "Nova Lasut, SE", "Kasubbag Umum dan Logistik", "123456", "operator", b_map["BAG-05"]),
             ("198811202019031004", "Budi Santoso", "Staf Pengelola UMLOG", "123456", "operator", b_map["BAG-05"]),
+            ("199211152018021006", "Rizky Rumagit, S.Kom", "Staf Pengadaan Logistik", "123456", "operator", b_map["BAG-05"]),
+
+            # BAG-06: Subbagian Keuangan
+            ("197406182000031001", "Drs. Maxie Rondonuwu, M.Si, Ak", "Kepala Bagian Keuangan", "123456", "admin", b_map["BAG-06"]),
+            ("198010202007011002", "Albert Wenas, SE, Ak", "Kasubbag Pengelolaan Keuangan dan DIPA", "123456", "operator", b_map["BAG-06"]),
+            ("199305142018012005", "Jessica Pandeirot, SE", "Bendahara Pengeluaran Pembantu", "123456", "operator", b_map["BAG-06"]),
+            ("199507202020122007", "Stevani Waworuntu, SE", "Staf Verifikasi dan Akuntansi", "123456", "operator", b_map["BAG-06"]),
         ]
         p_map = {}
         for nip, nama, jab, pwd, role, b_id in pegawai_list:
@@ -108,8 +147,14 @@ async def run_setup():
                 p = Pegawai(nip=nip, nama=nama, jabatan=jab, password=pwd, role=role, id_bagian=b_id)
                 session.add(p)
                 await session.flush()
+            else:
+                p.nama = nama
+                p.jabatan = jab
+                p.id_bagian = b_id
+                p.role = role
+                await session.flush()
             p_map[nip] = p.id_pegawai
-        print("  ✓ Akun Administrator dan Pegawai siap.")
+        print("  ✓ Struktur Pegawai siap: 1 Kabag, 1 Kasubbag, 2 Pegawai di setiap bagian (Keuangan & UMLOG terpisah).")
 
         # C. Master Klasifikasi Arsip
         klas_list = [
@@ -153,35 +198,53 @@ async def run_setup():
 
         # E. Tahun Anggaran & Akun Anggaran
         ta_res = await session.execute(select(TahunAnggaran).where(TahunAnggaran.tahun == 2025))
-        if not ta_res.scalar_one_or_none():
+        ta2025 = ta_res.scalar_one_or_none()
+        if not ta2025:
             ta2025 = TahunAnggaran(tahun=2025, status="Aktif", tanggal_mulai=date(2025, 1, 1), tanggal_selesai=date(2025, 12, 31),
-                                   deskripsi="Tahun Anggaran Berjalan 2025", dibuat_oleh="Admin KPU")
+                                   deskripsi="Tahun Anggaran Berjalan 2025")
+            session.add(ta2025)
+            await session.flush()
+
+        ta_res26 = await session.execute(select(TahunAnggaran).where(TahunAnggaran.tahun == 2026))
+        ta2026 = ta_res26.scalar_one_or_none()
+        if not ta2026:
             ta2026 = TahunAnggaran(tahun=2026, status="Perencanaan", tanggal_mulai=date(2026, 1, 1), tanggal_selesai=date(2026, 12, 31),
-                                   deskripsi="Tahun Anggaran Pilkada 2026", dibuat_oleh="Admin KPU")
-            session.add_all([ta2025, ta2026])
+                                   deskripsi="Tahun Anggaran Pilkada 2026")
+            session.add(ta2026)
+            await session.flush()
 
         akun_list = [
-            ("5211", "Belanja Gaji dan Tunjangan", "Belanja Pegawai", b_map["BAG-05"], 8500000000),
+            ("5211", "Belanja Gaji dan Tunjangan", "Belanja Pegawai", b_map["BAG-06"], 8500000000),
             ("5212", "Belanja Honorarium", "Belanja Pegawai Non Operasional", b_map["BAG-03"], 3200000000),
             ("5221", "Belanja Barang Operasional", "Belanja Barang Perkantoran", b_map["BAG-05"], 4800000000),
-            ("5222", "Belanja Barang Non Operasional", "Belanja Pengadaan Logistik", b_map["BAG-03"], 6500000000),
+            ("5222", "Belanja Barang Non Operasional", "Belanja Pengadaan Logistik", b_map["BAG-05"], 6500000000),
             ("5231", "Belanja Pemeliharaan", "Pemeliharaan Gedung & Kendaraan", b_map["BAG-01"], 2100000000),
             ("5241", "Belanja Perjalanan Dinas", "Perjalanan Dinas Wilayah", b_map["BAG-04"], 4200000000),
             ("5251", "Belanja Jasa", "Jasa Konsultan & IT", b_map["BAG-02"], 7800000000),
-            ("5311", "Belanja Modal Peralatan", "Pengadaan Server & IT", b_map["BAG-05"], 3680000000),
-            ("5321", "Belanja Modal Gedung", "Rehabilitasi Fasilitas", b_map["BAG-01"], 5000000000),
+            ("5311", "Belanja Modal Peralatan", "Pengadaan Server & IT", b_map["BAG-02"], 3680000000),
+            ("5321", "Belanja Modal Gedung", "Rehabilitasi Fasilitas", b_map["BAG-05"], 5000000000),
         ]
         for kode_a, nama_a, kat_a, b_id, pagu_val in akun_list:
             res = await session.execute(select(AkunAnggaran).where(AkunAnggaran.kode_akun == kode_a))
             a = res.scalar_one_or_none()
             if not a:
-                a = AkunAnggaran(kode_akun=kode_a, nama_akun=nama_a, kategori=kat_a, id_bagian=b_id, pagu_total=Decimal(pagu_val))
+                a = AkunAnggaran(kode_akun=kode_a, nama_akun=nama_a, jenis_belanja=kat_a, id_bagian=b_id, total_pagu=Decimal(pagu_val))
                 session.add(a)
                 await session.flush()
 
-            res_pagu = await session.execute(select(PaguAnggaran).where(PaguAnggaran.tahun == 2025, PaguAnggaran.id_akun == a.id_akun))
+            res_pagu = await session.execute(
+                select(PaguAnggaran).where(
+                    PaguAnggaran.id_tahun_anggaran == ta2025.id_tahun_anggaran,
+                    PaguAnggaran.id_akun_anggaran == a.id_akun_anggaran
+                )
+            )
             if not res_pagu.scalar_one_or_none():
-                pagu = PaguAnggaran(tahun=2025, id_akun=a.id_akun, pagu_awal=Decimal(pagu_val), pagu_akhir=Decimal(pagu_val), dibuat_oleh=p_map["198507182020031001"])
+                pagu = PaguAnggaran(
+                    id_tahun_anggaran=ta2025.id_tahun_anggaran,
+                    id_akun_anggaran=a.id_akun_anggaran,
+                    pagu_awal=Decimal(pagu_val),
+                    pagu_aktif=Decimal(pagu_val)
+                )
                 session.add(pagu)
         print("  ✓ Master Akun Anggaran dan Pagu DIPA TA 2025 siap.")
 
