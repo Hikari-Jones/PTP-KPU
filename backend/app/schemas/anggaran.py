@@ -198,7 +198,7 @@ class RevisiAnggaranListResponse(BaseModel):
 # 5. REALISASI ANGGARAN SCHEMAS
 # =========================================================
 
-class RealisasiAnggaranCreateDraft(BaseModel):
+class RealisasiAnggaranCreate(BaseModel):
     id_pagu: int = Field(..., description="ID Pagu Anggaran tahun berjalan")
     tanggal_transaksi: date
     nomor_dokumen: str = Field(..., max_length=100)
@@ -209,6 +209,10 @@ class RealisasiAnggaranCreateDraft(BaseModel):
     bukti_file_nama: Optional[str] = Field(None, max_length=255)
     bukti_file_ukuran: Optional[int] = None
     bukti_file_mime: Optional[str] = Field(None, max_length=100)
+
+
+# Backward compatibility alias
+RealisasiAnggaranCreateDraft = RealisasiAnggaranCreate
 
 
 class RealisasiAnggaranUpdateDraft(BaseModel):
@@ -291,10 +295,20 @@ class BudgetSummaryResponse(BaseModel):
     persentase_serapan: float
 
 
+class MonthlyRealizationItem(BaseModel):
+    bulan: int = Field(..., ge=1, le=12, description="Index bulan 1-12")
+    nama_bulan: str = Field(..., description="Nama bulan Indonesia")
+    total_realisasi_verified: Decimal = Decimal("0.00")
+    persentase_serapan: float = 0.0
+    total_transaksi_verified: int = 0
+
+
 class DashboardSummaryResponse(BaseModel):
     id_tahun_anggaran: Optional[int] = None
     tahun: Optional[int] = None
     status_tahun: Optional[str] = None
+    id_akun_anggaran: Optional[int] = None
+    bulan: Optional[int] = None
     total_pagu_aktif: Decimal = Decimal("0.00")
     total_realisasi_verified: Decimal = Decimal("0.00")
     total_sisa_anggaran: Decimal = Decimal("0.00")
@@ -303,4 +317,58 @@ class DashboardSummaryResponse(BaseModel):
     total_transaksi_submitted: int = 0
     total_transaksi_verified: int = 0
     total_transaksi_rejected: int = 0
+    monthly_recap: List[MonthlyRealizationItem] = Field(default_factory=list)
 
+
+# =========================================================
+# 7. MONTHLY REPORT MATRIX (STEP 10)
+# =========================================================
+
+class MonthlyReportRowItem(BaseModel):
+    id_akun_anggaran: int
+    kode_akun: str
+    nama_akun: str
+    nama_bagian: Optional[str] = None
+    pagu: Decimal = Decimal("0.00")
+    januari: Decimal = Decimal("0.00")
+    februari: Decimal = Decimal("0.00")
+    maret: Decimal = Decimal("0.00")
+    april: Decimal = Decimal("0.00")
+    mei: Decimal = Decimal("0.00")
+    juni: Decimal = Decimal("0.00")
+    juli: Decimal = Decimal("0.00")
+    agustus: Decimal = Decimal("0.00")
+    september: Decimal = Decimal("0.00")
+    oktober: Decimal = Decimal("0.00")
+    november: Decimal = Decimal("0.00")
+    desember: Decimal = Decimal("0.00")
+    total_realisasi: Decimal = Decimal("0.00")
+    sisa_anggaran: Decimal = Decimal("0.00")
+    persentase_realisasi: float = 0.0
+
+
+class MonthlyReportTotal(BaseModel):
+    pagu: Decimal = Decimal("0.00")
+    januari: Decimal = Decimal("0.00")
+    februari: Decimal = Decimal("0.00")
+    maret: Decimal = Decimal("0.00")
+    april: Decimal = Decimal("0.00")
+    mei: Decimal = Decimal("0.00")
+    juni: Decimal = Decimal("0.00")
+    juli: Decimal = Decimal("0.00")
+    agustus: Decimal = Decimal("0.00")
+    september: Decimal = Decimal("0.00")
+    oktober: Decimal = Decimal("0.00")
+    november: Decimal = Decimal("0.00")
+    desember: Decimal = Decimal("0.00")
+    total_realisasi: Decimal = Decimal("0.00")
+    sisa_anggaran: Decimal = Decimal("0.00")
+    persentase_realisasi: float = 0.0
+
+
+class MonthlyReportResponse(BaseModel):
+    id_tahun_anggaran: Optional[int] = None
+    tahun: Optional[int] = None
+    status_tahun: Optional[str] = None
+    rows: List[MonthlyReportRowItem] = Field(default_factory=list)
+    total: MonthlyReportTotal = Field(default_factory=MonthlyReportTotal)

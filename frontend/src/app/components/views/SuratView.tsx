@@ -33,6 +33,8 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table"
+import { useAuth } from "../../context/AuthContext"
+import { ReadOnlyBanner } from "../ui/read-only"
 
 export interface SuratViewProps {
   theme?: "light" | "dark"
@@ -324,6 +326,8 @@ const INITIAL_KLASIFIKASI_DATA: KodeKlasifikasiArsip[] = [
 
 export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: SuratViewProps) {
   const isDark = theme === "dark"
+  const { canEdit } = useAuth()
+  const readOnly = !canEdit("surat")
 
   const getInitialTab = (
     tab: string
@@ -456,7 +460,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
         </div>
 
         {/* Action Buttons for Surat Keluar */}
-        {activeTab === "surat-keluar" && (
+        {activeTab === "surat-keluar" && !readOnly && (
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSuratList(INITIAL_SURAT_KELUAR_DATA)}
@@ -478,6 +482,8 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
           </div>
         )}
       </div>
+
+      {readOnly && <ReadOnlyBanner theme={theme} modul="surat menyurat" pengelola="Sub Bagian Umum dan Logistik (UMLOG)" />}
 
       {/* ========================================================================= */}
       {/* 1. OVERVIEW TAB */}
@@ -931,7 +937,9 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                           {surat.tanggal_surat}
                         </TableCell>
                         <TableCell className="text-center py-3.5">
-                          {surat.status === "draft" ? (
+                          {surat.status === "draft" && readOnly ? (
+                            <span className="text-xs font-bold text-slate-500 dark:text-gray-400">Draft</span>
+                          ) : surat.status === "draft" ? (
                             <button
                               onClick={() => handleFinalizeNumber(surat.id_surat_keluar)}
                               className="btn-kpu-red px-3 py-1.5 text-xs font-bold text-white rounded-lg flex items-center gap-1.5 mx-auto transition-all cursor-pointer active:scale-95"
@@ -1092,7 +1100,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
       {/* ========================================================================= */}
       {/* DRAFT SURAT MODAL - Merah, Hitam, Putih */}
       {/* ========================================================================= */}
-      {showDraftModal && (
+      {showDraftModal && !readOnly && (
         <div className="modal-overlay">
           <div
             className={`w-full max-w-lg p-6 rounded-2xl border backdrop-blur-md shadow-2xl transition-all ${isDark

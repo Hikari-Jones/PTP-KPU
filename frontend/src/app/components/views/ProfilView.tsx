@@ -1,4 +1,4 @@
-import { Building, Award, IdCard, Mail, Shield, CheckCircle2, Phone, MapPin } from "lucide-react"
+import { Building, Award, IdCard, Mail, Shield, CheckCircle2, Phone } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { Card, CardContent } from "../ui/card"
 import { Avatar, AvatarFallback } from "../ui/avatar"
@@ -23,7 +23,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
           Profil Pengguna
         </h1>
         <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-          Informasi identitas, wewenang, dan penugasan operator di lingkungan KPU Provinsi Sulawesi Utara
+          Informasi identitas, wewenang, dan penugasan pegawai di lingkungan KPU Provinsi Sulawesi Utara
         </p>
       </div>
 
@@ -84,7 +84,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
       </Card>
 
       {/* Detail Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className={`transition-all ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
           <CardContent className="p-5 flex items-center gap-4 min-h-[96px]">
             <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -113,19 +113,6 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
           </CardContent>
         </Card>
 
-        <Card className={`transition-all ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
-          <CardContent className="p-5 flex items-center gap-4 min-h-[96px]">
-            <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <MapPin className="w-5 h-5" />
-            </div>
-            <div className="flex-1 flex flex-col justify-center min-w-0">
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Wilayah Tugas</p>
-              <p className={`text-xs font-bold truncate mt-0.5 ${isDark ? "text-white" : "text-black"}`}>
-                Kota Manado, Prov. Sulawesi Utara
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )

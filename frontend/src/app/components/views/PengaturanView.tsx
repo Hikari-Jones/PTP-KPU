@@ -28,7 +28,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
               Informasi Pengguna
             </h3>
             <p className={`text-xs font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-              Detail profil operator PTP-KPU
+              Detail profil pegawai PTP-KPU
             </p>
           </div>
         </div>
@@ -65,7 +65,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
               <label className={`font-bold block mb-1 ${isDark ? "text-white" : "text-black"}`}>Akses Keamanan</label>
               <div className="flex items-center gap-2 pt-1 text-red-600 dark:text-red-400 font-bold">
                 <Shield className="w-4 h-4" />
-                <span>Terverifikasi ({userRole || "Operator"})</span>
+                <span>Terverifikasi ({userRole || "Pegawai"})</span>
               </div>
             </div>
           </div>

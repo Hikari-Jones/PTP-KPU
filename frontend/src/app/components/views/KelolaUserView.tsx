@@ -44,7 +44,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
   const [nip, setNip] = useState("")
   const [email, setEmail] = useState("")
   const [subbagian, setSubbagian] = useState("RENDATIN (Perencanaan, Data dan Informasi)")
-  const [role, setRole] = useState<"Admin" | "Operator">("Operator")
+  const [role, setRole] = useState<"Admin" | "Pegawai">("Pegawai")
   const [successToast, setSuccessToast] = useState<string | null>(null)
 
   const toggleStatus = (id: number) => {
@@ -85,7 +85,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
             Manajemen User & Hak Akses
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-            Kelola daftar operator instansi dan penetapan role Admin/Operator PTP-KPU
+            Kelola daftar pegawai instansi dan penetapan role Admin/Pegawai PTP-KPU
           </p>
         </div>
         <button
@@ -225,11 +225,11 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
                     <input
                       type="radio"
                       name="role"
-                      value="Operator"
-                      checked={role === "Operator"}
-                      onChange={() => setRole("Operator")}
+                      value="Pegawai"
+                      checked={role === "Pegawai"}
+                      onChange={() => setRole("Pegawai")}
                     />
-                    <span>Operator</span>
+                    <span>Pegawai</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

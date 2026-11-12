@@ -24,9 +24,10 @@ import { AdminDashboardView } from "./app/components/views/AdminDashboardView"
 import { KelolaUserView } from "./app/components/views/KelolaUserView"
 import { BugReportView } from "./app/components/views/BugReportView"
 import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
+import { ReadOnlyBanner } from "./app/components/ui/read-only"
 
 function MainLayout() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, canEdit } = useAuth()
 
   // Theme state: default is "light"
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -153,6 +154,11 @@ function MainLayout() {
             >
               <Menu className="size-5" />
             </button>
+            {(activeMenu === "realisasi_anggaran" || activeMenu.startsWith("realization-")) && !canEdit("anggaran") && (
+              <div className="mb-5">
+                <ReadOnlyBanner theme={theme} modul="realisasi anggaran" pengelola="Sub Bagian Keuangan dan Sub Bagian Perencanaan, Data dan Informasi (RENDATIN)" />
+              </div>
+            )}
             {renderContent()}
           </div>
         </main>

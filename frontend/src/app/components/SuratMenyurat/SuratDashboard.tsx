@@ -18,6 +18,7 @@ import type { SuratItem } from "./types"
 interface SuratDashboardProps {
   theme: "light" | "dark"
   suratList: SuratItem[]
+  readOnly?: boolean
   initialTab?: string
   onOpenInputSuratMasuk: () => void
   onOpenBuatDraft: () => void
@@ -27,6 +28,7 @@ interface SuratDashboardProps {
 export function SuratDashboard({
   theme,
   suratList,
+  readOnly = false,
   initialTab = "semua",
   onOpenInputSuratMasuk,
   onOpenBuatDraft,
@@ -116,7 +118,7 @@ export function SuratDashboard({
             Modul pengurusan alur registrasi surat masuk, disposisi pimpinan, draft surat keluar, TTE digital, dan arsip.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        {!readOnly && <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={onOpenInputSuratMasuk}
             className="btn-kpu-red px-3.5 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
@@ -131,7 +133,7 @@ export function SuratDashboard({
             <Plus className="w-4 h-4" />
             <span>Buat Draft Surat Keluar</span>
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* 4 Summary Cards */}

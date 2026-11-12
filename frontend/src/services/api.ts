@@ -1,4 +1,25 @@
-﻿import type { KodeKlasifikasiArsip, JenisSurat, SuratKeluar } from '../types';
+import type { KodeKlasifikasiArsip, JenisSurat, SuratKeluar } from '../types';
+import type {
+  BagianResponse,
+  TahunAnggaranCreatePayload,
+  TahunAnggaranUpdatePayload,
+  TahunAnggaranResponse,
+  TahunAnggaranListResponse,
+  AkunAnggaranCreatePayload,
+  AkunAnggaranUpdatePayload,
+  AkunAnggaranResponse,
+  AkunAnggaranListResponse,
+  PaguAnggaranResponse,
+  PaguAnggaranListResponse,
+  RealisasiAnggaranCreatePayload,
+  RealisasiAnggaranResponse,
+  RealisasiAnggaranListResponse,
+  DashboardSummaryResponse,
+  MonthlyReportResponse,
+  RevisiAnggaranCreatePayload,
+  RevisiAnggaranResponse,
+  RevisiAnggaranListResponse,
+} from '../app/components/RealisasiAnggaran/types';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -187,7 +208,7 @@ export const checkAiStatus = async () => {
 
 export const fetchTahunAnggaran = async () => {
   try {
-    const res = await fetch(`${API_BASE_URL}/tahun-anggaran`, { headers: getAuthHeaders() });
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/`, { headers: getAuthHeaders() });
     if (res.ok) return await res.json();
   } catch (e) {
     console.warn('fetchTahunAnggaran failed', e);
@@ -197,7 +218,7 @@ export const fetchTahunAnggaran = async () => {
 
 export const fetchAkunAnggaran = async () => {
   try {
-    const res = await fetch(`${API_BASE_URL}/akun-anggaran`, { headers: getAuthHeaders() });
+    const res = await fetch(`${API_BASE_URL}/akun-anggaran/`, { headers: getAuthHeaders() });
     if (res.ok) return await res.json();
   } catch (e) {
     console.warn('fetchAkunAnggaran failed', e);
@@ -207,7 +228,7 @@ export const fetchAkunAnggaran = async () => {
 
 export const createRealisasiAnggaranApi = async (payload: any) => {
   try {
-    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran`, {
+    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
@@ -217,4 +238,302 @@ export const createRealisasiAnggaranApi = async (payload: any) => {
     console.warn('createRealisasiAnggaranApi failed', e);
   }
   return null;
+};
+
+// =========================================================
+// MODULAR API CLIENTS (PHASE 7 - 11 INTEGRATION)
+// =========================================================
+
+export const bagianApi = {
+  getAll: async (params?: { skip?: number; limit?: number }): Promise<BagianResponse[]> => {
+    const query = new URLSearchParams();
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/bagian/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat daftar bagian (${res.status})`);
+    return await res.json();
+  },
+};
+
+export const tahunAnggaranApi = {
+  getAll: async (params?: {
+    search?: string;
+    status?: 'draft' | 'active' | 'closed';
+    skip?: number;
+    limit?: number;
+  }): Promise<TahunAnggaranListResponse> => {
+    const query = new URLSearchParams();
+    if (params?.search) query.append('search', params.search);
+    if (params?.status) query.append('status', params.status);
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/tahun-anggaran/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat tahun anggaran (${res.status})`);
+    return await res.json();
+  },
+  getById: async (id: number): Promise<TahunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat detail tahun anggaran (${res.status})`);
+    return await res.json();
+  },
+  create: async (payload: TahunAnggaranCreatePayload): Promise<TahunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal membuat tahun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  update: async (id: number, payload: TahunAnggaranUpdatePayload): Promise<TahunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal memperbarui tahun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  delete: async (id: number): Promise<TahunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal menghapus tahun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+};
+
+export const akunAnggaranApi = {
+  getAll: async (params?: {
+    kode_akun?: string;
+    nama_akun?: string;
+    id_bagian?: number;
+    jenis_belanja?: string;
+    program?: string;
+    sub_program?: string;
+    status?: 'active' | 'inactive';
+    search?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<AkunAnggaranListResponse> => {
+    const query = new URLSearchParams();
+    if (params?.kode_akun) query.append('kode_akun', params.kode_akun);
+    if (params?.nama_akun) query.append('nama_akun', params.nama_akun);
+    if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));
+    if (params?.jenis_belanja) query.append('jenis_belanja', params.jenis_belanja);
+    if (params?.program) query.append('program', params.program);
+    if (params?.sub_program) query.append('sub_program', params.sub_program);
+    if (params?.status) query.append('status', params.status);
+    if (params?.search) query.append('search', params.search);
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/akun-anggaran/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat akun anggaran (${res.status})`);
+    return await res.json();
+  },
+  getById: async (id: number): Promise<AkunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/akun-anggaran/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat detail akun anggaran (${res.status})`);
+    return await res.json();
+  },
+  create: async (payload: AkunAnggaranCreatePayload): Promise<AkunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/akun-anggaran/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal membuat akun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  update: async (id: number, payload: AkunAnggaranUpdatePayload): Promise<AkunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/akun-anggaran/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal memperbarui akun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  delete: async (id: number): Promise<AkunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/akun-anggaran/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal menghapus akun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+};
+
+export const paguAnggaranApi = {
+  getAll: async (params?: {
+    id_tahun_anggaran?: number;
+    id_akun_anggaran?: number;
+    id_bagian?: number;
+    status_tahun?: 'draft' | 'active' | 'closed';
+    search?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<PaguAnggaranListResponse> => {
+    const query = new URLSearchParams();
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.id_akun_anggaran !== undefined) query.append('id_akun_anggaran', String(params.id_akun_anggaran));
+    if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));
+    if (params?.status_tahun) query.append('status_tahun', params.status_tahun);
+    if (params?.search) query.append('search', params.search);
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/pagu-anggaran/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat pagu anggaran (${res.status})`);
+    return await res.json();
+  },
+};
+
+export const realisasiAnggaranApi = {
+  getAll: async (params?: {
+    id_pagu?: number;
+    id_tahun_anggaran?: number;
+    id_bagian?: number;
+    id_akun_anggaran?: number;
+    bulan?: number;
+    status?: 'draft' | 'submitted' | 'verified' | 'rejected';
+    search?: string;
+    tanggal_mulai?: string;
+    tanggal_selesai?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<RealisasiAnggaranListResponse> => {
+    const query = new URLSearchParams();
+    if (params?.id_pagu !== undefined) query.append('id_pagu', String(params.id_pagu));
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));
+    if (params?.id_akun_anggaran !== undefined) query.append('id_akun_anggaran', String(params.id_akun_anggaran));
+    if (params?.bulan !== undefined) query.append('bulan', String(params.bulan));
+    if (params?.status) query.append('status', params.status);
+    if (params?.search) query.append('search', params.search);
+    if (params?.tanggal_mulai) query.append('tanggal_mulai', params.tanggal_mulai);
+    if (params?.tanggal_selesai) query.append('tanggal_selesai', params.tanggal_selesai);
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/realisasi-anggaran/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat realisasi anggaran (${res.status})`);
+    return await res.json();
+  },
+  getById: async (id: number): Promise<RealisasiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat detail realisasi (${res.status})`);
+    return await res.json();
+  },
+  createDirect: async (payload: RealisasiAnggaranCreatePayload): Promise<RealisasiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal menyimpan transaksi realisasi (${res.status})`);
+    }
+    return await res.json();
+  },
+};
+
+export const dashboardAnggaranApi = {
+  getSummary: async (params?: {
+    id_tahun_anggaran?: number;
+    id_akun_anggaran?: number;
+    id_bagian?: number;
+    bulan?: number;
+  }): Promise<DashboardSummaryResponse> => {
+    const query = new URLSearchParams();
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.id_akun_anggaran !== undefined) query.append('id_akun_anggaran', String(params.id_akun_anggaran));
+    if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));
+    if (params?.bulan !== undefined) query.append('bulan', String(params.bulan));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/anggaran/summary${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat ringkasan anggaran (${res.status})`);
+    return await res.json();
+  },
+  getMonthlyReport: async (params?: {
+    id_tahun_anggaran?: number;
+    id_akun_anggaran?: number;
+    id_bagian?: number;
+  }): Promise<MonthlyReportResponse> => {
+    const query = new URLSearchParams();
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.id_akun_anggaran !== undefined) query.append('id_akun_anggaran', String(params.id_akun_anggaran));
+    if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/anggaran/monthly-report${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat laporan bulanan anggaran (${res.status})`);
+    return await res.json();
+  },
+};
+
+export const revisiAnggaranApi = {
+  getAll: async (params?: {
+    id_pagu?: number;
+    id_tahun_anggaran?: number;
+    skip?: number;
+    limit?: number;
+  }): Promise<RevisiAnggaranListResponse> => {
+    const query = new URLSearchParams();
+    if (params?.id_pagu !== undefined) query.append('id_pagu', String(params.id_pagu));
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const url = `${API_BASE_URL}/revisi-anggaran/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat riwayat revisi anggaran (${res.status})`);
+    return await res.json();
+  },
+  getById: async (id_revisi: number): Promise<RevisiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/revisi-anggaran/${id_revisi}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat detail revisi anggaran (${res.status})`);
+    return await res.json();
+  },
+  create: async (payload: RevisiAnggaranCreatePayload): Promise<RevisiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/revisi-anggaran/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal mengeksekusi revisi anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
 };

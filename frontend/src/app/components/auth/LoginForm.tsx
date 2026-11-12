@@ -163,7 +163,9 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
             <summary>Akun uji coba <ChevronDown size={15} aria-hidden="true" /></summary>
             <div className="login-demo-options">
               <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("198507182020031001", "admin123")}>Isi akun Admin</button>
-              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("199208052021011002", "123456")}>Isi akun Operator</button>
+              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("199208052021011002", "123456")}>Isi akun Pegawai Teknis</button>
+              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("199003122019032001", "123456")}>Isi akun Pegawai Keuangan</button>
+              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("198811232015031003", "123456")}>Isi akun Pegawai UMLOG</button>
             </div>
           </details>
         </section>
