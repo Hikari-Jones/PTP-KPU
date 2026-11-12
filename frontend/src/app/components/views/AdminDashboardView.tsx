@@ -5,21 +5,18 @@ export function AdminDashboardView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
 
   const systemStats = [
-    { title: "Pengguna Aktif", val: "28 Operator", icon: Users, isRed: true },
-    { title: "Status Server", val: "99.9% Online", icon: Server, isRed: false },
-    { title: "Kirim KIRANA Bot", val: "142 Query/Hari", icon: Activity, isRed: true },
-    { title: "Total Database", val: "1.4 GB", icon: Database, isRed: false },
+    { title: "Pengguna Aktif", val: "28 Operator", subtitle: "Akun Terverifikasi", icon: Users },
+    { title: "Status Server", val: "99.9% Online", subtitle: "Infrastruktur Normal", icon: Server },
+    { title: "Kirim KIRANA Bot", val: "142 Query/Hari", subtitle: "Otomasi Dokumen", icon: Activity },
+    { title: "Total Database", val: "1.4 GB", subtitle: "Penyimpanan Terpakai", icon: Database },
   ]
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       <div>
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-red-600" />
-          <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
-            Dashboard Administrator
-          </h1>
-        </div>
+        <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
+          Dashboard Administrator
+        </h1>
         <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
           Panel kontrol pusat pengawasan infrastruktur dan akun pengguna Sistem Informasi KPU Sulut
         </p>
@@ -29,13 +26,30 @@ export function AdminDashboardView({ theme }: { theme: "light" | "dark" }) {
         {systemStats.map((item, idx) => {
           const Icon = item.icon
           return (
-            <Card key={idx} className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-300" : "text-slate-800"}`}>{item.title}</p>
-                  <h3 className={`text-lg font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{item.val}</h3>
+            <Card
+              key={idx}
+              className={`relative overflow-hidden transition-all ${
+                isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
+              } backdrop-blur-md shadow-lg rounded-2xl`}
+            >
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+              <CardContent
+                className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${
+                  isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"
+                }`}
+              >
+                <div className="flex-1 flex flex-col justify-center">
+                  <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                    {item.title}
+                  </p>
+                  <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                    {item.val}
+                  </h2>
+                  <p className="text-[10px] font-bold mt-1 text-red-600 dark:text-red-400">
+                    {item.subtitle}
+                  </p>
                 </div>
-                <div className={`p-3 rounded-xl shadow-xs ${item.isRed ? "bg-red-600 text-white" : "bg-slate-900 text-white dark:bg-white dark:text-slate-950"}`}>
+                <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
                   <Icon className="w-5 h-5" />
                 </div>
               </CardContent>

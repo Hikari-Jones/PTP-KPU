@@ -9,10 +9,13 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import type { SuratItem } from "./types"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { ReadOnlyFieldset } from "../ui/read-only"
 
 interface VerifikasiDraftPanelProps {
   theme: "light" | "dark"
   surat: SuratItem
+  readOnly?: boolean
   onApproveDraft: (suratId: string, nomorOtomatis: string) => void
   onRejectRevisiDraft: (suratId: string, catatanRevisi: string) => void
 }
@@ -20,6 +23,7 @@ interface VerifikasiDraftPanelProps {
 export function VerifikasiDraftPanel({
   theme,
   surat,
+  readOnly = false,
   onApproveDraft,
   onRejectRevisiDraft,
 }: VerifikasiDraftPanelProps) {
@@ -55,29 +59,34 @@ export function VerifikasiDraftPanel({
     <div className="space-y-6">
       {/* Workflow Visual Banner */}
       <div className={`p-4 rounded-2xl border ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
-        <h4 className="text-xs font-bold uppercase tracking-wider text-red-400 mb-3">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 mb-3">
           Alur Pemrosesan Surat Keluar & Approval Draft
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Step 1 */}
-          <div className="p-3 rounded-xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-400 flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/20 font-bold text-xs shrink-0">1</div>
+          <div className="p-3 rounded-xl border bg-red-600/10 border-red-500/30 text-red-600 dark:text-red-400 flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-red-600 text-white font-bold text-xs shrink-0">
+              <FileEdit className="w-4 h-4" />
+            </div>
             <div>
-              <p className="text-xs font-bold">1. Konsep Draft Dibuat</p>
+              <p className="text-xs font-bold">Konsep Draft Dibuat</p>
               <p className="text-[10px] opacity-80">Oleh staf konseptor unit</p>
             </div>
           </div>
 
           {/* Step 2 */}
           <div
-            className={`p-3 rounded-xl border flex items-start gap-3 ${surat.status === "draft" || surat.status === "revisi"
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-400 animate-pulse"
-                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-              }`}
+            className={`p-3 rounded-xl border flex items-start gap-3 ${
+              surat.status === "draft" || surat.status === "revisi"
+                ? "bg-red-600/15 border-red-500 text-red-600 dark:text-red-400 shadow-xs"
+                : "bg-red-600/10 border-red-500/30 text-red-600 dark:text-red-400"
+            }`}
           >
-            <div className="p-2 rounded-lg bg-amber-500/20 font-bold text-xs shrink-0">2</div>
+            <div className="p-2 rounded-lg bg-red-600 text-white font-bold text-xs shrink-0">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
             <div>
-              <p className="text-xs font-bold">2. Decision Box (Verifikasi / Approval)</p>
+              <p className="text-xs font-bold">Decision Box (Verifikasi / Approval)</p>
               <p className="text-[10px] opacity-80">
                 {surat.status === "revisi"
                   ? "Status: Perlu Revisi Konseptor"
@@ -90,16 +99,23 @@ export function VerifikasiDraftPanel({
 
           {/* Step 3 */}
           <div
-            className={`p-3 rounded-xl border flex items-start gap-3 ${surat.status === "menunggu_tte" || surat.status === "terkirim_terarsip"
-                ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400"
+            className={`p-3 rounded-xl border flex items-start gap-3 ${
+              surat.status === "menunggu_tte" || surat.status === "terkirim_terarsip"
+                ? "bg-red-600/15 border-red-500 text-red-600 dark:text-red-400"
                 : isDark
                   ? "bg-[#131d30] border-[#1e293b] text-gray-400"
                   : "bg-slate-50 border-slate-200 text-slate-500"
-              }`}
+            }`}
           >
-            <div className="p-2 rounded-lg bg-red-500/20 font-bold text-xs shrink-0">3</div>
+            <div className={`p-2 rounded-lg font-bold text-xs shrink-0 ${
+              surat.status === "menunggu_tte" || surat.status === "terkirim_terarsip"
+                ? "bg-red-600 text-white"
+                : isDark ? "bg-[#1a253c] text-gray-400" : "bg-slate-200 text-slate-600"
+            }`}>
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
             <div>
-              <p className="text-xs font-bold">3. Penomoran Otomatis & TTE</p>
+              <p className="text-xs font-bold">Penomoran Otomatis & TTE</p>
               <p className="text-[10px] opacity-80">Siap untuk pengesahan digital</p>
             </div>
           </div>
@@ -149,10 +165,13 @@ export function VerifikasiDraftPanel({
             </div>
           )}
 
+          <SuratDokumenViewer theme={theme} surat={surat} />
+
           {/* Decision Box Actions */}
+          <ReadOnlyFieldset readOnly={readOnly}>
           <div className={`pt-4 border-t ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
             <h4 className="text-xs font-bold mb-3 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <ShieldCheck className="w-4 h-4 text-red-600 dark:text-red-400" />
               <span>Decision Box Approval Pejabat (Kabag / Sekretaris / Ketua)</span>
             </h4>
 
@@ -160,14 +179,14 @@ export function VerifikasiDraftPanel({
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={handleApprove}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/30 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md shadow-red-600/30 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Setujui Draft & Penomoran Otomatis</span>
                 </button>
                 <button
                   onClick={() => setIsRevisiMode(true)}
-                  className="px-4 py-2.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 border border-slate-700 text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95"
                 >
                   <XCircle className="w-4 h-4" />
                   <span>Tolak / Perlu Revisi Konseptor</span>
@@ -203,6 +222,7 @@ export function VerifikasiDraftPanel({
               </form>
             )}
           </div>
+          </ReadOnlyFieldset>
         </CardContent>
       </Card>
     </div>

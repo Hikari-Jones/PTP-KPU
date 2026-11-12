@@ -1,44 +1,63 @@
-from typing import Optional
-from fastapi import Depends, Header, HTTPException, Query, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.schema import Pegawai
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
-    x_user_id: Optional[int] = Header(None, alias="X-User-Id"),
-    x_pegawai_id: Optional[int] = Header(None, alias="X-Pegawai-Id"),
-    user_id: Optional[int] = Query(None, description="ID Pegawai untuk autentikasi"),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> Pegawai:
-    """
-    Authenticate and retrieve current Pegawai directly from MySQL database.
-    Never trusts client-side admin flags. Role and permissions are always read from DB.
-    """
-    effective_id = x_user_id or x_pegawai_id or user_id
-
-    if effective_id is None:
-        # Fallback: if in development and no user header is provided, look for default active user
-        stmt_first = select(Pegawai).options(selectinload(Pegawai.bagian)).order_by(Pegawai.id_pegawai.asc()).limit(1)
-        res_first = await db.execute(stmt_first)
-        fallback_user = res_first.scalar_one_or_none()
-        if fallback_user:
-            return fallback_user
+    if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Header 'X-User-Id' atau parameter user_id diperlukan untuk autentikasi",
+            detail="Bearer token diperlukan",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    stmt = select(Pegawai).options(selectinload(Pegawai.bagian)).where(Pegawai.id_pegawai == effective_id)
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+        )
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token tidak valid atau sudah kedaluwarsa",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    token_id = payload.get("id")
+    token_nip = payload.get("sub")
+    if not isinstance(token_id, int) and not isinstance(token_nip, str):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Klaim identitas token tidak valid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    identity_filter = (
+        Pegawai.id_pegawai == token_id
+        if isinstance(token_id, int)
+        else Pegawai.nip == token_nip
+    )
+    stmt = select(Pegawai).options(selectinload(Pegawai.bagian)).where(identity_filter)
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Pengguna dengan ID {effective_id} tidak ditemukan di database",
+            detail="Pengguna token tidak ditemukan di database",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return user

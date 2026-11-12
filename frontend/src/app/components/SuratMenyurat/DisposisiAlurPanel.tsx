@@ -4,19 +4,23 @@ import {
   CheckCircle2,
   Building,
   Send,
+  FileText,
 } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import type { SuratItem, DisposisiFormState } from "./types"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { ReadOnlyFieldset } from "../ui/read-only"
 
 interface DisposisiAlurPanelProps {
   theme: "light" | "dark"
   surat: SuratItem
+  readOnly?: boolean
   onSaveDisposisi: (suratId: string, disposisiData: DisposisiFormState) => void
   onUpdateStatus: (suratId: string, status: SuratItem["status"], keterangan: string) => void
 }
 
-export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStatus }: DisposisiAlurPanelProps) {
+export function DisposisiAlurPanel({ theme, surat, readOnly = false, onSaveDisposisi, onUpdateStatus }: DisposisiAlurPanelProps) {
   const isDark = theme === "dark"
 
   const [tujuanUnit, setTujuanUnit] = useState(surat.disposisi?.tujuanUnit || "RENDATIN (Perencanaan, Data dan Informasi)")
@@ -44,6 +48,9 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
 
   return (
     <div className="space-y-6">
+      {/* Dokumen surat yang didisposisikan: dapat dibaca langsung sebelum mengisi disposisi */}
+      <SuratDokumenViewer theme={theme} surat={surat} />
+
       {/* Visual Workflow Steps (Alur Surat Masuk) */}
       <div className={`p-4 rounded-2xl border ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}`}>
         <h4 className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400 mb-3">
@@ -52,30 +59,38 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Step 1 */}
           <div
-            className={`p-3 rounded-xl border flex items-start gap-3 ${surat.status === "registrasi" || surat.status === "menunggu_disposisi" || surat.status === "dalam_proses" || surat.status === "selesai_disposisi"
-                ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400"
+            className={`p-3 rounded-xl border flex items-start gap-3 ${
+              surat.status === "registrasi" || surat.status === "menunggu_disposisi" || surat.status === "dalam_proses" || surat.status === "selesai_disposisi"
+                ? "bg-red-600/10 border-red-500/30 text-red-600 dark:text-red-400"
                 : "opacity-50 border-gray-700"
-              }`}
+            }`}
           >
-            <div className="p-2 rounded-lg bg-red-500/20 font-bold text-xs shrink-0">1</div>
+            <div className="p-2 rounded-lg bg-red-600 text-white font-bold text-xs shrink-0">
+              <FileText className="w-4 h-4" />
+            </div>
             <div>
-              <p className="text-xs font-bold">1. Registrasi Surat Masuk</p>
+              <p className="text-xs font-bold">Registrasi Surat Masuk</p>
               <p className="text-[10px] opacity-80">Nomor & file PDF terdaftar</p>
             </div>
           </div>
 
           {/* Step 2 */}
           <div
-            className={`p-3 rounded-xl border flex items-start gap-3 ${surat.disposisi
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+            className={`p-3 rounded-xl border flex items-start gap-3 ${
+              surat.disposisi
+                ? "bg-red-600/10 border-red-500/30 text-red-600 dark:text-red-400"
                 : isDark
                   ? "bg-[#131d30] border-[#1e293b] text-gray-400"
                   : "bg-slate-50 border-slate-200 text-slate-500"
-              }`}
+            }`}
           >
-            <div className="p-2 rounded-lg bg-amber-500/20 font-bold text-xs shrink-0">2</div>
+            <div className={`p-2 rounded-lg font-bold text-xs shrink-0 ${
+              surat.disposisi ? "bg-red-600 text-white" : isDark ? "bg-[#1a253c] text-gray-400" : "bg-slate-200 text-slate-600"
+            }`}>
+              <UserCheck className="w-4 h-4" />
+            </div>
             <div>
-              <p className="text-xs font-bold">2. Perekaman Disposisi Pimpinan</p>
+              <p className="text-xs font-bold">Perekaman Disposisi Pimpinan</p>
               <p className="text-[10px] opacity-80">
                 {surat.disposisi ? `Ke ${surat.disposisi.tujuanUnit}` : "Menunggu pengisian instruksi"}
               </p>
@@ -84,18 +99,25 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
 
           {/* Step 3 */}
           <div
-            className={`p-3 rounded-xl border flex items-start gap-3 ${surat.status === "selesai_disposisi"
-                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+            className={`p-3 rounded-xl border flex items-start gap-3 ${
+              surat.status === "selesai_disposisi"
+                ? "bg-red-600/15 border-red-500 text-red-600 dark:text-red-400"
                 : surat.status === "dalam_proses"
-                  ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400 animate-pulse"
+                  ? "bg-red-600/10 border-red-500/30 text-red-600 dark:text-red-400 animate-pulse"
                   : isDark
                     ? "bg-[#131d30] border-[#1e293b] text-gray-400"
                     : "bg-slate-50 border-slate-200 text-slate-500"
-              }`}
+            }`}
           >
-            <div className="p-2 rounded-lg bg-emerald-500/20 font-bold text-xs shrink-0">3</div>
+            <div className={`p-2 rounded-lg font-bold text-xs shrink-0 ${
+              surat.status === "selesai_disposisi" || surat.status === "dalam_proses"
+                ? "bg-red-600 text-white"
+                : isDark ? "bg-[#1a253c] text-gray-400" : "bg-slate-200 text-slate-600"
+            }`}>
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
             <div>
-              <p className="text-xs font-bold">3. Verifikasi & Tindak Lanjut Unit</p>
+              <p className="text-xs font-bold">Verifikasi & Tindak Lanjut Unit</p>
               <p className="text-[10px] opacity-80">
                 {surat.status === "selesai_disposisi" ? "Tindak Lanjut Selesai" : "Proses Penyelesaian Terkait"}
               </p>
@@ -104,6 +126,7 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
         </div>
       </div>
 
+      <ReadOnlyFieldset readOnly={readOnly} className="space-y-6">
       {/* Form Perekaman Disposisi Pimpinan */}
       <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
         <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
@@ -269,6 +292,7 @@ export function DisposisiAlurPanel({ theme, surat, onSaveDisposisi, onUpdateStat
           </div>
         </CardContent>
       </Card>
+      </ReadOnlyFieldset>
     </div>
   )
 }

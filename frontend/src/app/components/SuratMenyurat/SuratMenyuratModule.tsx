@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   ArrowLeft,
   FileText,
@@ -8,6 +8,10 @@ import {
   History,
   Printer,
   CheckCircle2,
+  Calendar,
+  Send,
+  Building,
+  Info,
 } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
@@ -22,6 +26,9 @@ import { DisposisiAlurPanel } from "./DisposisiAlurPanel"
 import { VerifikasiDraftPanel } from "./VerifikasiDraftPanel"
 import { TteDistribusiPanel } from "./TteDistribusiPanel"
 import { AuditTrailLog } from "./AuditTrailLog"
+import { SuratDokumenViewer } from "./SuratDokumenViewer"
+import { useAuth } from "../../context/AuthContext"
+import { ReadOnlyBanner } from "../ui/read-only"
 
 export interface SuratMenyuratModuleProps {
   theme: "light" | "dark"
@@ -30,6 +37,8 @@ export interface SuratMenyuratModuleProps {
 
 export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyuratModuleProps) {
   const isDark = theme === "dark"
+  const { canEdit } = useAuth()
+  const readOnly = !canEdit("surat")
 
   // Master State
   const [suratList, setSuratList] = useState<SuratItem[]>(INITIAL_SURAT_LIST)
@@ -40,6 +49,20 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
   const [isInputMasukOpen, setIsInputMasukOpen] = useState(false)
   const [isBuatDraftOpen, setIsBuatDraftOpen] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false)
+
+  // Listen for chatbot widget state changes
+  useEffect(() => {
+    const handleChatToggle = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isOpen: boolean }>
+      if (customEvent.detail !== undefined) {
+        setIsChatbotOpen(customEvent.detail.isOpen)
+      }
+    }
+
+    window.addEventListener("kirana-chatbot-toggle", handleChatToggle)
+    return () => window.removeEventListener("kirana-chatbot-toggle", handleChatToggle)
+  }, [])
 
   const showToast = (msg: string) => {
     setToastMessage(msg)
@@ -59,6 +82,8 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
       prioritas: form.prioritas,
       status: "menunggu_disposisi",
       fileName: form.fileName,
+      fileUrl: form.fileUrl,
+      fileSize: form.fileSize,
       ringkasanIsi: form.ringkasanIsi,
       history: [
         {
@@ -90,6 +115,8 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
       prioritas: "penting",
       status: "draft",
       fileName: form.fileName,
+      fileUrl: form.fileUrl,
+      fileSize: form.fileSize,
       ringkasanIsi: form.isiSurat,
       history: [
         {
@@ -316,13 +343,21 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
 
   return (
     <div className="space-y-6">
-      {/* Notification Toast */}
+      {/* Notification Toast - diposisikan di sebelah kiri chatbot dan menyesuaikan saat chatbot terbuka */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-600 text-white shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom duration-300">
-          <CheckCircle2 className="w-5 h-5 shrink-0" />
-          <p className="text-xs font-bold">{toastMessage}</p>
+        <div
+          className={`fixed bottom-6 z-50 p-4 px-5 rounded-2xl bg-red-600 text-white shadow-2xl flex items-center gap-3 transition-all duration-300 animate-in slide-in-from-bottom border border-white/20 max-w-sm sm:max-w-md ${
+            isChatbotOpen ? "right-24 md:right-[420px]" : "right-24 sm:right-28"
+          }`}
+        >
+          <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-4 h-4 text-white" />
+          </div>
+          <p className="text-xs font-bold leading-snug">{toastMessage}</p>
         </div>
       )}
+
+      {readOnly && <ReadOnlyBanner theme={theme} modul="surat menyurat" pengelola="Sub Bagian Umum dan Logistik (UMLOG)" />}
 
       {/* Main Container View Switch */}
       {!selectedSurat ? (
@@ -330,6 +365,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
         <SuratDashboard
           theme={theme}
           suratList={suratList}
+          readOnly={readOnly}
           initialTab={subTab === "masuk" ? "masuk" : subTab === "keluar" ? "keluar" : "semua"}
           onOpenInputSuratMasuk={() => setIsInputMasukOpen(true)}
           onOpenBuatDraft={() => setIsBuatDraftOpen(true)}
@@ -382,10 +418,10 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
           <div className={`flex items-center gap-2 p-1.5 rounded-2xl border ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200"}`}>
             {[
               { id: "detail", label: "Substansi & Ringkasan", icon: FileText },
-              { id: "disposisi", label: "2. Disposisi & Tindak Lanjut", icon: UserCheck, show: selectedSurat.jenis === "masuk" },
-              { id: "verifikasi", label: "3. Verifikasi Draft Surat", icon: FileEdit, show: selectedSurat.jenis !== "masuk" },
-              { id: "tte", label: "4. TTE Digital & Distribusi", icon: ShieldCheck, show: selectedSurat.jenis !== "masuk" },
-              { id: "audit", label: "5. Log Audit Trail", icon: History },
+              { id: "disposisi", label: "Disposisi & Tindak Lanjut", icon: UserCheck, show: selectedSurat.jenis === "masuk" },
+              { id: "verifikasi", label: "Verifikasi Draft Surat", icon: FileEdit, show: selectedSurat.jenis !== "masuk" },
+              { id: "tte", label: "TTE Digital & Distribusi", icon: ShieldCheck, show: selectedSurat.jenis !== "masuk" },
+              { id: "audit", label: "Log Audit Trail", icon: History },
             ]
               .filter((tab) => tab.show !== false)
               .map((tab) => {
@@ -411,28 +447,120 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
 
           {/* Tab Content Display */}
           {activeDetailTab === "detail" && (
-            <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
+            <Card
+              className={`relative overflow-hidden transition-all ${
+                isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
+              } backdrop-blur-md shadow-lg rounded-2xl`}
+            >
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+              <div className="p-5 pb-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className={`text-sm font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>
+                      Informasi Berkas & Ringkasan Dokumen
+                    </h3>
+                    <p className={`text-[11px] font-medium m-0 ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                      Detail metadata registrasi dan uraian substansi naskah dinas
+                    </p>
+                  </div>
+                </div>
+                <Badge variant={selectedSurat.jenis === "masuk" ? "info" : "terkirim"}>
+                  {selectedSurat.jenis === "masuk" ? "Surat Masuk" : "Surat Keluar"}
+                </Badge>
+              </div>
+
               <CardContent className="p-6 space-y-6">
+                <SuratDokumenViewer theme={theme} surat={selectedSurat} />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    <p className="text-[10px] text-gray-400 font-mono">PENGIRIM</p>
-                    <p className="font-bold text-xs mt-1">{selectedSurat.pengirim}</p>
+                  {/* Card Pengirim */}
+                  <div
+                    className={`p-4 rounded-xl border relative overflow-hidden transition-all flex items-start gap-3.5 ${
+                      isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-red-600/15 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                      <Send className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-red-600 dark:text-red-400 font-extrabold uppercase tracking-wider mb-0.5">
+                        PENGIRIM
+                      </p>
+                      <p className={`font-bold text-xs truncate ${isDark ? "text-white" : "text-slate-900"}`}>
+                        {selectedSurat.pengirim}
+                      </p>
+                      <p className={`text-[10px] mt-0.5 ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                        Asal Naskah / Instansi
+                      </p>
+                    </div>
                   </div>
-                  <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    <p className="text-[10px] text-gray-400 font-mono">PENERIMA</p>
-                    <p className="font-bold text-xs mt-1">{selectedSurat.penerima}</p>
+
+                  {/* Card Penerima */}
+                  <div
+                    className={`p-4 rounded-xl border relative overflow-hidden transition-all flex items-start gap-3.5 ${
+                      isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-red-600/15 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                      <Building className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-red-600 dark:text-red-400 font-extrabold uppercase tracking-wider mb-0.5">
+                        PENERIMA / TUJUAN
+                      </p>
+                      <p className={`font-bold text-xs truncate ${isDark ? "text-white" : "text-slate-900"}`}>
+                        {selectedSurat.penerima}
+                      </p>
+                      <p className={`text-[10px] mt-0.5 ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                        Tujuan Distribusi
+                      </p>
+                    </div>
                   </div>
-                  <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    <p className="text-[10px] text-gray-400 font-mono">TANGGAL BERKAS</p>
-                    <p className="font-bold text-xs mt-1">{selectedSurat.tanggal}</p>
+
+                  {/* Card Tanggal Berkas */}
+                  <div
+                    className={`p-4 rounded-xl border relative overflow-hidden transition-all flex items-start gap-3.5 ${
+                      isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-red-600/15 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-red-600 dark:text-red-400 font-extrabold uppercase tracking-wider mb-0.5">
+                        TANGGAL BERKAS
+                      </p>
+                      <p className={`font-bold text-xs ${isDark ? "text-white" : "text-slate-900"}`}>
+                        {selectedSurat.tanggal}
+                      </p>
+                      <p className={`text-[10px] mt-0.5 ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                        Tanggal Registrasi Agenda
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-mono text-gray-400 uppercase mb-2">RINGKASAN URAIAN ISI SURAT</h4>
-                  <p className={`p-4 rounded-xl border leading-relaxed text-xs ${isDark ? "bg-[#131d30] border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    {selectedSurat.ringkasanIsi || "Belum ada catatan deskripsi tambaha."}
-                  </p>
+                {/* Ringkasan Uraian Isi Surat */}
+                <div
+                  className={`p-5 rounded-2xl border ${
+                    isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <Info className="w-4 h-4 text-red-600 dark:text-red-400" />
+                    <h4 className="text-xs font-extrabold text-red-600 dark:text-red-400 uppercase tracking-wider m-0">
+                      Ringkasan Uraian Isi Surat
+                    </h4>
+                  </div>
+                  <div
+                    className={`p-4 rounded-xl border leading-relaxed text-xs shadow-inner ${
+                      isDark ? "bg-[#0c1220] border-[#1e293b] text-gray-200" : "bg-white border-slate-200 text-slate-800"
+                    }`}
+                  >
+                    {selectedSurat.ringkasanIsi || "Belum ada catatan deskripsi tambahan untuk naskah ini."}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -442,6 +570,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
             <DisposisiAlurPanel
               theme={theme}
               surat={selectedSurat}
+              readOnly={readOnly}
               onSaveDisposisi={handleSaveDisposisi}
               onUpdateStatus={handleUpdateStatusDisposisi}
             />
@@ -451,6 +580,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
             <VerifikasiDraftPanel
               theme={theme}
               surat={selectedSurat}
+              readOnly={readOnly}
               onApproveDraft={handleApproveDraft}
               onRejectRevisiDraft={handleRejectRevisiDraft}
             />
@@ -460,6 +590,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
             <TteDistribusiPanel
               theme={theme}
               surat={selectedSurat}
+              readOnly={readOnly}
               onSignTte={handleSignTte}
               onDistribusi={handleDistribusiSurat}
             />
