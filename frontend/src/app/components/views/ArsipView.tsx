@@ -321,7 +321,10 @@ function UnggahDokumenModal({
   const [kategori, setKategori] = useState("Regulasi")
   const [akses, setAkses] = useState<AksesType>("internal")
 
-  const handleFile = (f: File) => setFileName(f.name)
+  const handleFile = (f: File) => {
+    setFileName(f.name)
+    // Jika nama dokumen masih kosong, tawarkan nama file sebagai saran saja (tapi tidak override)
+  }
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
@@ -329,13 +332,17 @@ function UnggahDokumenModal({
   }
 
   const handleSubmit = () => {
-    if (!namaDokumen) return
+    if (!namaDokumen.trim()) return
+    if (!fileName) {
+      alert("Silakan pilih file terlebih dahulu.")
+      return
+    }
     const now = new Date()
     const m = now.getMonth()
     const bulanNames = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"]
     const newItem: ArsipItem = {
       id: `ARS-${Date.now()}`,
-      name: fileName || namaDokumen,
+      name: namaDokumen,
       nomor: nomorDokumen,
       size: "—",
       category: kategori,
