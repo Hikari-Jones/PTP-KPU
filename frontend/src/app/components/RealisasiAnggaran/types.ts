@@ -313,3 +313,11 @@ export interface RevisiAnggaranListResponse {
   total: number
   items: RevisiAnggaranResponse[]
 }
+
+export interface FileUploadResponse {
+  file_id: number
+  filename: string
+  mime_type: string | null
+  size: number
+  category: string
+}

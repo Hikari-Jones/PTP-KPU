@@ -6,9 +6,10 @@ import { Input } from "../ui/input"
 import {
   paguAnggaranApi,
   realisasiAnggaranApi,
-  tahunAnggaranApi
+  tahunAnggaranApi,
+  filesApi,
 } from "../../../services/api"
-import type { PaguAnggaranResponse, TahunAnggaranResponse } from "./types"
+import type { PaguAnggaranResponse, TahunAnggaranResponse, FileUploadResponse } from "./types"
 
 interface Props {
   isOpen: boolean
@@ -32,6 +33,10 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   const [jumlahStr, setJumlahStr] = useState("")
   const [periode, setPeriode] = useState("Agustus 2026")
   const [fileName, setFileName] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadedFileData, setUploadedFileData] = useState<FileUploadResponse | null>(null)
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const [loadingPagu, setLoadingPagu] = useState<boolean>(false)
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
@@ -87,10 +92,43 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   const nominal = parseFloat(jumlahStr) || 0
   const isOverBudget = selectedPagu ? nominal > sisaPagu : false
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFileName(e.target.files[0].name)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null)
+    if (!e.target.files || !e.target.files[0]) return
+
+    const file = e.target.files[0]
+    const allowed = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png"]
+    const ext = "." + file.name.split(".").pop()?.toLowerCase()
+
+    if (!allowed.includes(ext)) {
+      setUploadError("Format berkas tidak didukung. Harap pilih PDF, Word, Excel, CSV, atau Gambar.")
+      return
     }
+
+    if (file.size > 25 * 1024 * 1024) {
+      setUploadError("Ukuran berkas melebihi batas maksimal 25 MB.")
+      return
+    }
+
+    setSelectedFile(file)
+    setFileName(file.name)
+    setIsUploading(true)
+
+    try {
+      const uploadRes = await filesApi.upload(file, "realisasi")
+      setUploadedFileData(uploadRes)
+    } catch (err: any) {
+      setUploadError(err.message || "Gagal mengunggah berkas ke server.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleHapusFile = () => {
+    setSelectedFile(null)
+    setFileName(null)
+    setUploadedFileData(null)
+    setUploadError(null)
   }
 
   const formatRupiah = (val: number) => {
@@ -100,6 +138,16 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   const handleSimpanDirect = async () => {
     setErrorMessage(null)
     setSuccessMessage(null)
+
+    if (isUploading) {
+      setErrorMessage("Mohon tunggu hingga proses unggah berkas selesai.")
+      return
+    }
+
+    if (uploadError) {
+      setErrorMessage("Unggah berkas gagal. Harap perbaiki atau hapus berkas sebelum menyimpan.")
+      return
+    }
 
     if (!selectedPaguId) {
       setErrorMessage("Silakan pilih Pagu Anggaran terlebih dahulu.")
@@ -125,7 +173,10 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
         uraian_kegiatan: uraian.trim(),
         jumlah_realisasi: nominal,
         periode,
-        bukti_file_nama: fileName || "Bukti_Transaksi_Direct.pdf",
+        bukti_file_path: uploadedFileData ? `/api/v1/files/${uploadedFileData.file_id}` : (fileName ? `uploads/realisasi/${fileName}` : null),
+        bukti_file_nama: uploadedFileData ? uploadedFileData.filename : (fileName || null),
+        bukti_file_ukuran: uploadedFileData ? uploadedFileData.size : (selectedFile ? selectedFile.size : null),
+        bukti_file_mime: uploadedFileData ? uploadedFileData.mime_type : (selectedFile ? selectedFile.type : null),
       })
 
       setSuccessMessage(
@@ -347,34 +398,63 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
           {/* Upload Bukti Transaksi */}
           <div className="space-y-1.5">
-            <label className={`font-bold block ${isDark ? "text-white" : "text-black"}`}>
-              Lampiran Bukti Transaksi (Image / PDF)
-            </label>
+            <div className="flex items-center justify-between">
+              <label className={`font-bold block ${isDark ? "text-white" : "text-black"}`}>
+                Lampiran Bukti Transaksi (Kuitansi / SPJ / Nota)
+              </label>
+              {fileName && (
+                <button
+                  type="button"
+                  onClick={handleHapusFile}
+                  disabled={isSubmitting || isUploading}
+                  className="text-[11px] text-red-500 hover:underline font-semibold cursor-pointer"
+                >
+                  Hapus Berkas
+                </button>
+              )}
+            </div>
+
             <div
-              className={`p-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
-                fileName
-                  ? "border-red-600 bg-red-600/10 text-red-600 dark:text-red-400 font-bold"
+              className={`p-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center transition-colors ${
+                uploadError
+                  ? "border-red-500 bg-red-500/10"
+                  : fileName
+                  ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400"
                   : isDark
-                  ? "border-[#1e293b] bg-[#11192b] hover:border-red-600/50"
-                  : "border-slate-300 bg-slate-50 hover:border-red-600/50"
+                  ? "border-[#1e293b] bg-[#11192b] hover:border-red-600/50 cursor-pointer"
+                  : "border-slate-300 bg-slate-50 hover:border-red-600/50 cursor-pointer"
               }`}
             >
               <input
                 type="file"
                 onChange={handleFileChange}
-                accept="image/*,.pdf"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png"
                 className="hidden"
                 id="bukti-file-input"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploading}
               />
-              <label htmlFor="bukti-file-input" className="cursor-pointer flex flex-col items-center gap-1 w-full">
-                {fileName ? (
+              <label htmlFor="bukti-file-input" className="cursor-pointer flex flex-col items-center gap-1.5 w-full">
+                {isUploading ? (
                   <>
-                    <FileText className="w-6 h-6 text-red-600 dark:text-red-400" />
-                    <span className="font-bold text-xs text-red-600 dark:text-red-400">{fileName}</span>
-                    <span className={`text-[10px] ${isDark ? "text-gray-300" : "text-slate-600"}`}>
-                      Klik untuk mengganti berkas
+                    <Loader2 className="w-6 h-6 text-red-600 animate-spin" />
+                    <span className="font-bold text-xs text-red-600">Mengunggah ke server...</span>
+                    <span className={`text-[10px] ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                      Menyimpan berkas fisik ke file storage
                     </span>
+                  </>
+                ) : fileName ? (
+                  <>
+                    <FileText className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                    <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400">{fileName}</span>
+                    {uploadedFileData ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        ✓ Berkas Tersimpan ({Math.round(uploadedFileData.size / 1024)} KB)
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] ${isDark ? "text-gray-300" : "text-slate-600"}`}>
+                        Klik untuk mengganti berkas
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>
@@ -383,12 +463,19 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
                       Pilih File Bukti Transaksi
                     </span>
                     <span className={`text-[10px] ${isDark ? "text-gray-400" : "text-slate-600"}`}>
-                      Format: JPG, PNG, PDF (Maks. 10MB)
+                      Format: PDF, Word, Excel, CSV, Gambar (Maks. 25 MB)
                     </span>
                   </>
                 )}
               </label>
             </div>
+
+            {uploadError && (
+              <p className="text-[11px] text-red-500 font-semibold flex items-center gap-1.5 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{uploadError}</span>
+              </p>
+            )}
           </div>
         </div>
 

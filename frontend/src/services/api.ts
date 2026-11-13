@@ -19,6 +19,7 @@ import type {
   RevisiAnggaranCreatePayload,
   RevisiAnggaranResponse,
   RevisiAnggaranListResponse,
+  FileUploadResponse,
 } from '../app/components/RealisasiAnggaran/types';
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -535,5 +536,90 @@ export const revisiAnggaranApi = {
       throw new Error(err.detail || `Gagal mengeksekusi revisi anggaran (${res.status})`);
     }
     return await res.json();
+  },
+};
+
+export interface LoginPayload {
+  nip: string;
+  password: string;
+}
+
+export interface UserProfileResponse {
+  id_pegawai: number;
+  name: string;
+  nip: string;
+  email: string;
+  role: string;
+  jabatan: string;
+  subbagian: string;
+  id_bagian?: number | null;
+}
+
+export interface LoginApiResponse {
+  access_token: string;
+  token_type: string;
+  user: UserProfileResponse;
+}
+
+export const authApi = {
+  login: async (payload: LoginPayload): Promise<LoginApiResponse> => {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Gagal terhubung ke server autentikasi' }));
+      throw new Error(err.detail || `Login gagal (${res.status})`);
+    }
+
+    return await res.json();
+  },
+  getMe: async (): Promise<UserProfileResponse> => {
+    const res = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        localStorage.removeItem('ptp_kpu_token');
+        localStorage.removeItem('ptp_kpu_user');
+      }
+      const err = await res.json().catch(() => ({ detail: 'Sesi kedaluwarsa atau tidak valid' }));
+      throw new Error(err.detail || `Gagal memverifikasi identitas pengguna (${res.status})`);
+    }
+
+    return await res.json();
+  },
+};
+
+export const filesApi = {
+  upload: async (file: File, category: string = 'realisasi'): Promise<FileUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', category);
+
+    const token = localStorage.getItem('ptp_kpu_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/files/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Gagal mengunggah berkas ke server' }));
+      throw new Error(err.detail || `Upload berkas gagal (${res.status})`);
+    }
+
+    return await res.json();
+  },
+  getDownloadUrl: (fileId: number): string => {
+    return `${API_BASE_URL}/files/${fileId}`;
   },
 };
