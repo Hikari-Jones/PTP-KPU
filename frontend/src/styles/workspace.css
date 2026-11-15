@@ -1,0 +1,86 @@
+/* Shared density and accessibility rules for the employee workspace. */
+:root {
+  --workspace-border: #e2e8f0;
+  --workspace-surface: #ffffff;
+}
+html.dark {
+  --workspace-border: #334155;
+  --workspace-surface: #1e293b;
+}
+
+/* Legacy micro-labels now use the same readable metadata size. */
+:is(.text-\[8px\], .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[12px\]) {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+:is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid #b45309;
+  outline-offset: 3px;
+}
+.workspace-search-input:focus-visible {
+  outline: none;
+}
+button:not(:disabled), select { cursor: pointer; }
+.skip-link { position: fixed; left: 16px; top: -100px; z-index: 1000; }
+.skip-link:focus { top: 12px; background: var(--workspace-surface); padding: 12px 20px; border-radius: 8px; }
+
+.app-navigation { flex-shrink: 0; }
+.app-navigation aside { height: 100dvh; }
+.app-navigation aside.w-64 { width: 280px; }
+.app-navigation aside > div:first-child > div:first-child { height: 76px; }
+.app-navigation nav button { min-height: 44px; text-align: left; }
+.app-navigation nav button > span { white-space: normal; }
+.app-navigation nav { line-height: 1.5; }
+.app-navigation .text-slate-400 { color: #64748b; }
+.app-navigation .text-gray-500 { color: #94a3b8; }
+
+.app-content { scrollbar-gutter: stable; }
+.app-content h1 { font-size: clamp(1.5rem, 2vw, 1.875rem); line-height: 1.3; font-weight: 700; letter-spacing: -0.035em; }
+.app-content h1 + p { font-size: 0.9375rem; line-height: 1.7; font-weight: 400; margin-top: 8px; }
+.app-content h3 { line-height: 1.5; }
+
+/* Compact status labels use the interface typeface instead of code styling. */
+.status-badge {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+}
+
+.app-content .glass-panel {
+  border-radius: 12px;
+  background: var(--workspace-surface);
+  border-color: var(--workspace-border);
+  box-shadow: 0 2px 8px rgb(15 23 42 / 4%);
+  backdrop-filter: none;
+}
+.app-content .glass-panel:hover { border-color: var(--workspace-border); }
+.app-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select) { min-height: 44px; }
+.app-content textarea { line-height: 1.65; }
+.app-content table { font-variant-numeric: tabular-nums; }
+.app-content :is(th, td) { padding: 14px 18px; }
+.app-content th { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.025em; white-space: nowrap; }
+.app-content td { font-size: 0.875rem; line-height: 1.6; }
+.app-content td :is(p, span) { line-height: 1.6; }
+.app-content .font-black { font-weight: 700; }
+.app-content .font-extrabold { font-weight: 600; }
+.app-content :is(.btn-primary, .btn-kpu-red, .btn-primary-kpu) { box-shadow: 0 1px 2px rgb(15 23 42 / 12%) !important; }
+.dashboard-metrics > div { min-width: 0; }
+.dashboard-metrics h2 { font-size: clamp(1.5rem, 1.8vw, 1.875rem); white-space: nowrap; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.dashboard-metrics .flex-1 { min-width: 0; }
+.dashboard-metrics .w-14 { width: 40px; height: 40px; border-radius: 10px; }
+.dashboard-metrics .min-h-\[110px\] { min-height: 144px; gap: 12px; align-items: flex-start; }
+.dashboard-metrics .uppercase { text-transform: none; letter-spacing: 0; }
+
+@media (max-width: 1023px) {
+  .app-navigation { position: fixed; inset: 0 auto 0 0; z-index: 40; transform: translateX(-100%); visibility: hidden; transition: transform .2s, visibility .2s; }
+  .app-navigation.is-open { transform: translateX(0); visibility: visible; }
+}
+@media (max-width: 639px) {
+  .app-content :is(th, td) { padding: 12px; }
+  .app-content input, .app-content select, .app-content textarea { font-size: 16px; }
+  .modal-overlay { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

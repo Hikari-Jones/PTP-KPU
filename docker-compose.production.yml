@@ -1,0 +1,57 @@
+services:
+  mysql-db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: kpu_db
+      MYSQL_USER: kpu_app
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+aiomysql://kpu_app:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql-db:3306/kpu_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
+      AUTHORITY_GRANTS: ${AUTHORITY_GRANTS:-[]}
+      OFFICIAL_ISSUANCE_ENABLED: "false"
+      ENABLE_API_DOCS: "false"
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: qwen2.5:latest
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - uploads:/app/uploads
+      - backups:/app/backups
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+volumes:
+  mysql_data:
+  ollama_models:
+  uploads:
+  backups:
