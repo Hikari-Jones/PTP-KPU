@@ -57,17 +57,27 @@ Sistem menggunakan basis data relasional **MySQL 8.0** yang berjalan di PC kanto
 
 ---
 
-## 🤖 2. Persiapan Model AI Lokal Kantor (Ollama)
+## 🤖 2. Persiapan Model AI Lokal Kantor
 
 Untuk menjaga kerahasiaan dokumen kedinasan negara, sistem **tidak mengirimkan teks persuratan ke API pihak ketiga di internet**. Inferensi AI dijalankan secara lokal di PC kantor:
 
-1. Unduh dan pasang **Ollama** untuk Windows dari [https://ollama.ai](https://ollama.ai).
-2. Unduh model lokal pilihan (disarankan Qwen 2.5 atau Llama 3):
-   ```bash
-   ollama run qwen2.5
-   ```
-3. Ollama akan aktif di `http://localhost:11434`. Backend FastAPI secara otomatis menghubungkan asisten **KIRANA Agent** ke model lokal ini.
-   *(Jika Ollama belum aktif, KIRANA Agent secara cerdas tetap berfungsi dalam mode rule-based fallback tanpa error).*
+Model tidak perlu diunduh manual dan tidak memerlukan Ollama. Paket lokal [`backend/kirana-llm`](backend/kirana-llm) terdaftar di `requirements.txt`, sehingga saat menyiapkan virtual environment model (Qwen 2.5 3B, GGUF ~2,1 GB) ikut terunduh (sekali per pengguna, ke `%LOCALAPPDATA%\kirana-llm\models`):
+
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+- **Di backend**: endpoint `/api/v1/ai/chat` menjalankan model langsung di dalam proses FastAPI. Model baru dimuat ke memori saat pertama kali dipanggil, bukan saat server dinyalakan.
+- **Membaca database**: KIRANA menulis query `SELECT` sendiri untuk menjawab pertanyaan tentang surat, arsip, pegawai, dan anggaran. Query divalidasi di [`kirana_db.py`](backend/app/services/kirana_db.py) (hanya `SELECT`, hanya tabel yang diizinkan, kolom `password` diblokir, transaksi read-only, hasil dibatasi).
+- **Streaming**: `/api/v1/ai/chat/stream` mengirim jawaban kata demi kata (Server-Sent Events); widget chat memakai endpoint ini.
+- **Tanpa backend**: `python -m kirana_llm "pertanyaan"` (sekali tanya), `python -m kirana_llm` (obrolan interaktif), `python -m kirana_llm --status`, atau dari Python: `import kirana_llm; kirana_llm.generate("...")`.
+- Jika unduhan gagal saat instalasi (misal sedang offline), model diunduh otomatis saat pertama kali dipanggil, atau jalankan `python -m kirana_llm --download`.
+- Model dapat diganti lewat variabel `KIRANA_MODEL_REPO` / `KIRANA_MODEL_FILE` / `KIRANA_MODEL_PATH` (lihat `.env.example`).
+
+*(Jika model tidak tersedia, KIRANA Agent tetap berfungsi dalam mode rule-based fallback tanpa error.)*
 
 ---
 

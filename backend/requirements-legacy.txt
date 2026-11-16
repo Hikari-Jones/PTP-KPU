@@ -1,0 +1,7 @@
+# Only needed by the old Ollama/LangChain experiments (backend/main.py and
+# backend/vector.py). The application and the KIRANA chatbot do not use these.
+# They currently do not install on Python 3.14+.
+langchain
+langchain-ollama
+langchain-chroma
+pandas

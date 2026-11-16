@@ -140,7 +140,7 @@ export const fetchSatker = async (): Promise<SatkerData[]> => {
   return [];
 };
 
-// ----------------- AI Chatbot KIRANA (Local Ollama) -----------------
+// ----------------- AI Chatbot KIRANA (model lokal di backend) -----------------
 
 export interface ChatAttachment {
   name: string;
@@ -152,7 +152,7 @@ export interface ChatAttachment {
 export interface ChatApiResponse {
   reply: string;
   model_used: string;
-  source: 'local_ollama' | 'fallback_agent';
+  source: 'local_model' | 'fallback_agent';
   fileAttachment?: ChatAttachment;
 }
 
@@ -168,10 +168,66 @@ export const sendChatMessage = async (message: string, context?: string): Promis
     console.warn('Backend AI offline, fallback to local agent simulation', e);
   }
   return {
-    reply: `Halo! Saya KIRANA Agent. Sistem sedang berjalan dalam mode asistensi lokal. Pertanyaan Anda: "${message}". Untuk menjalankan inferensi kecerdasan penuh, pastikan Ollama berjalan di PC kantor (ollama run qwen2.5).`,
+    reply: `Halo! Saya KIRANA Agent. Sistem sedang berjalan dalam mode asistensi lokal. Pertanyaan Anda: "${message}". Untuk menjalankan inferensi kecerdasan penuh, pastikan backend berjalan.`,
     model_used: 'KIRANA Local Rule Agent',
     source: 'fallback_agent',
   };
+};
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export type ChatStreamEvent =
+  | { type: 'token'; text: string }
+  | { type: 'status'; text: string }
+  | { type: 'reset' }
+  | { type: 'error'; text: string }
+  | { type: 'done'; model: string; source: 'local_model' | 'fallback_agent'; used_database: boolean };
+
+/**
+ * Ask KIRANA and receive the answer piece by piece (Server-Sent Events).
+ * Abort the signal to stop the generation. Throws if the backend is unreachable.
+ */
+export const streamChatMessage = async (
+  message: string,
+  history: ChatTurn[],
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> => {
+  const res = await fetch(`${API_BASE_URL}/ai/chat/stream`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ message, history }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Layanan AI mengembalikan status ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      for (const line of block.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        try {
+          onEvent(JSON.parse(line.slice(5).trim()) as ChatStreamEvent);
+        } catch {
+          // ignore a malformed event and keep reading
+        }
+      }
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
 };
 
 export const checkAiStatus = async () => {

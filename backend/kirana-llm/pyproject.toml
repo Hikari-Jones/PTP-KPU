@@ -1,0 +1,20 @@
+[build-system]
+# setup.py downloads the model weights with the standard library only.
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kirana-llm"
+version = "0.1.0"
+description = "Local in-process LLM for KIRANA (PTP-KPU). Downloads its own weights on install."
+requires-python = ">=3.10"
+dependencies = [
+    "llama-cpp-python>=0.3.2",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+kirana-llm = "kirana_llm.__main__:main"
+
+[tool.setuptools]
+packages = ["kirana_llm"]

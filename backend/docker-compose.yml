@@ -25,9 +25,10 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      - kirana_models:/models
     environment:
       - DATABASE_URL=mysql+aiomysql://root:root@mysql_db:3306/kpu_db
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - KIRANA_MODEL_DIR=/models
     depends_on:
       - mysql_db
     extra_hosts:
@@ -37,6 +38,7 @@ services:
 
 volumes:
   mysql_data:
+  kirana_models:
 
 networks:
   kpu-network:

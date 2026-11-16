@@ -8,8 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY kirana-llm ./kirana-llm
+# The model (~2.1 GB) is kept out of the image: it is downloaded once, at
+# container start, into the volume mounted at KIRANA_MODEL_DIR.
+ENV KIRANA_MODEL_DIR=/models
+RUN KIRANA_SKIP_MODEL_DOWNLOAD=1 pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["sh", "-c", "python -m kirana_llm --download; exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
