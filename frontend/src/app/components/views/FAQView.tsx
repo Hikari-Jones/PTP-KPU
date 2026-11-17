@@ -17,7 +17,7 @@ export function FAQView({ theme }: { theme: "light" | "dark" }) {
     },
     {
       q: "Siapa saja yang dapat mengakses Menu Admin?",
-      a: "Menu Admin secara dinamis hanya ditampilkan untuk pengguna dengan role 'Admin' (contoh: akun admin@kpu.go.id). Operator biasa hanya memiliki akses ke menu standar.",
+      a: "Menu Admin secara dinamis hanya ditampilkan untuk pengguna dengan role 'Admin' (contoh: akun admin@kpu.go.id). Pegawai hanya memiliki akses ke menu standar.",
     },
     {
       q: "Apakah data dokumen di PTP-KPU bersifat terenkripsi?",

@@ -81,6 +81,8 @@ export interface SuratMasukFormState {
   prioritas: "biasa" | "penting" | "sangat_penting" | "rahasia"
   ringkasanIsi: string
   fileName: string
+  fileUrl?: string
+  fileSize?: string
 }
 
 export interface SuratKeluarFormState {
@@ -91,4 +93,6 @@ export interface SuratKeluarFormState {
   isiSurat: string
   catatanInternal: string
   fileName: string
+  fileUrl?: string
+  fileSize?: string
 }

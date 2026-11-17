@@ -1,105 +1,83 @@
 import React, { createContext, useContext, useState, useEffect } from "react"
+import { request } from "../../services/operations"
+import { authApi } from "../../services/api"
 
 export interface UserProfile {
   name: string
   nip: string
   email: string
-  role: "Admin" | "Operator" | "User"
+  role: "Admin" | "Pegawai" | "Operator"
   jabatan: string
   subbagian: string
+}
+
+export type ModuleKey = "anggaran" | "surat"
+
+/**
+ * Sub bagian yang berwenang mengelola (menambah/mengubah/menghapus) data tiap modul.
+ * Sub bagian lain tetap dapat membuka modul tersebut dalam mode baca saja.
+ */
+const MODULE_EDITORS: Record<ModuleKey, string[]> = {
+  anggaran: ["Keuangan", "RENDATIN"],
+  surat: ["UMLOG", "Umum"],
+}
+
+export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {
+  if (!user) return false
+  if (user.role === "Admin") return true
+  const sub = user.subbagian.toLowerCase()
+  return MODULE_EDITORS[module].some((key) => sub.includes(key.toLowerCase()))
 }
 
 interface AuthContextType {
   isAuthenticated: boolean
   userRole: string
   currentUser: UserProfile | null
-  login: (nip: string, pass: string) => { success: boolean; error?: string }
+  canEdit: (module: ModuleKey) => boolean
+  login: (nip: string, pass: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
 }
-
-const DEFAULT_USERS: UserProfile[] = [
-  {
-    name: "Admin KPU Sulut",
-    nip: "198507182020031001",
-    email: "admin@kpu.go.id",
-    role: "Admin",
-    jabatan: "Administrator Sistem",
-    subbagian: "RENDATIN (Perencanaan, Data dan Informasi)",
-  },
-  {
-    name: "Ahmad Kurniawan",
-    nip: "199208052021011002",
-    email: "ahmad.kurniawan@kpu.go.id",
-    role: "Operator",
-    jabatan: "Staf Bidang Teknis Penyelenggaraan",
-    subbagian: "Teknis Penyelenggaraan Pemilu",
-  },
-]
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem("ptp_kpu_user")
-    if (!saved) return null
-    const profile = JSON.parse(saved) as UserProfile
-    return profile.subbagian?.startsWith("PERDATIN")
-      ? { ...profile, subbagian: profile.subbagian.replace("PERDATIN", "RENDATIN") }
-      : profile
-  })
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
+  useEffect(() => {
+    if (localStorage.getItem("ptp_kpu_token")) {
+      authApi.getMe().then(user => setCurrentUser(user as UserProfile)).catch(() => {
+        localStorage.removeItem("ptp_kpu_token")
+        setCurrentUser(null)
+      })
+    }
+  }, [])
 
   const isAuthenticated = !!currentUser
   const userRole = currentUser?.role || ""
+  const canEdit = (module: ModuleKey) => canEditModule(currentUser, module)
 
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem("ptp_kpu_user", JSON.stringify(currentUser))
-    } else {
-      localStorage.removeItem("ptp_kpu_user")
-    }
-  }, [currentUser])
-
-  const login = (nip: string, pass: string) => {
-    const trimmedNip = nip.trim()
-    
-    // Check known demo users first
-    const matchedUser = DEFAULT_USERS.find((u) => u.nip === trimmedNip)
-    
-    if (matchedUser) {
-      // Validate password for known users
-      if ((matchedUser.role === "Admin" && pass === "admin123") ||
-          (matchedUser.role === "Operator" && (pass === "123456" || pass === "••••••••" || pass.length >= 4))) {
-        setCurrentUser(matchedUser)
-        return { success: true }
-      } else {
-        return { success: false, error: "NIP/Kata Sandi Tidak Valid" }
-      }
-    }
-
-    // Generic fallback for numeric NIP values
-    if (/^\d{6,}$/.test(trimmedNip) && pass.length >= 6) {
-      const newUser: UserProfile = {
-        name: trimmedNip.slice(-4).padStart(8, "KPU"),
-        nip: trimmedNip,
-        email: `${trimmedNip}@kpu.go.id`,
-        role: "Operator",
-        jabatan: "Staf Penyelenggara KPU",
-        subbagian: "Sekretariat KPU Sulut",
-      }
-      setCurrentUser(newUser)
+  const login = async (nip: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const result = await authApi.login({ nip: nip.trim(), password: pass })
+      localStorage.setItem("ptp_kpu_token", result.access_token)
+      setCurrentUser(result.user as UserProfile)
       return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Login gagal" }
     }
-
-    return { success: false, error: "NIP/Kata Sandi Tidak Valid" }
   }
 
   const logout = () => {
-    setCurrentUser(null)
-    localStorage.removeItem("ptp_kpu_user")
+    void request('/auth/logout', 'POST').then(() => {
+      setCurrentUser(null)
+      localStorage.removeItem("ptp_kpu_user")
+      localStorage.removeItem("ptp_kpu_token")
+    }).catch(() => {
+      window.alert("Logout server gagal. Coba lagi agar sesi benar-benar dicabut.")
+    })
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, userRole, currentUser, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, userRole, currentUser, canEdit, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

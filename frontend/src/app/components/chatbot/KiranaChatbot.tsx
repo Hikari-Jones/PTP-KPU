@@ -60,12 +60,17 @@ const welcomeMessage = (): ChatMessage => ({
   timestamp: timeNow(),
 })
 
-const loadMessages = (): ChatMessage[] => {
+const loadMessages = (storageKey: string): ChatMessage[] => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY)
+    const saved = localStorage.getItem(storageKey)
     if (saved) {
       const parsed = JSON.parse(saved) as ChatMessage[]
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter((msg) => msg && typeof msg.id === "string" &&
+          (msg.sender === "user" || msg.sender === "bot") && typeof msg.text === "string" &&
+          typeof msg.timestamp === "string").slice(-MAX_STORED_MESSAGES)
+        if (valid.length) return valid
+      }
     }
   } catch {
     // corrupted or unavailable storage: start a fresh conversation
@@ -73,14 +78,15 @@ const loadMessages = (): ChatMessage[] => {
   return [welcomeMessage()]
 }
 
-export function KiranaChatbot({ theme = "light" }: { theme?: "light" | "dark" }) {
+export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | "dark"; userKey: string }) {
+  const storageKey = `${STORAGE_KEY}:${userKey}`
   const [isOpen, setIsOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [inputMessage, setInputMessage] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [statusText, setStatusText] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages)
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadMessages(storageKey))
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -91,11 +97,11 @@ export function KiranaChatbot({ theme = "light" }: { theme?: "light" | "dark" })
   // Keep the conversation across page reloads
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)))
+      localStorage.setItem(storageKey, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)))
     } catch {
       // storage full or unavailable: the chat still works, just is not saved
     }
-  }, [messages])
+  }, [messages, storageKey])
 
   // Follow the answer while it streams, unless the user scrolled up to read
   useEffect(() => {
@@ -159,7 +165,7 @@ export function KiranaChatbot({ theme = "light" }: { theme?: "light" | "dark" })
           } else if (event.type === "done") {
             patchMessage(botId, (msg) => ({ ...msg, usedDatabase: event.used_database }))
           } else if (event.type === "error") {
-            patchMessage(botId, (msg) => ({ ...msg, text: `${msg.text}\n\n_${event.text}_` }))
+            patchMessage(botId, (msg) => ({ ...msg, isError: true, text: `${msg.text}\n\n_${event.text}_` }))
           }
         },
         controller.signal,
@@ -173,7 +179,7 @@ export function KiranaChatbot({ theme = "light" }: { theme?: "light" | "dark" })
           isError: true,
           text:
             (msg.text ? `${msg.text}\n\n` : "") +
-            "Maaf, layanan AI tidak dapat dihubungi. Pastikan backend berjalan, lalu coba lagi.",
+            (error instanceof Error ? error.message : "Layanan AI tidak dapat dihubungi. Coba lagi."),
         }
       })
       if (!stopped) console.warn("KIRANA request failed", error)

@@ -30,7 +30,7 @@ PTP-KPU/
 │   ├── vite.config.ts       # Reverse proxy ke localhost:8000
 │   └── tsconfig.app.json
 │
-├── docker-compose.yml        # Orchestration 1-klik (MySQL, Ollama, Backend, Frontend)
+├── docker-compose.yml        # Orchestration 1-klik (MySQL, Backend + KIRANA, Frontend)
 ├── .env.example              # Template konfigurasi environment kantor
 └── README.md
 ```
@@ -57,27 +57,25 @@ Sistem menggunakan basis data relasional **MySQL 8.0** yang berjalan di PC kanto
 
 ---
 
-## 🤖 2. Persiapan Model AI Lokal Kantor
+## 🤖 2. Persiapan Model AI Lokal KIRANA
 
-Untuk menjaga kerahasiaan dokumen kedinasan negara, sistem **tidak mengirimkan teks persuratan ke API pihak ketiga di internet**. Inferensi AI dijalankan secara lokal di PC kantor:
-
-Model tidak perlu diunduh manual dan tidak memerlukan Ollama. Paket lokal [`backend/kirana-llm`](backend/kirana-llm) terdaftar di `requirements.txt`, sehingga saat menyiapkan virtual environment model (Qwen 2.5 3B, GGUF ~2,1 GB) ikut terunduh (sekali per pengguna, ke `%LOCALAPPDATA%\kirana-llm\models`):
+KIRANA menjalankan Qwen 2.5 di proses backend melalui `kirana-llm`; Ollama tidak diperlukan.
+Gunakan Python 3.11 untuk lingkungan Docker yang disediakan. Jalankan dari `backend/`:
 
 ```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate
 pip install -r requirements.txt
+python -m kirana_llm --download
 ```
 
-- **Di backend**: endpoint `/api/v1/ai/chat` menjalankan model langsung di dalam proses FastAPI. Model baru dimuat ke memori saat pertama kali dipanggil, bukan saat server dinyalakan.
-- **Membaca database**: KIRANA menulis query `SELECT` sendiri untuk menjawab pertanyaan tentang surat, arsip, pegawai, dan anggaran. Query divalidasi di [`kirana_db.py`](backend/app/services/kirana_db.py) (hanya `SELECT`, hanya tabel yang diizinkan, kolom `password` diblokir, transaksi read-only, hasil dibatasi).
-- **Streaming**: `/api/v1/ai/chat/stream` mengirim jawaban kata demi kata (Server-Sent Events); widget chat memakai endpoint ini.
-- **Tanpa backend**: `python -m kirana_llm "pertanyaan"` (sekali tanya), `python -m kirana_llm` (obrolan interaktif), `python -m kirana_llm --status`, atau dari Python: `import kirana_llm; kirana_llm.generate("...")`.
-- Jika unduhan gagal saat instalasi (misal sedang offline), model diunduh otomatis saat pertama kali dipanggil, atau jalankan `python -m kirana_llm --download`.
-- Model dapat diganti lewat variabel `KIRANA_MODEL_REPO` / `KIRANA_MODEL_FILE` / `KIRANA_MODEL_PATH` (lihat `.env.example`).
+Bobot model sekitar 2,1 GB. Instalasi mencoba mengunduh bobot; perintah kedua memastikan
+model tersedia sebelum penggunaan offline. Untuk instalasi tanpa unduhan otomatis,
+set `KIRANA_SKIP_MODEL_DOWNLOAD=1`. Untuk bobot GGUF yang sudah tersedia,
+set `KIRANA_MODEL_PATH` ke path absolutnya. Konfigurasi lain ada di `.env.example`.
 
-*(Jika model tidak tersedia, KIRANA Agent tetap berfungsi dalam mode rule-based fallback tanpa error.)*
+Setelah login, status tersedia di `/api/v1/ai/status`. Chatbot mendukung streaming,
+riwayat per pengguna, stop/regenerate, Markdown, dan pembacaan database sesuai hak akses.
+Jika model tidak tersedia, chatbot menyampaikan keterbatasan tersebut tanpa membuat data transaksi.
+Draf AI tetap perlu pemeriksaan manusia.
 
 ---
 
@@ -100,14 +98,64 @@ npm run dev
 - Buka antarmuka aplikasi di browser: [http://localhost:5173](http://localhost:5173)
 
 ### Kredensial Login Bawaan Sistem:
-* **Administrator Sistem**:
-  * NIP: `198507182020031001`
-  * Password: `admin123`
-  * Hak Akses: Administrator (Akses penuh seluruh modul & kontrol user)
-* **Operator Teknis**:
-  * NIP: `199208052021011002`
-  * Password: `123456`
-  * Hak Akses: Operator (Persuratan & Input Realisasi Anggaran)
+
+#### Akun Super Administrator (Utama):
+* **NIP**: `198507182020031001`
+* **Password**: `admin123`
+* **Role**: Admin (Akses penuh seluruh modul, konfigurasi & kontrol user)
+
+---
+
+#### Struktur Akun per Subbagian (1 Kabag, 1 Kasubbag, 2 Pegawai):
+> **Catatan**: Password default untuk seluruh akun staf di bawah ini adalah: **`123456`**
+
+##### 1. Subbagian SDM dan Partisipasi Masyarakat
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Drs. Jerry Mandey, M.Si | `197801152003121001` | Admin | `123456` |
+| **Kasubbag** | Meyke Tumengkol, S.Sos | `198203102008011002` | Operator | `123456` |
+| **Pegawai 1** | Farly Pontoh, S.Kom | `199106142015031004` | Operator | `123456` |
+| **Pegawai 2** | Priscilia Rompas, S.Pd | `199508192020122005` | Operator | `123456` |
+
+##### 2. Subbagian RENDATIN (Perencanaan, Data dan Informasi)
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Ir. Ronny Lumempow, MT | `197604122002121001` | Admin | `123456` |
+| **Kasubbag** | Christian Runtu, ST | `198307192009021002` | Operator | `123456` |
+| **Pegawai 1** | Michael Poluan, S.Kom | `199302172017011004` | Operator | `123456` |
+| **Pegawai 2** | Natasya Pangemanan, S.Stat | `199609252022032005` | Operator | `123456` |
+
+##### 3. Subbagian Teknis Penyelenggaraan Pemilu
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Drs. Franky Mokodompit, M.Si | `197709282005011001` | Admin | `123456` |
+| **Kasubbag** | Hendrik Sumendap, SH | `198112042006041002` | Operator | `123456` |
+| **Pegawai 1** | Ahmad Kurniawan | `199208052021011002` | Operator | `123456` |
+| **Pegawai 2** | Ingrid Sondakh, S.Sos | `199410112019022004` | Operator | `123456` |
+
+##### 4. Subbagian Hukum dan Pengawasan
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Donald Kalalo, SH, MH | `197903212006041001` | Admin | `123456` |
+| **Kasubbag** | Richard Senduk, SH | `198309142009121002` | Operator | `123456` |
+| **Pegawai 1** | Siti Rahmawati | `199403152021022003` | Operator | `123456` |
+| **Pegawai 2** | Aldo Maramis, SH | `199512302020121005` | Operator | `123456` |
+
+##### 5. Subbagian Umum dan Logistik (UMLOG)
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Dra. Jenny Walangitan, MM | `197508052001121001` | Admin | `123456` |
+| **Kasubbag** | Nova Lasut, SE | `198404182009022003` | Operator | `123456` |
+| **Pegawai 1** | Budi Santoso | `198811202019031004` | Operator | `123456` |
+| **Pegawai 2** | Rizky Rumagit, S.Kom | `199211152018021006` | Operator | `123456` |
+
+##### 6. Subbagian Keuangan
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Drs. Maxie Rondonuwu, M.Si, Ak | `197406182000031001` | Admin | `123456` |
+| **Kasubbag** | Albert Wenas, SE, Ak | `198010202007011002` | Operator | `123456` |
+| **Pegawai 1** | Jessica Pandeirot, SE | `199305142018012005` | Operator | `123456` |
+| **Pegawai 2** | Stevani Waworuntu, SE | `199507202020122007` | Operator | `123456` |
 
 ---
 
@@ -125,8 +173,8 @@ npm run dev
 3. **Pembuatan Endpoint Persuratan di Backend**:
    - Membuat modul [`app/api/v1/endpoints/surat.py`](backend/app/api/v1/endpoints/surat.py) yang mengimplementasikan API Kode Klasifikasi, Jenis Surat, Surat Keluar, dan penomoran resmi atomik (`PenomoranSequence`).
 
-4. **Integrasi AI Lokal (Ollama)**:
-   - Membuat modul [`app/api/v1/endpoints/ai.py`](backend/app/api/v1/endpoints/ai.py) yang menghubungkan chatbot KIRANA langsung ke server Ollama lokal di PC kantor (`localhost:11434`) dengan fallback pintar.
+4. **Integrasi AI Lokal (KIRANA)**:
+   - Membuat modul [`app/api/v1/endpoints/ai.py`](backend/app/api/v1/endpoints/ai.py) yang menghubungkan chatbot KIRANA ke model lokal di proses backend, dengan streaming dan query database hanya baca.
 
 5. **Penyempurnaan Modul Satker**:
    - Mengubah halaman [`SatkerView.tsx`](frontend/src/app/components/RealisasiAnggaran/SatkerView.tsx) dari yang sebelumnya berstatus *"Fitur dalam Pengembangan"* menjadi panel pemantauan lengkap untuk KPU Provinsi dan 15 KPU Kabupaten/Kota se-Sulawesi Utara lengkap dengan fitur filter dan ekspor CSV.
@@ -138,3 +186,37 @@ npm run dev
    - Menambahkan modal interaktif untuk pendaftaran operator baru di `KelolaUserView.tsx`.
    - Menambahkan form pengiriman kendala teknis di `BugReportView.tsx`.
    - Mengaktifkan aksi pembuatan cadangan database dan unduhan manifes di `ArsipAdminView.tsx`.
+
+## Security configuration and current release limitations
+
+Before starting the backend, set `SECRET_KEY` in `backend/.env` to a unique
+random value of at least 32 characters. Generate one with:
+
+```bash
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+
+For Docker Compose, also set `SECRET_KEY`, `MYSQL_ROOT_PASSWORD`, and
+`MYSQL_PASSWORD` in the root `.env`. Use a URL-safe database password because
+Compose embeds it in the database connection URL. Existing MySQL volumes do
+not automatically create the new `kpu_app` account: provision that account with
+permissions on `kpu_db` before switching an existing installation. Do not delete
+the existing database volume to resolve account errors.
+
+README seed credentials are retained for actual seeded database accounts.
+Login no longer creates demo identities or accepts universal testing passwords.
+Existing plaintext, SHA-256, and `hash_` passwords are upgraded to salted PBKDF2
+on successful login. Newly seeded/created accounts use PBKDF2 immediately.
+Change documented default passwords before office deployment.
+
+The backup screen now creates real MySQL/upload ZIP archives. See RUNBOOK.md for
+requirements and isolated restore commands. Old simulated entries are not backups.
+
+Integration scripts require an explicit DATABASE_URL whose database name ends
+in `_test`. These scripts may delete data; use only a disposable test database.
+Some legacy tests still use old authentication headers and require updates.
+
+The surat-alur, archive, user-management, and bug-report screens now use persistent
+APIs. Production serving is provided by docker-compose.production.yml. See
+[RUNBOOK.md](RUNBOOK.md) for upgrades, deployment, backups, test commands, and the
+remaining unverified runtime checks. These notes supersede older completion claims.
