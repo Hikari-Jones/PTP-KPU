@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from sqlalchemy import distinct, extract, func, or_, select, desc, asc
+from sqlalchemy import and_, distinct, extract, func, or_, select, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -33,6 +33,7 @@ class CRUDArsip(CRUDBase[DokumenArsip, DokumenArsipCreate, DokumenArsipUpdate]):
         hak_akses: Optional[str] = None,
         sub_bagian: Optional[str] = None,
         status_hapus: bool = False,
+        viewer: Optional[Pegawai] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> Tuple[List[DokumenArsip], int]:
@@ -41,6 +42,13 @@ class CRUDArsip(CRUDBase[DokumenArsip, DokumenArsipCreate, DokumenArsipUpdate]):
         All primary filtering is performed at database level.
         """
         conditions = [DokumenArsip.status_hapus == status_hapus]
+
+        if viewer is not None:
+            from app.core.auth import is_admin
+            if not is_admin(viewer):
+                conditions.append(or_(DokumenArsip.hak_akses.in_(['internal', 'publik']),
+                    DokumenArsip.id_pegawai == viewer.id_pegawai,
+                    and_(DokumenArsip.hak_akses == 'terbatas', DokumenArsip.pegawai.has(Pegawai.id_bagian == viewer.id_bagian)) if viewer.id_bagian is not None else False))
 
         # 1. Search filter on nama_dokumen or nomor_dokumen
         if search and search.strip():

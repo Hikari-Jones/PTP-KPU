@@ -40,3 +40,4 @@ __all__ = [
     "ChatMessage",
 ]
 
+from app.models.operations import WorkflowLetter, BugReport, BudgetEvent

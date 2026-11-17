@@ -1,3 +1,10 @@
+
+import os as _os
+from sqlalchemy.engine import make_url as _make_url
+_test_url = _os.environ.get("DATABASE_URL", "")
+if not _test_url or not (_make_url(_test_url).database or "").endswith("_test"):
+    raise RuntimeError("Set DATABASE_URL to a disposable database ending in _test before running integration tests")
+
 import asyncio
 from datetime import date
 from decimal import Decimal

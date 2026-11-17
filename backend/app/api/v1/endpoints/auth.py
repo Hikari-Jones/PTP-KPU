@@ -1,20 +1,22 @@
-﻿from datetime import datetime, timedelta
+from app.core.passwords import PREFIX, hash_password, verify_password
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from jose import jwt
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.schema import Pegawai, Bagian
+from app.core.auth import get_current_user
 
 router = APIRouter()
 
 class LoginRequest(BaseModel):
-    nip: str
-    password: str
+    nip: str = Field(min_length=1, max_length=30)
+    password: str = Field(min_length=1, max_length=255)
 
 class UserProfileOut(BaseModel):
     id_pegawai: int
@@ -45,48 +47,11 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Pegawai).where(Pegawai.nip == nip_clean))
     user = res.scalar_one_or_none()
     
-    # Check fallback demo accounts if DB not yet fully seeded
-    if not user:
-        if nip_clean == "198507182020031001" and payload.password in ["admin123", "admin"]:
-            user_profile = UserProfileOut(
-                id_pegawai=1,
-                name="Admin KPU Sulut",
-                nip=nip_clean,
-                email="admin@kpu.go.id",
-                role="Admin",
-                jabatan="Administrator Sistem",
-                subbagian="RENDATIN (Perencanaan, Data dan Informasi)",
-                id_bagian=1
-            )
-            token = create_access_token({"sub": nip_clean, "role": "Admin", "id": 1})
-            return LoginResponse(access_token=token, user=user_profile)
-        elif nip_clean == "199208052021011002" and payload.password in ["123456", "operator"]:
-            user_profile = UserProfileOut(
-                id_pegawai=2,
-                name="Ahmad Kurniawan",
-                nip=nip_clean,
-                email="ahmad.kurniawan@kpu.go.id",
-                role="Operator",
-                jabatan="Staf Bidang Teknis Penyelenggaraan",
-                subbagian="Teknis Penyelenggaraan Pemilu",
-                id_bagian=2
-            )
-            token = create_access_token({"sub": nip_clean, "role": "Operator", "id": 2})
-            return LoginResponse(access_token=token, user=user_profile)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="NIP atau Kata Sandi tidak valid"
-            )
-
-    # Validate password (support both plain text and standard comparison)
-    if user.password != payload.password and user.password != f"hash_{payload.password}":
-        # Allow default testing passwords
-        if payload.password not in ["123456", "admin123", "password"]:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="NIP atau Kata Sandi tidak valid"
-            )
+    if not user or not user.is_active or not verify_password(payload.password, user.password):
+        raise HTTPException(status_code=401, detail="NIP atau Kata Sandi tidak valid")
+    if not user.password.startswith(PREFIX + "$"):
+        user.password = hash_password(payload.password)
+        await db.commit()
 
     # Fetch Bagian name
     subbagian_nama = "Sekretariat KPU Sulut"
@@ -96,7 +61,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         if bagian:
             subbagian_nama = bagian.nama_bagian
 
-    norm_role = "Admin" if (user.role and user.role.lower() == "admin") else "Operator"
+    norm_role = "Admin" if (user.role and user.role.lower() in ["admin", "administrator"]) else "Pegawai"
     user_out = UserProfileOut(
         id_pegawai=user.id_pegawai,
         name=user.nama,
@@ -108,19 +73,26 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         id_bagian=user.id_bagian
     )
 
-    token = create_access_token({"sub": user.nip, "role": norm_role, "id": user.id_pegawai})
+    token = create_access_token({"sub": user.nip, "role": norm_role, "id": user.id_pegawai, "sv": user.session_version})
     return LoginResponse(access_token=token, user=user_out)
 
 @router.get("/me", response_model=UserProfileOut)
-async def get_me(db: AsyncSession = Depends(get_db)):
-    # Return default admin for office testing
+async def get_me(current_user: Pegawai = Depends(get_current_user)):
     return UserProfileOut(
-        id_pegawai=1,
-        name="Admin KPU Sulut",
-        nip="198507182020031001",
-        email="admin@kpu.go.id",
-        role="Admin",
-        jabatan="Administrator Sistem",
-        subbagian="RENDATIN (Perencanaan, Data dan Informasi)",
-        id_bagian=1
+        id_pegawai=current_user.id_pegawai,
+        name=current_user.nama,
+        nip=current_user.nip or "",
+        email=f"{(current_user.nip or '').lower()}@kpu.go.id",
+        role="Admin" if current_user.role.lower() in ["admin", "administrator"] else "Pegawai",
+        jabatan=current_user.jabatan or "",
+        subbagian=current_user.bagian.nama_bagian if current_user.bagian else "",
+        id_bagian=current_user.id_bagian,
     )
+
+
+@router.post("/logout")
+async def logout(db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user)):
+    from sqlalchemy import update
+    await db.execute(update(Pegawai).where(Pegawai.id_pegawai == user.id_pegawai).values(session_version=Pegawai.session_version + 1))
+    await db.commit()
+    return {"message": "Semua sesi pengguna telah diakhiri"}

@@ -18,6 +18,7 @@ import asyncio
 import json
 import re
 import threading
+from contextlib import aclosing
 from datetime import date
 from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
 
@@ -64,6 +65,8 @@ Cara menjawab:
 - Tulis nominal uang sebagai Rupiah dengan pemisah ribuan, contoh Rp 1.250.000.
 - Jangan pernah mengarang data. Angka, nama, nomor surat, dan isi dokumen hanya boleh berasal dari hasil query_database. Jika hasilnya kosong atau query gagal, katakan apa adanya.
 - Jika pertanyaan membutuhkan data sistem, LANGSUNG panggil query_database tanpa kalimat pembuka seperti "mohon tunggu". Jangan pernah menulis SQL atau tanda seperti [hasil query] di dalam jawaban; jalankan query-nya, lalu jawab dengan hasilnya.
+- Semua draf dan saran AI perlu pemeriksaan manusia; bukan keputusan resmi.
+- Data yang tersedia dibatasi oleh hak akses pengguna.
 - Anda hanya bisa membaca data. Permintaan mengubah atau menghapus data ditolak dengan sopan dan diarahkan ke modul terkait di aplikasi.
 - Jangan menampilkan SQL atau nama tabel kepada pengguna kecuali diminta.
 
@@ -97,6 +100,7 @@ Database (MySQL 8). Skema yang boleh dibaca:
 {schema}
 
 Petunjuk query:
+- Modul persuratan saat ini memakai workflow_letter (kind = 'masuk' atau 'keluar'). Untuk rekap dan surat terbaru, gunakan tabel ini. surat_keluar adalah modul penomoran lama; jangan gabungkan hitungannya tanpa permintaan khusus.
 - Hanya SELECT. Pilih kolom yang diperlukan saja dan JOIN untuk menampilkan nama, bukan id.
 - Jangan pernah menjumlahkan atau menghitung sendiri. Untuk "berapa", "total", "rekap" biarkan SQL yang menghitung dengan COUNT/SUM/GROUP BY, lalu salin angka hasilnya apa adanya.
 - Pencarian teks memakai LIKE '%kata%'. Urutkan data terbaru dengan ORDER BY tanggal DESC dan batasi dengan LIMIT.
@@ -261,6 +265,8 @@ async def run_agent(
     message: str,
     history: Optional[Sequence[Dict[str, Any]]] = None,
     context: Optional[str] = None,
+    *,
+    user=None,
 ) -> AsyncIterator[Dict[str, Any]]:
     import kirana_llm
 
@@ -277,21 +283,22 @@ async def run_agent(
         emitted = 0
         tool_at = -1
 
-        async for piece in _stream_model(messages, stop=[TOOL_CLOSE]):
-            output += piece
-            if tool_at == -1:
-                tool_at = output.find(TOOL_OPEN)
-            if tool_at != -1:
-                continue  # collecting the tool call; nothing to show
-            safe = len(output) - _held_back(output)
-            if safe > emitted:
-                text = output[emitted:safe]
-                if not wrote_text:
-                    text = text.lstrip()
-                if text:
-                    wrote_text = True
-                    yield {"type": "token", "text": text}
-                emitted = safe
+        async with aclosing(_stream_model(messages, stop=[TOOL_CLOSE])) as stream:
+            async for piece in stream:
+                output += piece
+                if tool_at == -1:
+                    tool_at = output.find(TOOL_OPEN)
+                if tool_at != -1:
+                    continue  # collecting the tool call; nothing to show
+                safe = len(output) - _held_back(output)
+                if safe > emitted:
+                    text = output[emitted:safe]
+                    if not wrote_text:
+                        text = text.lstrip()
+                    if text:
+                        wrote_text = True
+                        yield {"type": "token", "text": text}
+                    emitted = safe
 
         can_query = round_no < MAX_TOOL_ROUNDS
 
@@ -318,7 +325,7 @@ async def run_agent(
 
         if queries:
             yield {"type": "status", "text": "Membaca database…"}
-            results = [_with_guidance(await kirana_db.run_query(sql)) for sql in queries]
+            results = [_with_guidance(await kirana_db.run_query(sql, user=user)) for sql in queries]
             used_database = True
         else:
             results = [

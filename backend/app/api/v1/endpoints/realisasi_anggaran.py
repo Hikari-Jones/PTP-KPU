@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import get_current_user, is_admin
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     RealisasiAnggaranCreateDraft,
@@ -16,7 +16,27 @@ from app.schemas.anggaran import (
 )
 from app.services.anggaran import realisasi_anggaran
 
+from app.core.authority import has_authority
+from app.core.config import settings
+
 router = APIRouter()
+
+async def require_budget_operator(user: Pegawai = Depends(get_current_user)):
+    if not is_admin(user) and not (user.bagian and any(
+            key in user.bagian.nama_bagian.lower() for key in ("keuangan", "rendatin"))):
+        raise HTTPException(403, "Akses input anggaran hanya untuk bagian keuangan/perencanaan")
+    return user
+
+async def require_budget_reviewer(user: Pegawai = Depends(get_current_user)):
+    if not has_authority(settings.AUTHORITY_GRANTS, user.id_pegawai, "verify_budget"):
+        raise HTTPException(403, "Penugasan pemeriksa anggaran aktif belum dikonfigurasi")
+    return user
+
+@router.get("/capabilities")
+async def capabilities(user: Pegawai = Depends(get_current_user)):
+    return {"user_id": user.id_pegawai, "can_review": has_authority(
+        settings.AUTHORITY_GRANTS, user.id_pegawai, "verify_budget")}
+
 
 
 @router.get(
@@ -32,6 +52,7 @@ async def read_realisasi_anggaran(
     id_tahun_anggaran: Optional[int] = Query(None, description="Filter berdasarkan tahun anggaran"),
     id_bagian: Optional[int] = Query(None, description="Filter berdasarkan divisi / bagian KPU"),
     id_akun_anggaran: Optional[int] = Query(None, description="Filter berdasarkan akun MAK"),
+    bulan: Optional[int] = Query(None, ge=1, le=12, description="Filter berdasarkan bulan transaksi (1-12)"),
     status: Optional[str] = Query(None, pattern="^(draft|submitted|verified|rejected)$", description="Filter status transaksi"),
     search: Optional[str] = Query(None, description="Search nomor dokumen, uraian, kode akun, atau nama akun"),
     tanggal_mulai: Optional[date] = Query(None, description="Filter tanggal transaksi mulai"),
@@ -45,6 +66,7 @@ async def read_realisasi_anggaran(
         id_tahun_anggaran=id_tahun_anggaran,
         id_bagian=id_bagian,
         id_akun_anggaran=id_akun_anggaran,
+        bulan=bulan,
         status=status,
         search=search,
         tanggal_mulai=tanggal_mulai,
@@ -79,15 +101,15 @@ async def read_realisasi_anggaran_by_id(
     "/",
     response_model=RealisasiAnggaranResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Buat Transaksi Draft",
-    description="Membuat transaksi realisasi anggaran baru dengan status awal 'draft'. Operator pencatat diambil otomatis dari user yang terautentikasi.",
+    summary="Simpan Draft Realisasi Anggaran",
+    description="Menyimpan draft setelah validasi pagu dan tahun. Ajukan untuk pemeriksaan terpisah; draft tidak dihitung sebagai realisasi terverifikasi.",
 )
-async def create_realisasi_draft(
+async def create_realisasi(
     realisasi_in: RealisasiAnggaranCreateDraft,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(get_current_user),
+    current_user: Pegawai = Depends(require_budget_operator),
 ) -> Any:
-    db_obj = await realisasi_anggaran.create_draft(
+    db_obj = await realisasi_anggaran.create_realisasi_direct(
         db,
         obj_in=realisasi_in,
         id_pegawai=current_user.id_pegawai,
@@ -105,7 +127,7 @@ async def update_realisasi_draft(
     id_realisasi: int,
     realisasi_in: RealisasiAnggaranUpdateDraft,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(get_current_user),
+    current_user: Pegawai = Depends(require_budget_operator),
 ) -> Any:
     db_obj = await realisasi_anggaran.update_draft(
         db,
@@ -125,7 +147,7 @@ async def update_realisasi_draft(
 async def delete_realisasi_draft(
     id_realisasi: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(get_current_user),
+    current_user: Pegawai = Depends(require_budget_operator),
 ) -> Any:
     db_obj = await realisasi_anggaran.get_detail(db, id_realisasi)
     if not db_obj:
@@ -155,7 +177,7 @@ async def delete_realisasi_draft(
 async def submit_realisasi_action(
     id_realisasi: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(get_current_user),
+    current_user: Pegawai = Depends(require_budget_operator),
 ) -> Any:
     db_obj = await realisasi_anggaran.submit_realisasi(
         db,
@@ -175,9 +197,8 @@ async def verify_realisasi_action(
     id_realisasi: int,
     verify_in: RealisasiAnggaranVerify,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_budget_reviewer),
 ) -> Any:
-    # In KPU system architecture, verification authority is held by Admin/PPK/KPA
     db_obj = await realisasi_anggaran.verify_realisasi(
         db,
         id_realisasi=id_realisasi,
@@ -197,7 +218,7 @@ async def reject_realisasi_action(
     id_realisasi: int,
     reject_in: RealisasiAnggaranReject,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_budget_reviewer),
 ) -> Any:
     db_obj = await realisasi_anggaran.reject_realisasi(
         db,
@@ -206,3 +227,13 @@ async def reject_realisasi_action(
         obj_in=reject_in,
     )
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
+
+@router.get("/{id_realisasi}/history")
+async def budget_history(id_realisasi: int, db: AsyncSession = Depends(get_db),
+                         user: Pegawai = Depends(get_current_user)):
+    from sqlalchemy import select
+    from app.models.operations import BudgetEvent
+    rows = (await db.scalars(select(BudgetEvent).where(
+        BudgetEvent.realization_id == id_realisasi).order_by(BudgetEvent.id))).all()
+    return [{"id": row.id, "actor_id": row.actor_id, "action": row.action,
+             "recorded_at": row.recorded_at.isoformat() + "Z", "snapshot": row.snapshot} for row in rows]

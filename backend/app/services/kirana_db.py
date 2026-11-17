@@ -13,9 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, List
 
-import sqlglot
 from sqlalchemy import text
-from sqlglot import exp
 
 from app.core.database import Base, engine
 
@@ -28,6 +26,7 @@ QUERY_TIMEOUT_SECONDS = 15
 
 # Tables the chatbot may read. Chat logs and anything not listed are off-limits.
 ALLOWED_TABLES = {
+    "workflow_letter",
     "bagian",
     "pegawai",
     "kode_klasifikasi_arsip",
@@ -47,7 +46,7 @@ ALLOWED_TABLES = {
 }
 
 # Columns that must never reach the model, whatever the query looks like.
-BLOCKED_COLUMNS = {"password"}
+BLOCKED_COLUMNS = {"password", "session_version", "file_path", "path_file"}
 
 _BLOCKED_WORDS = re.compile(
     r"\b(load_file|outfile|dumpfile|sleep|benchmark|get_lock|release_lock|"
@@ -59,6 +58,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 # Compact description of the schema given to the model.
 SCHEMA_DOC = """\
+workflow_letter(id PK, kind ['masuk','keluar'], subject [perihal], sender, recipient, number [nomor surat], content [isi surat], date DATE, status ['draft','submitted','revision','approved','registered','assigned','completed','archived'], owner_id FK pegawai, assignee_id FK pegawai NULL, version)
 bagian(id_bagian PK, kode_bagian, nama_bagian)
 pegawai(id_pegawai PK, id_bagian FK bagian, nama, nip, jabatan, role)
 kode_klasifikasi_arsip(id_klasifikasi PK, kode_klasifikasi, nama_klasifikasi, kategori_utama, deskripsi, retensi_aktif_tahun, retensi_inaktif_tahun, hak_akses)
@@ -85,8 +85,14 @@ def _dialect() -> str:
     return name if name in ("mysql", "sqlite", "postgresql") else "mysql"
 
 
-def validate_sql(sql: str) -> str:
+def validate_sql(sql: str, *, user=None) -> str:
     """Return a safe, row-limited version of `sql`, or raise QueryRejected."""
+    import sqlglot
+    from sqlglot import exp
+    from sqlglot.optimizer.scope import traverse_scope
+
+    if user is None:
+        raise QueryRejected("Identitas pengguna diperlukan untuk membaca database.")
     sql = (sql or "").strip().rstrip(";").strip()
     if not sql:
         raise QueryRejected("Query kosong.")
@@ -114,7 +120,7 @@ def validate_sql(sql: str) -> str:
         for node in (
             getattr(exp, name, None)
             for name in ("Insert", "Update", "Delete", "Drop", "Create", "Alter",
-                         "AlterTable", "Into", "Command", "Merge", "TruncateTable")
+                         "AlterTable", "Into", "Command", "Merge", "TruncateTable", "Lock")
         )
         if node is not None
     )
@@ -135,15 +141,68 @@ def validate_sql(sql: str) -> str:
         if column.name.lower() in BLOCKED_COLUMNS:
             raise QueryRejected(f"Kolom '{column.name}' bersifat rahasia dan tidak boleh dibaca.")
 
-    if not tree.args.get("limit"):
-        tree = tree.limit(MAX_ROWS + 1)  # one extra row reveals truncation
+    # Resolve physical sources separately from CTE references. Replace every
+    # physical relation before executing, so aliases, stars, subqueries and
+    # aggregates all see the same authorized rows and safe columns.
+    for scope in traverse_scope(tree):
+        for alias, (_, source) in scope.selected_sources.items():
+            if isinstance(source, exp.Table):
+                scoped = sqlglot.parse_one(_scoped_relation(source.name.lower(), user), read=_dialect())
+                source.replace(scoped.subquery(alias=alias))
+
+    limit = tree.args.get("limit")
+    if limit is None:
+        tree = tree.limit(MAX_ROWS + 1)
+    else:
+        value = limit.expression
+        if not isinstance(value, exp.Literal) or not value.is_int or int(value.this) < 0:
+            raise QueryRejected("LIMIT harus berupa bilangan bulat positif.")
+        tree = tree.limit(min(int(value.this), MAX_ROWS + 1))
     return tree.sql(dialect=_dialect())
+
+
+def _scoped_relation(name: str, user) -> str:
+    """Project safe columns and enforce the existing module's row permissions."""
+    import app.models.schema  # noqa: F401
+    import app.models.operations  # noqa: F401
+    from app.core.auth import is_admin
+
+    if name not in ALLOWED_TABLES or user is None:
+        raise QueryRejected("Tabel atau identitas pengguna tidak diizinkan.")
+    table = Base.metadata.tables.get(name)
+    if table is None:
+        raise QueryRejected("Tabel tidak tersedia.")
+    columns = ", ".join(f"`{c.name}`" for c in table.columns if c.name.lower() not in BLOCKED_COLUMNS)
+    query = f"SELECT {columns} FROM `{name}`"
+    if is_admin(user):
+        return query
+    # IDs originate from the authenticated database user, never the prompt.
+    uid = int(user.id_pegawai)
+    letters = (f"SELECT id_surat_keluar FROM surat_keluar WHERE id_pegawai = {uid} "
+               f"OR id_surat_keluar IN (SELECT id_surat_keluar FROM disposisi WHERE id_pegawai = {uid})")
+    if name == "workflow_letter":
+        return query + f" WHERE owner_id = {uid} OR assignee_id = {uid}"
+    if name == "surat_keluar":
+        return query + f" WHERE id_surat_keluar IN ({letters})"
+    if name in {"surat_tugas", "riwayat_status_surat", "disposisi"}:
+        return query + f" WHERE id_surat_keluar IN ({letters})"
+    if name == "surat_tugas_pelaksana":
+        return query + f" WHERE id_surat_tugas IN (SELECT id_surat_tugas FROM surat_tugas WHERE id_surat_keluar IN ({letters}))"
+    if name == "dokumen_arsip":
+        allowed = f"hak_akses IN ('internal', 'publik') OR id_pegawai = {uid}"
+        if user.id_bagian is not None:
+            allowed += (" OR (hak_akses = 'terbatas' AND id_pegawai IN "
+                        f"(SELECT id_pegawai FROM pegawai WHERE id_bagian = {int(user.id_bagian)}))")
+        return query + f" WHERE ({allowed})"
+    return query
 
 
 def _column_hint(sql: str) -> str:
     """List the real columns of the tables a failed query used, so the model
     stops guessing column names."""
     try:
+        import sqlglot
+        from sqlglot import exp
         import app.models.schema  # noqa: F401  (registers the tables on Base)
 
         names = {t.name.lower() for t in sqlglot.parse_one(sql, read=_dialect()).find_all(exp.Table)}
@@ -205,14 +264,14 @@ def _format_result(columns: List[str], rows: List[Any], truncated: bool) -> str:
     return note + "\n" + "\n".join(lines)
 
 
-async def run_query(sql: str) -> str:
+async def run_query(sql: str, *, user=None) -> str:
     """Validate and run a model-written query; return the result as text.
 
     Never raises for bad queries: the explanation is returned so the model can
     correct itself.
     """
     try:
-        safe_sql = validate_sql(sql)
+        safe_sql = validate_sql(sql, user=user)
     except QueryRejected as exc:
         logger.warning("KIRANA query rejected (%s): %s", exc, sql)
         return f"ERROR: {exc}"

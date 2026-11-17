@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
 class DokumenArsipBase(BaseModel):
@@ -11,7 +11,7 @@ class DokumenArsipBase(BaseModel):
     tanggal_dokumen: date
     file_path: Optional[str] = Field(None, max_length=255)
     ukuran_file: Optional[int] = 0
-    hak_akses: str = Field("internal", max_length=50)
+    hak_akses: Literal["internal", "terbatas", "publik"] = "internal"
 
 class DokumenArsipCreate(DokumenArsipBase):
     pass
@@ -25,7 +25,7 @@ class DokumenArsipUpdate(BaseModel):
     tanggal_dokumen: Optional[date] = None
     file_path: Optional[str] = Field(None, max_length=255)
     ukuran_file: Optional[int] = None
-    hak_akses: Optional[str] = Field(None, max_length=50)
+    hak_akses: Optional[Literal["internal", "terbatas", "publik"]] = None
     status_hapus: Optional[bool] = None
 
 class DokumenArsipResponse(DokumenArsipBase):

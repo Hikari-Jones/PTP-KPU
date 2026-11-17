@@ -1,10 +1,15 @@
-﻿import json
+import asyncio
+import json
+from contextlib import aclosing
 import logging
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.auth import get_current_user
+from app.models.schema import Pegawai
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +18,26 @@ router = APIRouter()
 FALLBACK_MODEL_NAME = "KIRANA"
 
 
+_inference_slots = asyncio.Semaphore(2)
+
+
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+
+
 class ChatRequest(BaseModel):
-    message: str = Field(..., max_length=8000)
-    context: Optional[str] = None
-    # Earlier turns of the conversation: [{"role": "user"|"assistant", "content": "..."}]
-    history: Optional[List[Dict[str, str]]] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+    message: str = Field(min_length=1, max_length=8000)
+    context: Optional[str] = Field(None, max_length=12000)
+    history: List[HistoryMessage] = Field(default_factory=list, max_length=12)
+
+
+async def _acquire_slot():
+    try:
+        await asyncio.wait_for(_inference_slots.acquire(), timeout=0.1)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(429, "Asisten sedang sibuk. Coba lagi sebentar.") from exc
 
 
 class GeneratedFileOut(BaseModel):
@@ -37,17 +57,6 @@ class ChatResponse(BaseModel):
 
 def _fallback_reply(query: str) -> str:
     """Rule-based answer used only when the local model cannot run."""
-    lower = query.lower()
-    if "klasifikasi" in lower:
-        return (
-            "Kode Klasifikasi Arsip KPU yang umum digunakan:\n"
-            "- PL.01: Perencanaan Pemilu & Pilkada\n"
-            "- PL.02: Pemutakhiran Data Pemilih (DPT)\n"
-            "- HK.01: Peraturan & Keputusan KPU\n"
-            "- KU.01: DIPA & Pertanggungjawaban Keuangan\n"
-            "- HR.01: Surat Tugas & Kepegawaian\n\n"
-            "(Catatan: model AI lokal sedang tidak tersedia; jawaban ini berasal dari mode rule-based.)"
-        )
     return (
         "Maaf, model AI lokal KIRANA sedang tidak tersedia sehingga saya belum dapat "
         "menjawab pertanyaan ini. Pastikan dependensi backend sudah terpasang "
@@ -56,12 +65,12 @@ def _fallback_reply(query: str) -> str:
     )
 
 
-def _run_agent(payload: ChatRequest) -> AsyncIterator[dict]:
+def _run_agent(payload: ChatRequest, user: Pegawai) -> AsyncIterator[dict]:
     # Imported here so the API still starts (and falls back) if the model
     # package or its dependencies are missing.
     from app.services.kirana_agent import run_agent
 
-    return run_agent(payload.message.strip(), payload.history, payload.context)
+    return run_agent(payload.message.strip(), [turn.model_dump() for turn in payload.history], payload.context, user=user)
 
 
 @router.get("/status")
@@ -94,16 +103,17 @@ async def get_ai_status():
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_with_ai(payload: ChatRequest):
+async def chat_with_ai(payload: ChatRequest, user: Pegawai = Depends(get_current_user)):
     """Ask KIRANA and get the whole answer at once."""
     query = payload.message.strip()
     if not query:
         raise HTTPException(status_code=400, detail="Pesan pertanyaan tidak boleh kosong")
 
+    await _acquire_slot()
     try:
         parts: List[str] = []
         model, used_database = FALLBACK_MODEL_NAME, False
-        async for event in _run_agent(payload):
+        async for event in _run_agent(payload, user):
             if event["type"] == "token":
                 parts.append(event["text"])
             elif event["type"] == "reset":
@@ -117,6 +127,8 @@ async def chat_with_ai(payload: ChatRequest):
             )
     except Exception:
         logger.exception("Local model inference failed; using rule-based fallback")
+    finally:
+        _inference_slots.release()
 
     return ChatResponse(
         reply=_fallback_reply(query),
@@ -130,7 +142,7 @@ def _sse(event: dict) -> str:
 
 
 @router.post("/chat/stream")
-async def chat_with_ai_stream(payload: ChatRequest):
+async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_current_user)):
     """Ask KIRANA and receive the answer as it is written (Server-Sent Events).
 
     Each event is a JSON object: {"type": "token"|"status"|"reset"|"done"|"error", ...}.
@@ -140,15 +152,18 @@ async def chat_with_ai_stream(payload: ChatRequest):
     if not query:
         raise HTTPException(status_code=400, detail="Pesan pertanyaan tidak boleh kosong")
 
+    await _acquire_slot()
+
     async def events() -> AsyncIterator[str]:
         wrote_text = False
         try:
-            async for event in _run_agent(payload):
-                if event["type"] == "token":
-                    wrote_text = True
-                elif event["type"] == "reset":
-                    wrote_text = False
-                yield _sse({**event, "source": "local_model"} if event["type"] == "done" else event)
+            async with aclosing(_run_agent(payload, user)) as agent:
+                async for event in agent:
+                    if event["type"] == "token":
+                        wrote_text = True
+                    elif event["type"] == "reset":
+                        wrote_text = False
+                    yield _sse({**event, "source": "local_model"} if event["type"] == "done" else event)
         except Exception:
             logger.exception("Local model inference failed")
             if wrote_text:
@@ -161,6 +176,9 @@ async def chat_with_ai_stream(payload: ChatRequest):
                 "source": "fallback_agent",
                 "used_database": False,
             })
+
+        finally:
+            _inference_slots.release()
 
     return StreamingResponse(
         events(),

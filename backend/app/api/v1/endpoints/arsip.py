@@ -18,6 +18,7 @@ router = APIRouter()
 
 @router.get("/filter-options", response_model=FilterOptionsResponse)
 async def get_filter_options(
+    user: Pegawai = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
@@ -54,6 +55,7 @@ async def read_trash_arsip(
         hak_akses=hak_akses,
         sub_bagian=sub_bagian,
         status_hapus=True,
+        viewer=current_user,
         skip=skip,
         limit=limit,
     )
@@ -63,6 +65,7 @@ async def read_trash_arsip(
 @router.get("/", response_model=List[DokumenArsipResponse])
 async def read_arsip(
     response: Response,
+    current_user: Pegawai = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     search: Optional[str] = Query(None, description="Pencarian nama atau nomor dokumen"),
     year: Optional[int] = Query(None, ge=1900, le=2100, description="Filter tahun"),
@@ -88,6 +91,7 @@ async def read_arsip(
         hak_akses=hak_akses,
         sub_bagian=sub_bagian,
         status_hapus=status_hapus,
+        viewer=current_user,
         skip=skip,
         limit=limit,
     )
@@ -105,15 +109,24 @@ async def create_arsip(
     Create a new archive document. Automatically sets uploader if needed.
     """
     # Override id_pegawai to authenticated user if not set or non-admin
-    if not is_admin(current_user) or arsip_in.id_pegawai == 0:
-        arsip_in.id_pegawai = current_user.id_pegawai
+    arsip_in.id_pegawai = current_user.id_pegawai
 
+    if arsip_in.file_path:
+        from app.models.schema import FileRecord
+        try:
+            file_id = int(arsip_in.file_path)
+        except ValueError:
+            raise HTTPException(422, 'file_path harus berupa ID berkas upload')
+        record = await db.get(FileRecord, file_id)
+        if not record or record.uploaded_by != current_user.id_pegawai:
+            raise HTTPException(403, 'Berkas bukan milik pengguna')
     created_obj = await arsip.create(db, obj_in=arsip_in)
     return await arsip.get_by_id(db, created_obj.id_dokumen)
 
 @router.get("/{id_dokumen}", response_model=DokumenArsipResponse)
 async def read_arsip_by_id(
     *,
+    current_user: Pegawai = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     id_dokumen: int,
 ) -> Any:
@@ -123,6 +136,8 @@ async def read_arsip_by_id(
     db_obj = await arsip.get_by_id(db, id_dokumen=id_dokumen)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Dokumen arsip tidak ditemukan")
+    if db_obj.hak_akses not in ('internal', 'publik') and not is_admin(current_user) and db_obj.id_pegawai != current_user.id_pegawai and not (db_obj.hak_akses == 'terbatas' and current_user.id_bagian is not None and db_obj.pegawai and db_obj.pegawai.id_bagian == current_user.id_bagian):
+        raise HTTPException(403, 'Dokumen terbatas')
     return db_obj
 
 @router.put("/{id_dokumen}", response_model=DokumenArsipResponse)
@@ -147,6 +162,8 @@ async def update_arsip(
             detail="Akses ditolak: Anda tidak memiliki izin untuk mengedit dokumen ini",
         )
 
+    if any(k in arsip_in.model_fields_set for k in ['id_pegawai', 'status_hapus', 'file_path']):
+        raise HTTPException(422, 'Pemilik, berkas dan status sampah harus dikelola melalui tindakan khusus')
     await arsip.update(db, db_obj=db_obj, obj_in=arsip_in)
     return await arsip.get_by_id(db, id_dokumen=id_dokumen)
 
@@ -175,7 +192,7 @@ async def delete_arsip(
             current_user.id_bagian is not None
             and db_obj.pegawai
             and db_obj.pegawai.id_bagian == current_user.id_bagian
-            and db_obj.hak_akses != "terbatas"
+            and db_obj.hak_akses in ("internal", "publik")
         )
         if not (is_owner or is_same_section):
             raise HTTPException(
@@ -238,4 +255,4 @@ async def permanent_delete_arsip(
     if not db_obj:
         raise HTTPException(status_code=404, detail="Dokumen arsip tidak ditemukan")
 
-    return await arsip.permanent_delete(db, id_dokumen=id_dokumen)
+    raise HTTPException(409, 'Pemusnahan arsip diblokir: memerlukan penilaian JRA, pemeriksaan perkara/larangan, dan proses persetujuan yang terdokumentasi')
