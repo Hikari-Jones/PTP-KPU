@@ -68,7 +68,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
 
     setUsers((prev) => [...prev, newUser])
     setSuccessToast(`User ${newUser.name} berhasil didaftarkan ke sistem.`)
-    setTimeout(() => setSuccessToast(null), 4000)
+    setTimeout(() => setSuccessToast(null), 6000)
 
     // Reset & Close
     setName("")

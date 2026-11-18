@@ -212,7 +212,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
         alasan_revisi: formAlasanRevisi.trim(),
       })
       setSuccessMessage("Revisi anggaran berhasil dieksekusi dan tercatat di audit trail!")
-      setTimeout(() => setSuccessMessage(null), 4000)
+      setTimeout(() => setSuccessMessage(null), 6000)
       closeModal()
       // Refresh pagu and history from backend
       await fetchData()

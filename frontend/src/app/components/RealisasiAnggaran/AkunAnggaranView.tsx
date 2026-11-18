@@ -204,7 +204,7 @@ export function AkunAnggaranView({ theme }: Props) {
         await akunAnggaranApi.create(payload)
         setSuccessMessage(`Akun anggaran ${formKode} berhasil dibuat! Pagu untuk tahun aktif dibuat otomatis oleh backend.`)
       }
-      setTimeout(() => setSuccessMessage(null), 4000)
+      setTimeout(() => setSuccessMessage(null), 6000)
       setIsModalOpen(false)
       setSelectedItem(null)
       await fetchAkunAnggaran()
@@ -221,7 +221,7 @@ export function AkunAnggaranView({ theme }: Props) {
       try {
         await akunAnggaranApi.delete(item.id_akun_anggaran)
         setSuccessMessage(`Akun ${item.kode_akun} berhasil dihapus.`)
-        setTimeout(() => setSuccessMessage(null), 4000)
+        setTimeout(() => setSuccessMessage(null), 6000)
         await fetchAkunAnggaran()
       } catch (e: any) {
         setError(e.message || "Gagal menghapus akun anggaran")

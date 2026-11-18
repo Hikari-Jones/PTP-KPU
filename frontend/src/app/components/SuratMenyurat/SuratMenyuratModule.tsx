@@ -66,7 +66,7 @@ export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyur
 
   const showToast = (msg: string) => {
     setToastMessage(msg)
-    setTimeout(() => setToastMessage(null), 4000)
+    setTimeout(() => setToastMessage(null), 6000)
   }
 
   // Handle Input Surat Masuk Submit

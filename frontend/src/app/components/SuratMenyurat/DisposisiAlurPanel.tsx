@@ -217,8 +217,8 @@ export function DisposisiAlurPanel({ theme, surat, readOnly = false, onSaveDispo
 
             <div className="flex items-center justify-between pt-2">
               {surat.disposisi && (
-                <div className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" />
+                <div className={`text-[11px] font-mono flex items-center gap-1 ${isDark ? "text-red-500" : "text-red-800"}`}>
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>
                     Didisposisikan oleh {surat.disposisi.disposisiOleh} ({surat.disposisi.tanggalDisposisi})
                   </span>
@@ -277,7 +277,11 @@ export function DisposisiAlurPanel({ theme, surat, readOnly = false, onSaveDispo
               onClick={() =>
                 onUpdateStatus(surat.id, "dalam_proses", "Unit pelaksana memulai tindak lanjut penyusunan tanggapan.")
               }
-              className="btn-kpu-red px-3.5 py-2 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+              className={`px-3.5 py-2 text-xs font-bold rounded-xl cursor-pointer transition-all border shadow-sm active:scale-95 ${
+                isDark
+                  ? "bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700/60"
+                  : "bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300"
+              }`}
             >
               Set Status: Dalam Proses
             </button>
@@ -285,7 +289,7 @@ export function DisposisiAlurPanel({ theme, surat, readOnly = false, onSaveDispo
               onClick={() =>
                 onUpdateStatus(surat.id, "selesai_disposisi", "Instruksi disposisi pimpinan telah selesai ditindaklanjuti secara penuh.")
               }
-              className="px-3 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-950 hover:bg-slate-800 text-xs font-semibold rounded-xl cursor-pointer transition-all"
+              className="btn-kpu-red px-3.5 py-2 text-white text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
             >
               Set Status: Selesai Disposisi
             </button>

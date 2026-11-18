@@ -59,7 +59,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   }, [isSuratActive])
 
   const realisasiSubmenus = [
-    { id: "realization-summary", label: "Overview" },
+    { id: "realization-summary", label: "Dashboard" },
     { id: "realization-ta", label: "Tahun Anggaran" },
     { id: "realization-satker", label: "Satker" },
     { id: "realization-akun", label: "Akun Anggaran" },
@@ -69,7 +69,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   ]
 
   const suratSubmenus = [
-    { id: "surat-summary", label: "Overview" },
+    { id: "surat-summary", label: "Dashboard" },
     { id: "surat-keluar", label: "Surat Keluar" },
     { id: "surat-tugas", label: "Surat Tugas" },
     { id: "surat-klasifikasi", label: "Kode Klasifikasi" },

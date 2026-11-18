@@ -7,9 +7,8 @@ export function ReadOnlyBanner({ theme, modul, pengelola }: { theme: "light" | "
   return (
     <div
       role="status"
-      className={`flex items-start gap-3 p-3.5 rounded-xl border text-xs ${
-        isDark ? "bg-amber-950/30 border-amber-500/30 text-amber-200" : "bg-amber-50 border-amber-200 text-amber-900"
-      }`}
+      className={`flex items-start gap-3 p-3.5 rounded-xl border text-xs ${isDark ? "bg-amber-950/30 border-amber-500/30 text-amber-200" : "bg-amber-50 border-amber-200 text-amber-900"
+        }`}
     >
       <Eye className="w-4 h-4 mt-0.5 shrink-0" />
       <span className="leading-relaxed">
@@ -29,11 +28,10 @@ export function ReadOnlyFieldset({ readOnly, children, className = "" }: { readO
     <fieldset
       disabled={readOnly}
       aria-disabled={readOnly}
-      className={`min-w-0 border-0 p-0 m-0 ${
-        readOnly
+      className={`min-w-0 border-0 p-0 m-0 ${readOnly
           ? "[&_button:disabled]:opacity-50 [&_button:disabled]:cursor-not-allowed [&_button:disabled]:active:scale-100 [&_input:disabled]:cursor-not-allowed [&_select:disabled]:cursor-not-allowed [&_textarea:disabled]:cursor-not-allowed"
           : ""
-      } ${className}`}
+        } ${className}`}
     >
       {children}
     </fieldset>

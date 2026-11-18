@@ -27,7 +27,7 @@ import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
 import { ReadOnlyBanner } from "./app/components/ui/read-only"
 
 function MainLayout() {
-  const { isAuthenticated, canEdit } = useAuth()
+  const { isAuthenticated, userRole, canEdit } = useAuth()
 
   // Theme state: default is "light"
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -37,6 +37,19 @@ function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState("dashboard")
+
+  // Reset activeMenu ke "dashboard" jika user logout atau berganti akun yang bukan Admin
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setActiveMenu("dashboard")
+      return
+    }
+    // Khusus menu admin murni yang tidak boleh diakses non-admin (bug_report boleh diakses oleh Pegawai lewat 'Laporkan Bug')
+    const strictlyAdminMenus = ["admin_dashboard", "kelola_user", "arsip_admin"]
+    if (userRole !== "Admin" && strictlyAdminMenus.includes(activeMenu)) {
+      setActiveMenu("dashboard")
+    }
+  }, [isAuthenticated, userRole, activeMenu])
 
   useEffect(() => {
     if (!mobileMenuOpen) return

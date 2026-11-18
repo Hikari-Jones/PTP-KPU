@@ -199,7 +199,7 @@ export function TahunAnggaranView({ theme }: Props) {
         await tahunAnggaranApi.create(payload)
         setSuccessMessage(`Tahun Anggaran ${formTahun} berhasil dibuat!`)
       }
-      setTimeout(() => setSuccessMessage(null), 4000)
+      setTimeout(() => setSuccessMessage(null), 6000)
       setIsModalOpen(false)
       setSelectedItem(null)
       await fetchTahunAnggaran()
@@ -220,7 +220,7 @@ export function TahunAnggaranView({ theme }: Props) {
       try {
         await tahunAnggaranApi.delete(item.id_tahun_anggaran)
         setSuccessMessage(`Tahun Anggaran ${item.tahun} berhasil dihapus.`)
-        setTimeout(() => setSuccessMessage(null), 4000)
+        setTimeout(() => setSuccessMessage(null), 6000)
         await fetchTahunAnggaran()
       } catch (e: any) {
         setError(e.message || "Gagal menghapus tahun anggaran")

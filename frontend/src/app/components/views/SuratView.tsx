@@ -358,7 +358,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
 
   const showToast = (msg: string) => {
     setNotification(msg)
-    setTimeout(() => setNotification(null), 4500)
+    setTimeout(() => setNotification(null), 6000)
   }
 
   const handleCreateDraft = async (e: React.FormEvent) => {
@@ -414,7 +414,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   ]
 
   const pageTitle = {
-    overview: "Overview",
+    overview: "Dashboard Persuratan",
     "surat-keluar": "Surat Keluar",
     "surat-tugas": "Surat Tugas",
     klasifikasi: "Kode Klasifikasi",

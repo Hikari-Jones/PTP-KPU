@@ -270,15 +270,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem("ptp_kpu_user")
+    const saved = sessionStorage.getItem("ptp_kpu_user")
     if (!saved) return null
-    const profile = JSON.parse(saved) as UserProfile
-    return {
-      ...profile,
-      role: (profile.role as string) === "Admin" ? "Admin" : "Pegawai",
-      subbagian: profile.subbagian?.startsWith("PERDATIN")
-        ? profile.subbagian.replace("PERDATIN", "RENDATIN")
-        : profile.subbagian,
+    try {
+      const profile = JSON.parse(saved) as UserProfile
+      return {
+        ...profile,
+        role: (profile.role as string) === "Admin" ? "Admin" : "Pegawai",
+        subbagian: profile.subbagian?.startsWith("PERDATIN")
+          ? profile.subbagian.replace("PERDATIN", "RENDATIN")
+          : profile.subbagian,
+      }
+    } catch {
+      return null
     }
   })
 
@@ -287,10 +291,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canEdit = (module: ModuleKey) => canEditModule(currentUser, module)
 
   useEffect(() => {
+    // Bersihkan sisa login lama di localStorage jika ada
+    localStorage.removeItem("ptp_kpu_user")
+
     if (currentUser) {
-      localStorage.setItem("ptp_kpu_user", JSON.stringify(currentUser))
+      sessionStorage.setItem("ptp_kpu_user", JSON.stringify(currentUser))
     } else {
-      localStorage.removeItem("ptp_kpu_user")
+      sessionStorage.removeItem("ptp_kpu_user")
     }
   }, [currentUser])
 
@@ -330,6 +337,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setCurrentUser(null)
+    sessionStorage.removeItem("ptp_kpu_user")
     localStorage.removeItem("ptp_kpu_user")
   }
 

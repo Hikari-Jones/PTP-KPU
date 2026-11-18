@@ -74,7 +74,7 @@ export function BugReportView({ theme }: { theme: "light" | "dark" }) {
 
     setReports((prev) => [newBug, ...prev])
     setToast(`Kendala ${newBug.id} berhasil dilaporkan ke tim IT KPU Sulut.`)
-    setTimeout(() => setToast(null), 4000)
+    setTimeout(() => setToast(null), 6000)
 
     setTitle("")
     setReportedBy("")

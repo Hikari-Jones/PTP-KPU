@@ -1,4 +1,4 @@
-﻿import { useState } from "react"
+import { useState } from "react"
 import { Download, ShieldCheck, HardDrive, RefreshCw, CheckCircle2, Clock } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 
@@ -30,7 +30,7 @@ export function ArsipAdminView({ theme }: { theme: "light" | "dark" }) {
       setBackups((prev) => [newBackup, ...prev])
       setIsBackingUp(false)
       setToast(`Backup database ${newBackup.id} berhasil dibuat dan disimpan di direktori arsip aman.`)
-      setTimeout(() => setToast(null), 5000)
+      setTimeout(() => setToast(null), 6000)
     }, 1200)
   }
 
