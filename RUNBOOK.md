@@ -17,14 +17,7 @@ The older simulated TTE panels are no longer mounted by this workflow screen.
 
 Browser-only demo records are not automatically imported: they lack trustworthy
 ownership and may contain expired blob URLs. Re-upload genuine documents and
-register genuine records using the connected screens.
-
-## Existing installation
-
-1. Stop application traffic and take an independent database/files backup first.
-2. Set a unique SECRET_KEY (32+ characters) in `backend/.env`; do not change it on
-   every restart. Keep the configured DATABASE_URL for the existing database.
-3. Install dependencies and add the new schema:
+register genuine records using the connected screens
 
 ```bash
 cd backend
@@ -159,7 +152,6 @@ reversible and must never be treated as lawful archive destruction.
 Docker execution was blocked by socket permissions in this environment. Full build
 and integration tests remain pending; do not interpret unit-test success as release
 approval.
-
 
 ## Budget review update — 16 November 2026
 
