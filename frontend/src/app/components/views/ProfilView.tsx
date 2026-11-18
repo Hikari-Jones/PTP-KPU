@@ -42,7 +42,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
             <div className="flex-1 flex flex-col justify-center space-y-2 text-center sm:text-left min-w-0">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
                 <h2 className={`text-xl font-extrabold truncate ${isDark ? "text-white" : "text-black"}`}>
-                  {currentUser?.name || "Ahmad Kurniawan"}
+                  {currentUser?.name || "-"}
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wider bg-red-600 text-white shadow-xs flex items-center gap-1">
                   <Shield className="w-3 h-3" />
@@ -55,7 +55,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
               </div>
 
               <p className={`text-xs font-mono font-bold tracking-wide ${isDark ? "text-red-400" : "text-red-600"}`}>
-                NIP. {currentUser?.nip || "199208052021011002"}
+                NIP. {currentUser?.nip || "-"}
               </p>
 
               <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-x-6 gap-y-2 text-xs">
@@ -63,7 +63,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                   <div className="w-6 h-6 rounded-md bg-red-600/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
                     <IdCard className="w-3.5 h-3.5" />
                   </div>
-                  <span>{currentUser?.jabatan || "Staf Bidang Teknis Penyelenggaraan"}</span>
+                  <span>{currentUser?.jabatan || "-"}</span>
                 </div>
                 <div className={`flex items-center gap-2 font-semibold ${isDark ? "text-gray-200" : "text-slate-800"}`}>
                   <div className="w-6 h-6 rounded-md bg-red-600/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
@@ -75,7 +75,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                   <div className="w-6 h-6 rounded-md bg-red-600/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
                     <Award className="w-3.5 h-3.5" />
                   </div>
-                  <span>{currentUser?.subbagian || "Teknis Penyelenggaraan Pemilu"}</span>
+                  <span>{currentUser?.subbagian || "-"}</span>
                 </div>
               </div>
             </div>

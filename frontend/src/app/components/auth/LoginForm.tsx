@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ChangeEvent } from "react"
 import {
-  ArrowRight, AlertCircle, Archive, ChevronDown, Eye, EyeOff, FileText,
+  ArrowRight, AlertCircle, Archive, Eye, EyeOff, FileText,
   IdCard, LoaderCircle, LockKeyhole, MapPin, Moon, ShieldCheck, Sun, Wallet,
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
@@ -47,12 +47,6 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
 
   const handleNipChange = (event: ChangeEvent<HTMLInputElement>) => {
     setNip(event.target.value.replace(/\D/g, "").slice(0, 18))
-    setErrorMessage(null)
-  }
-
-  const handleSelectDemo = (demoNip: string, demoPassword: string) => {
-    setNip(demoNip)
-    setPassword(demoPassword)
     setErrorMessage(null)
   }
 
@@ -162,15 +156,6 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
             <ShieldCheck size={19} strokeWidth={1.7} aria-hidden="true" />
             <p>Akses khusus pegawai terdaftar.<br /><span>Jaga kerahasiaan akun dan kata sandi Anda.</span></p>
           </div>
-          <details className="login-demo">
-            <summary>Akun uji coba <ChevronDown size={15} aria-hidden="true" /></summary>
-            <div className="login-demo-options">
-              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("198507182020031001", "admin123")}>Isi akun Admin</button>
-              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("199208052021011002", "123456")}>Isi akun Pegawai Teknis</button>
-              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("199003122019032001", "123456")}>Isi akun Pegawai Keuangan</button>
-              <button type="button" disabled={isLoading} onClick={() => handleSelectDemo("198811232015031003", "123456")}>Isi akun Pegawai UMLOG</button>
-            </div>
-          </details>
         </section>
       </main>
       <footer className="login-footer">
