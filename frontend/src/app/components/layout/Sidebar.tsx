@@ -59,7 +59,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   }, [isSuratActive])
 
   const realisasiSubmenus = [
-    { id: "realization-summary", label: "Overview" },
+    { id: "realization-summary", label: "Dashboard" },
     { id: "realization-ta", label: "Tahun Anggaran" },
     { id: "realization-satker", label: "Satker" },
     { id: "realization-akun", label: "Akun Anggaran" },
@@ -69,7 +69,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   ]
 
   const suratSubmenus = [
-    { id: "surat-summary", label: "Overview" },
+    { id: "surat-summary", label: "Dashboard" },
     { id: "surat-keluar", label: "Surat Keluar" },
     { id: "surat-tugas", label: "Surat Tugas" },
     { id: "surat-klasifikasi", label: "Kode Klasifikasi" },
@@ -79,7 +79,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   const adminMenu = [
     { id: "admin_dashboard", label: "Dashboard Admin", icon: LayoutGrid },
     { id: "kelola_user", label: "Kelola User", icon: Users },
-    { id: "bug_report", label: "Bug Report", icon: Bug },
+    { id: "bug_report", label: "Laporan Bug", icon: Bug },
   ]
 
   const isDark = theme === "dark"
@@ -298,21 +298,6 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                 {!collapsed && <span className="truncate">Arsip Data</span>}
               </button>
 
-              {/* Pengaturan */}
-              <button
-                onClick={() => onSelectMenu("pengaturan")}
-                title={collapsed ? "Pengaturan" : undefined}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "pengaturan"
-                    ? "bg-red-600 text-white"
-                    : isDark
-                      ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                  } ${collapsed ? "justify-center px-0" : ""}`}
-              >
-                <Settings className="w-4 h-4 shrink-0" />
-                {!collapsed && <span className="truncate">Pengaturan</span>}
-              </button>
-
               {/* FAQ */}
               <button
                 onClick={() => onSelectMenu("faq")}
@@ -409,10 +394,9 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
               : "bg-slate-50 border-slate-200 hover:border-red-300 hover:bg-red-50/50"
             }`}
         >
-          <Avatar className="w-8 h-8 shrink-0 border border-red-500/40">
-            <AvatarImage src="" alt={currentUser?.name || "User"} />
-            <AvatarFallback className="bg-red-600 text-white font-bold text-xs">{initials}</AvatarFallback>
-          </Avatar>
+          <div className="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs border border-red-500/40">
+            <User className="w-4 h-4" />
+          </div>
           {!collapsed && (
             <div className="flex-1 overflow-hidden text-left">
               <p className={`text-xs font-semibold truncate ${isDark ? "text-gray-100" : "text-slate-800"}`}>

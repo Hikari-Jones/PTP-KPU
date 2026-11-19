@@ -199,7 +199,7 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
-            Laporan Anggaran
+            Realisasi Anggaran
           </p>
           <h1 className={`m-0 text-xl font-bold tracking-tight ${isDark ? "text-white" : "text-black"}`}>
             Laporan Realisasi Bulanan (12 Bulan)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Menu } from "lucide-react"
+import { Menu, Sun, Moon } from "lucide-react"
 import { AuthProvider, useAuth } from "./app/context/AuthContext"
 import { LoginForm } from "./app/components/auth/LoginForm"
 import { Sidebar } from "./app/components/layout/Sidebar"
@@ -142,7 +142,24 @@ function MainLayout() {
       </div>
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        {/* Tombol Switch Mode Gelap / Terang di Pojok Kanan Atas */}
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+          <button
+            type="button"
+            onClick={() => toggleTheme()}
+            aria-label={isDark ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
+            title={isDark ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
+            className={`p-2 sm:p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs active:scale-95 ${
+              isDark
+                ? "bg-[#1e293b]/80 border-white/10 text-amber-400 hover:bg-[#1e293b] hover:text-amber-300 shadow-black/30"
+                : "bg-white/80 border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 shadow-slate-200/50"
+            }`}
+          >
+            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+        </div>
+
         {/* Dynamic Content Area */}
         <main id="main-content" className="app-content flex-1 overflow-y-auto px-4 pt-8 pb-6 sm:px-6 sm:pt-10 xl:px-8 xl:pt-12">
           <div className="max-w-[1440px] mx-auto min-w-0">

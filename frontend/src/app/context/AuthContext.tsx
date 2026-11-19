@@ -41,13 +41,33 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null)
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem("ptp_kpu_user")
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+
   useEffect(() => {
     if (localStorage.getItem("ptp_kpu_token")) {
-      authApi.getMe().then(user => setCurrentUser(user as UserProfile)).catch(() => {
+      authApi.getMe().then(user => {
+        const profile = user as UserProfile
+        setCurrentUser(profile)
+        try {
+          localStorage.setItem("ptp_kpu_user", JSON.stringify(profile))
+        } catch {
+          // quota
+        }
+      }).catch(() => {
         localStorage.removeItem("ptp_kpu_token")
+        localStorage.removeItem("ptp_kpu_user")
         setCurrentUser(null)
       })
+    } else {
+      localStorage.removeItem("ptp_kpu_user")
+      setCurrentUser(null)
     }
   }, [])
 
@@ -59,7 +79,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await authApi.login({ nip: nip.trim(), password: pass })
       localStorage.setItem("ptp_kpu_token", result.access_token)
-      setCurrentUser(result.user as UserProfile)
+      const userProfile = result.user as UserProfile
+      localStorage.setItem("ptp_kpu_user", JSON.stringify(userProfile))
+      setCurrentUser(userProfile)
       return { success: true }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Login gagal" }
@@ -72,7 +94,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem("ptp_kpu_user")
       localStorage.removeItem("ptp_kpu_token")
     }).catch(() => {
-      window.alert("Logout server gagal. Coba lagi agar sesi benar-benar dicabut.")
+      setCurrentUser(null)
+      localStorage.removeItem("ptp_kpu_user")
+      localStorage.removeItem("ptp_kpu_token")
     })
   }
 

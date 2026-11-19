@@ -414,7 +414,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   ]
 
   const pageTitle = {
-    overview: "Overview",
+    overview: "Dashboard Persuratan",
     "surat-keluar": "Surat Keluar",
     "surat-tugas": "Surat Tugas",
     klasifikasi: "Kode Klasifikasi",

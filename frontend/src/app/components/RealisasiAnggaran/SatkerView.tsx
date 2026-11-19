@@ -26,8 +26,37 @@ export function SatkerView({ theme, onNavigate }: Props) {
     return () => { active = false }
   }, [])
 
-  if (loading) return <p role="status">Memuat data Satker…</p>
-  if (error) return <div className="p-6"><h1>Data Satuan Kerja</h1><p role="alert">{error}</p></div>
+  if (loading) return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div>
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
+          Realisasi Anggaran
+        </p>
+        <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
+          Data Satuan Kerja
+        </h1>
+        <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+          Memuat data Satker…
+        </p>
+      </div>
+    </div>
+  )
+
+  if (error) return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div>
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
+          Realisasi Anggaran
+        </p>
+        <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
+          Data Satuan Kerja
+        </h1>
+        <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`} role="alert">
+          {error}
+        </p>
+      </div>
+    </div>
+  )
 
   const filteredSatkers = satkers.filter((s) => {
     const matchesSearch =

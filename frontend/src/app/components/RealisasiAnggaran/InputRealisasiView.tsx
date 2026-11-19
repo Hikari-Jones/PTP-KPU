@@ -207,15 +207,15 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6 animate-in fade-in duration-200">
       <div>
         <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
           Realisasi Anggaran
         </p>
         <h1 className={`m-0 text-xl font-bold tracking-tight ${isDark ? "text-white" : "text-black"}`}>
-          Input Transaksi Realisasi Anggaran
+          Input Transaksi
         </h1>
-        <p className="mt-1 text-xs font-semibold text-red-600 dark:text-red-400">
+        <p className={`mt-1 text-xs font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
           Draft → Pengajuan → Pemeriksaan terpisah • TA {activeTahun?.tahun ?? "Aktif"}
         </p>
       </div>
@@ -226,7 +226,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
           isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white border-slate-200"
         } backdrop-blur-md`}
       >
-        <CardContent className="p-6 space-y-5 text-xs">
+        <CardContent className="p-6 sm:p-7 space-y-6 text-xs">
           {message && (
             <div
               className={`p-3.5 rounded-xl border flex items-center gap-2 text-xs font-semibold ${
@@ -244,9 +244,12 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Baris 1: Tanggal Transaksi & Nomor Dokumen */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
-              <label className="font-semibold block">Tanggal Transaksi</label>
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Tanggal Transaksi <span className="text-red-500">*</span>
+              </label>
               <Input
                 type="date"
                 value={tanggal}
@@ -256,9 +259,12 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="font-semibold block">Nomor Dokumen / SPD</label>
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Nomor Dokumen / SPD <span className="text-red-500">*</span>
+              </label>
               <Input
                 type="text"
+                placeholder="Contoh: 001/SPD/KPU-SULUT/XI/2026"
                 value={nomorDokumen}
                 onChange={(e) => setNomorDokumen(e.target.value)}
                 disabled={isSubmitting}
@@ -267,31 +273,49 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="font-semibold block">Pilih Alokasi Pagu Anggaran</label>
-            {loading ? (
-              <div className="p-2 text-xs text-slate-500 flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                <span>Memuat daftar pagu aktif...</span>
-              </div>
-            ) : paguList.length === 0 ? (
-              <div className="p-2.5 text-xs text-red-500 font-semibold border rounded-xl border-red-500/20">
-                Tidak ada pagu aktif ditemukan. Pastikan Tahun Anggaran aktif telah memiliki alokasi Pagu.
-              </div>
-            ) : (
-              <select
-                value={selectedPaguId ?? ""}
-                onChange={(e) => setSelectedPaguId(Number(e.target.value))}
+          {/* Baris 2: Alokasi Pagu Anggaran & Periode Anggaran */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Pilih Alokasi Pagu Anggaran <span className="text-red-500">*</span>
+              </label>
+              {loading ? (
+                <div className="p-2.5 text-xs text-slate-500 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                  <span>Memuat daftar pagu aktif...</span>
+                </div>
+              ) : paguList.length === 0 ? (
+                <div className="p-2.5 text-xs text-red-500 font-semibold border rounded-xl border-red-500/20 bg-red-500/5">
+                  Tidak ada pagu aktif ditemukan. Pastikan Tahun Anggaran aktif telah memiliki alokasi Pagu.
+                </div>
+              ) : (
+                <select
+                  value={selectedPaguId ?? ""}
+                  onChange={(e) => setSelectedPaguId(Number(e.target.value))}
+                  disabled={isSubmitting}
+                  className={`${inputClass} font-mono cursor-pointer`}
+                >
+                  {paguList.map((p) => (
+                    <option key={p.id_pagu} value={p.id_pagu}>
+                      {p.kode_akun} - {p.nama_akun} ({p.nama_bagian || "Umum"}) — Sisa: {formatRupiah(Number(p.sisa_anggaran) || 0)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Periode Anggaran <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                value={periode}
+                onChange={(e) => setPeriode(e.target.value)}
                 disabled={isSubmitting}
-                className={`${inputClass} font-mono cursor-pointer`}
-              >
-                {paguList.map((p) => (
-                  <option key={p.id_pagu} value={p.id_pagu}>
-                    {p.kode_akun} - {p.nama_akun} ({p.nama_bagian || "Umum"}) — Sisa: {formatRupiah(Number(p.sisa_anggaran) || 0)}
-                  </option>
-                ))}
-              </select>
-            )}
+                className={inputClass}
+              />
+            </div>
           </div>
 
           {selectedPagu && (
@@ -299,7 +323,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               isDark ? "bg-[#11192b] border-red-600/30" : "bg-red-50/50 border-red-200"
             }`}>
               <div>
-                <p className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400">Informasi Pagu</p>
+                <p className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400">Informasi Pagu Terpilih</p>
                 <p className="font-bold text-sm my-0.5">{selectedPagu.nama_akun}</p>
                 <span className="text-[11px] text-slate-400">Bagian: {selectedPagu.nama_bagian || "Umum"}</span>
               </div>
@@ -312,52 +336,51 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label className="font-semibold block">Periode Anggaran</label>
-            <Input
-              type="text"
-              value={periode}
-              onChange={(e) => setPeriode(e.target.value)}
-              disabled={isSubmitting}
-              className={inputClass}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="font-semibold block">Uraian Transaksi Belanja</label>
-            <Input
-              type="text"
-              placeholder="Contoh: Belanja Operasional Rapat Evaluasi Anggaran"
-              value={uraian}
-              onChange={(e) => setUraian(e.target.value)}
-              disabled={isSubmitting}
-              className={inputClass}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="font-semibold block">Nominal Realisasi (Rp)</label>
-              {isOverBudget && (
-                <span className="text-[10px] font-bold text-red-600 dark:text-red-400 animate-pulse">
-                  Nominal melebihi sisa anggaran!
-                </span>
-              )}
+          {/* Baris 3: Uraian Transaksi Belanja & Nominal Realisasi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Uraian Transaksi Belanja <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                placeholder="Contoh: Belanja Operasional Rapat Evaluasi Anggaran"
+                value={uraian}
+                onChange={(e) => setUraian(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
+              />
             </div>
-            <Input
-              type="number"
-              placeholder="0"
-              value={jumlah}
-              onChange={(e) => setJumlah(e.target.value)}
-              disabled={isSubmitting}
-              className={`${inputClass} font-mono ${isOverBudget ? "border-red-500 text-red-500" : ""}`}
-            />
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Nominal Realisasi (Rp) <span className="text-red-500">*</span>
+                </label>
+                {isOverBudget && (
+                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400 animate-pulse">
+                    Nominal melebihi sisa anggaran!
+                  </span>
+                )}
+              </div>
+              <Input
+                type="number"
+                placeholder="0"
+                value={jumlah}
+                onChange={(e) => setJumlah(e.target.value)}
+                disabled={isSubmitting}
+                className={`${inputClass} font-mono ${isOverBudget ? "border-red-500 text-red-500" : ""}`}
+              />
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="font-semibold block">Lampiran Bukti Transaksi (Kuitansi / SPJ / Nota)</label>
+          {/* Baris 4: Lampiran Bukti Transaksi */}
+          <div className="space-y-1.5 pt-1">
+            <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+              Lampiran Bukti Transaksi (Kuitansi / SPJ / Nota)
+            </label>
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <input
                   type="file"
                   id="input-bukti-file"
@@ -368,7 +391,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
                 />
                 <label
                   htmlFor="input-bukti-file"
-                  className={`px-3 py-2 rounded-xl border flex items-center gap-2 font-semibold text-xs cursor-pointer transition-colors ${
+                  className={`px-3.5 py-2 rounded-xl border flex items-center gap-2 font-bold text-xs cursor-pointer transition-all active:scale-95 shadow-2xs ${
                     isDark
                       ? "bg-[#0f172a] border-white/10 hover:bg-slate-800 text-slate-200"
                       : "bg-slate-50 border-slate-300 hover:bg-slate-100 text-slate-700"
@@ -403,7 +426,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
                     </button>
                   </div>
                 ) : (
-                  <span className="text-[11px] text-slate-500">
+                  <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                     PDF, DOCX, XLSX, JPG, PNG (Maks. 25 MB)
                   </span>
                 )}
@@ -418,12 +441,13 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
             </div>
           </div>
 
-          <div className="pt-2 flex justify-end">
+          {/* Baris Tombol Aksi */}
+          <div className="pt-4 border-t border-slate-200/60 dark:border-white/10 flex justify-end">
             <Button
               type="button"
               disabled={readOnly || isSubmitting || isOverBudget || !selectedPaguId}
               onClick={handleSimpanDraft}
-              className="btn-kpu-red px-6 py-2.5 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+              className="btn-kpu-red px-6 py-2.5 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md"
             >
               {isSubmitting ? (
                 <>
