@@ -1,4 +1,4 @@
-import { Building, Award, IdCard, Mail, Shield, Phone, Calendar, User } from "lucide-react"
+import { Building, Award, IdCard, Mail, Shield, Calendar, User } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 
 export function ProfilView({ theme }: { theme: "light" | "dark" }) {
@@ -149,12 +149,12 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
           </div>
         </div>
 
-        {/* Card Dalam 3: Kontak & Sistem Operasional (3 Kolom Simetris) */}
+        {/* Card Dalam 3: Informasi Sistem Kedinasan (2 Kolom Simetris) */}
         <div>
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2 px-1">
-            Kontak & Informasi Sistem
+            Informasi Sistem Kedinasan
           </span>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {/* Box Email Kedinasan */}
             <div
               className={`p-4 rounded-xl border flex items-center gap-3.5 transition-all ${
@@ -172,27 +172,6 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                 </span>
                 <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
                   {currentUser?.email || `${(currentUser?.nip || "pegawai").toLowerCase()}@kpu.go.id`}
-                </span>
-              </div>
-            </div>
-
-            {/* Box Kontak Kantor */}
-            <div
-              className={`p-4 rounded-xl border flex items-center gap-3.5 transition-all ${
-                isDark
-                  ? "bg-[#111827]/70 border-white/10 shadow-xs"
-                  : "bg-slate-50 border-slate-200 shadow-2xs"
-              }`}
-            >
-              <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                <Phone className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">
-                  Kontak
-                </span>
-                <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
-                  +62 811-432-8890
                 </span>
               </div>
             </div>

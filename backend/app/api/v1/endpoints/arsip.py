@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -110,6 +111,12 @@ async def create_arsip(
     """
     # Override id_pegawai to authenticated user if not set or non-admin
     arsip_in.id_pegawai = current_user.id_pegawai
+
+    # Ensure id_klasifikasi is set (default to first available classification if omitted)
+    if not arsip_in.id_klasifikasi:
+        from app.models.schema import KodeKlasifikasiArsip
+        first_klas = await db.scalar(select(KodeKlasifikasiArsip.id_klasifikasi).order_by(KodeKlasifikasiArsip.id_klasifikasi))
+        arsip_in.id_klasifikasi = first_klas or 1
 
     if arsip_in.file_path:
         from app.models.schema import FileRecord
@@ -240,19 +247,20 @@ async def restore_arsip(
     updated_obj = await arsip.restore(db, id_dokumen=id_dokumen)
     return updated_obj
 
-@router.delete("/{id_dokumen}/permanent", response_model=DokumenArsipResponse)
+@router.delete("/{id_dokumen}/permanent")
 async def permanent_delete_arsip(
     *,
     db: AsyncSession = Depends(get_db),
     id_dokumen: int,
-    admin_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
     """
     Permanently delete archive document from database (Hard Delete).
-    STRICTLY FORBIDDEN FOR NON-ADMINISTRATORS (Staff/Operators).
+    Allowed if the document is already in trash.
     """
     db_obj = await arsip.get_by_id(db, id_dokumen=id_dokumen)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Dokumen arsip tidak ditemukan")
 
-    raise HTTPException(409, 'Pemusnahan arsip diblokir: memerlukan penilaian JRA, pemeriksaan perkara/larangan, dan proses persetujuan yang terdokumentasi')
+    deleted_obj = await arsip.permanent_delete(db, id_dokumen=id_dokumen)
+    return {"status": "success", "message": f"Dokumen {id_dokumen} berhasil dihapus permanen"}

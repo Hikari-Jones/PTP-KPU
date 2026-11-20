@@ -597,7 +597,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
                   } backdrop-blur-md shadow-lg rounded-2xl h-full flex flex-col justify-between`}
               >
-                <CardHeader className="p-5 pb-4 border-b border-slate-200 dark:border-slate-800 flex flex-row items-center justify-between">
+                <CardHeader className="p-5 pb-5 border-b border-slate-200 dark:border-white/15 flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <FileText className="w-5 h-5 text-red-600" />
                     <div>
@@ -624,7 +624,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                   </button>
                 </CardHeader>
 
-                <CardContent className="p-5 flex-1">
+                <CardContent className="p-5 pt-6 flex-1">
                   <div className="space-y-2.5">
                     {recentSuratOverview.map((item) => (
                       <div
@@ -672,7 +672,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
                   } backdrop-blur-md shadow-lg rounded-2xl h-full flex flex-col justify-between`}
               >
-                <CardHeader className="p-5 pb-4 border-b border-slate-200 dark:border-slate-800 flex flex-row items-center justify-between">
+                <CardHeader className="p-5 pb-5 border-b border-slate-200 dark:border-white/15 flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <PieChart className="w-5 h-5 text-red-600" />
                     <div>
@@ -689,7 +689,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                   </span>
                 </CardHeader>
 
-                <CardContent className="p-5 space-y-2.5 flex-1 flex flex-col">
+                <CardContent className="p-5 pt-6 space-y-2.5 flex-1 flex flex-col">
                   {categoryDistribution.map((cat, idx) => (
                     <div
                       key={idx}
@@ -721,7 +721,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
               } backdrop-blur-md shadow-lg rounded-2xl`}
           >
-            <CardHeader className="p-5 pb-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <CardHeader className="p-5 pb-5 border-b border-slate-200 dark:border-white/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <Briefcase className="w-5 h-5 text-red-600" />
                 <div>
@@ -748,7 +748,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </button>
             </CardHeader>
 
-            <CardContent className="p-5">
+            <CardContent className="p-5 pt-6">
               {/* Highlight Metrics Penugasan */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className={`p-3.5 rounded-xl border ${isDark ? "bg-[#111827]/70 border-white/10" : "bg-slate-50 border-slate-200"}`}>
@@ -972,7 +972,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
               } backdrop-blur-md shadow-lg rounded-2xl`}
           >
-            <CardHeader className="p-5 pb-4 border-b border-slate-200 dark:border-slate-800">
+            <CardHeader className="p-5 pb-5 border-b border-slate-200 dark:border-white/15">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <CardTitle className={`text-base font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>
@@ -987,7 +987,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 space-y-3.5">
+            <CardContent className="p-5 pt-6 space-y-3.5">
               {INITIAL_SURAT_TUGAS_DATA.map((st) => (
                 <div
                   key={st.id}
@@ -1043,7 +1043,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"
               } backdrop-blur-md shadow-lg rounded-2xl`}
           >
-            <CardHeader className="p-5 pb-4 border-b border-slate-200 dark:border-slate-800">
+            <CardHeader className="p-5 pb-5 border-b border-slate-200 dark:border-white/15">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <CardTitle className={`text-base font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>
@@ -1058,7 +1058,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5">
+            <CardContent className="p-5 pt-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {klasifikasiList.map((item) => (
                   <div

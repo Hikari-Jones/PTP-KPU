@@ -373,7 +373,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
                 Total Pagu TA {displayYear}
               </p>
               <h2 className={`text-2xl font-black mt-1 truncate ${isDark ? "text-white" : "text-black"}`}>
-                Rp {formatMiliar(summary?.total_pagu_aktif ?? 0)} M
+                {loading ? <span className="inline-block w-24 h-7 bg-slate-300 dark:bg-slate-700 animate-pulse rounded-lg"></span> : `Rp ${formatMiliar(summary?.total_pagu_aktif ?? 0)} M`}
               </h2>
               <p className={`text-[10px] font-bold mt-1 truncate ${isDark ? "text-gray-400" : "text-slate-600"}`}>
                 {formatRupiah(summary?.total_pagu_aktif ?? 0)}
@@ -394,7 +394,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
                 Total Realisasi
               </p>
               <h2 className={`text-2xl font-black mt-1 truncate ${isDark ? "text-white" : "text-black"}`}>
-                Rp {formatMiliar(summary?.total_realisasi_verified ?? 0)} M
+                {loading ? <span className="inline-block w-24 h-7 bg-slate-300 dark:bg-slate-700 animate-pulse rounded-lg"></span> : `Rp ${formatMiliar(summary?.total_realisasi_verified ?? 0)} M`}
               </h2>
               <p className={`text-[10px] font-bold flex items-center gap-1 mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
                 <TrendingUp className="w-3.5 h-3.5 text-red-500" />
@@ -571,10 +571,10 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
       <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
         <div className="min-w-0 2xl:col-span-2">
           <Card className={`h-full ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
-            <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
+            <div className={`p-5 pb-5 border-b flex items-center justify-between ${isDark ? "border-white/15" : "border-slate-200"}`}>
               <h3 className={`text-sm font-bold ${isDark ? "text-white" : "text-black"}`}>Surat Menyurat Terbaru</h3>
             </div>
-            <CardContent className="p-0">
+            <CardContent className="p-0 pt-2">
               <Table>
                 <TableHeader>
                   <TableRow
@@ -630,10 +630,10 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
 
         <div className="min-w-0">
           <Card className={`h-full overflow-hidden ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
-            <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
+            <div className={`p-5 pb-5 border-b flex items-center justify-between ${isDark ? "border-white/15" : "border-slate-200"}`}>
               <h3 className={`text-sm font-bold ${isDark ? "text-white" : "text-black"}`}>Aktivitas Terkini</h3>
             </div>
-            <CardContent className="p-4 space-y-2.5">
+            <CardContent className="p-5 pt-6 space-y-2.5">
               {recentActivities.map((act) => {
                 const Icon = act.icon
                 return (

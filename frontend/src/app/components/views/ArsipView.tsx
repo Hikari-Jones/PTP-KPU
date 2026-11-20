@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { request, download, message } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
-import { Workspace, field, button, useOperation } from '../ui/operations'
-import { Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw } from 'lucide-react'
+import { Workspace, field, button, useOperation, SkeletonTable } from '../ui/operations'
+import { Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw, Loader2 } from 'lucide-react'
 
 interface Archive {
   id_dokumen: number
@@ -193,7 +193,8 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
             {/* Tombol Simpan */}
             <div className="pt-2">
               <button className={button} disabled={busy}>
-                {busy ? 'Mengunggah Dokumen...' : 'Unggah dan Simpan'}
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{busy ? 'Mengunggah Dokumen...' : 'Unggah dan Simpan'}</span>
               </button>
             </div>
           </form>
@@ -201,7 +202,9 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
       )}
 
       {/* List Dokumen Arsip */}
-      {!items.length ? (
+      {busy && !items.length ? (
+        <SkeletonTable rows={5} cols={3} />
+      ) : !items.length ? (
         <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
           Tidak ada dokumen pada halaman ini.
         </div>
@@ -261,6 +264,23 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
                     </>
                   )}
                 </button>
+                {trash && (
+                  <button
+                    className={`${button} !px-3 !py-1.5 !text-xs !bg-red-700 hover:!bg-red-800`}
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm(`Yakin ingin menghapus dokumen "${x.nama_dokumen}" secara permanen? Dokumen tidak dapat dikembalikan.`)) {
+                        void run(async () => {
+                          await request(`/arsip/${x.id_dokumen}/permanent`, 'DELETE')
+                          await load()
+                        })
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Permanen</span>
+                  </button>
+                )}
               </div>
             </article>
           ))}

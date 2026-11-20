@@ -498,6 +498,20 @@ html.dark svg.text-red-500,
   color: #ff7875 !important; /* lighter red for hover */
 }
 
+/* ---- Exception: Sidebar icons in dark mode ---- */
+[data-theme="dark"] .sidebar-nav-icon,
+[data-theme="dark"] .sidebar-nav-icon * {
+  color: #94a3b8 !important; /* text-gray-400 */
+}
+[data-theme="dark"] .sidebar-nav-icon.active-parent,
+[data-theme="dark"] .sidebar-nav-icon.active-parent * {
+  color: #f87171 !important; /* text-red-400 */
+}
+[data-theme="dark"] .sidebar-nav-icon.active-solid,
+[data-theme="dark"] .sidebar-nav-icon.active-solid * {
+  color: #ffffff !important;
+}
+
 /* ---- Exception: icons & text inside red-background elements should be WHITE in dark mode ---- */
 /* Active sidebar nav items */
 [data-theme="dark"] .bg-red-600 svg,

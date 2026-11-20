@@ -327,7 +327,7 @@ export function AkunAnggaranView({ theme }: Props) {
                 : "bg-slate-50 border-slate-300 text-black hover:border-red-500"
             }`}
           >
-            <option value="Semua">Semua Bagian / Divisi</option>
+            <option value="Semua">Semua Subbagian</option>
             {bagianList.map((bg) => (
               <option key={bg.id_bagian} value={bg.id_bagian}>
                 {bg.nama_bagian}
@@ -381,9 +381,6 @@ export function AkunAnggaranView({ theme }: Props) {
       {/* Sub-bar Indicator */}
       <div className={`flex items-center justify-between text-xs px-1 ${isDark ? "text-gray-300" : "text-slate-700"}`}>
         <span className="font-semibold">{filteredData.length} akun terdaftar di server</span>
-        <span className="font-bold text-emerald-600 dark:text-emerald-400">
-          Auto-Pagu Enabled (Phase 9 & 13)
-        </span>
       </div>
 
       {loading && (

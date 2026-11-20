@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { request, message } from '../../../services/operations'
-import { Workspace, field, button, buttonSecondary, useOperation } from '../ui/operations'
+import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
 import { useAuth } from '../../context/AuthContext'
-import { AlertCircle, RefreshCw, Send, CheckCircle2, Clock } from 'lucide-react'
+import { AlertCircle, RefreshCw, Send, CheckCircle2, Clock, Loader2 } from 'lucide-react'
 
 interface Report {
   id: number
@@ -98,7 +98,7 @@ export function BugReportView({ theme }: { theme: 'light' | 'dark' }) {
 
         <div className="pt-4 mt-2 flex items-center gap-3">
           <button className={button} disabled={busy}>
-            <Send className="w-3.5 h-3.5" />
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             <span>{busy ? 'Menyimpan…' : 'Simpan Laporan'}</span>
           </button>
         </div>
@@ -116,7 +116,9 @@ export function BugReportView({ theme }: { theme: 'light' | 'dark' }) {
           </button>
         </div>
 
-        {!items.length ? (
+        {busy && items.length === 0 ? (
+          <SkeletonTable rows={4} cols={3} />
+        ) : !items.length ? (
           <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400 border border-dashed rounded-2xl border-slate-300 dark:border-white/10">
             Belum ada laporan kendala yang dapat ditampilkan.
           </div>
