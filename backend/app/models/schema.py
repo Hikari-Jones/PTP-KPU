@@ -871,14 +871,15 @@ class DokumenArsip(Base):
         nullable=True,
     )
 
-    # Relasi dengan Klasifikasi Arsip
-    id_klasifikasi: Mapped[int] = mapped_column(
+    # Relasi dengan Klasifikasi Arsip (opsional: unggahan arsip umum tidak
+    # selalu memiliki kode klasifikasi, dan instalasi baru belum memiliki data master)
+    id_klasifikasi: Mapped[Optional[int]] = mapped_column(
         ForeignKey(
             "kode_klasifikasi_arsip.id_klasifikasi",
             onupdate="CASCADE",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
     )
 
     # Pemilik / Pengunggah

@@ -39,7 +39,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
               <input
                 type="text"
                 readOnly
-                value={currentUser?.name || "Ahmad Kurniawan"}
+                value={currentUser?.name || "-"}
                 className={`w-full rounded-lg px-3 py-2 border font-semibold ${isDark ? "bg-[#111827] border-[#1e293b] text-white" : "bg-slate-50 border-slate-300 text-black"}`}
               />
             </div>
@@ -48,7 +48,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
               <input
                 type="email"
                 readOnly
-                value={currentUser?.email || "ahmad.kurniawan@kpu.go.id"}
+                value={currentUser?.email || "Belum tercatat"}
                 className={`w-full rounded-lg px-3 py-2 border font-semibold ${isDark ? "bg-[#111827] border-[#1e293b] text-white" : "bg-slate-50 border-slate-300 text-black"}`}
               />
             </div>
@@ -57,7 +57,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
               <input
                 type="text"
                 readOnly
-                value={currentUser?.subbagian || "Teknis Penyelenggaraan Pemilu"}
+                value={currentUser?.subbagian || "-"}
                 className={`w-full rounded-lg px-3 py-2 border font-semibold ${isDark ? "bg-[#111827] border-[#1e293b] text-white" : "bg-slate-50 border-slate-300 text-black"}`}
               />
             </div>
@@ -65,7 +65,7 @@ export function PengaturanView({ theme, onToggleTheme }: { theme: "light" | "dar
               <label className={`font-bold block mb-1 ${isDark ? "text-white" : "text-black"}`}>Akses Keamanan</label>
               <div className="flex items-center gap-2 pt-1 text-red-600 dark:text-red-400 font-bold">
                 <Shield className="w-4 h-4" />
-                <span>Terverifikasi ({userRole || "Pegawai"})</span>
+                <span>Akun aktif ({userRole || "-"})</span>
               </div>
             </div>
           </div>

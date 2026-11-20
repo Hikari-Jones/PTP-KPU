@@ -25,6 +25,7 @@ import { KelolaUserView } from "./app/components/views/KelolaUserView"
 import { BugReportView } from "./app/components/views/BugReportView"
 import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
 import { ReadOnlyBanner } from "./app/components/ui/read-only"
+import { GlobalActivity } from "./app/components/ui/GlobalActivity"
 
 function MainLayout() {
   const { isAuthenticated, canEdit, currentUser } = useAuth()
@@ -191,6 +192,7 @@ export default function App() {
   return (
     <AuthProvider>
       <MainLayout />
+      <GlobalActivity />
     </AuthProvider>
   )
 }

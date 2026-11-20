@@ -129,3 +129,39 @@ async def download_file(
         media_type=record.mime_type or "application/octet-stream",
         filename=record.original_name,
     )
+
+
+@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_unused_file(
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    """Roll back an upload whose follow-up save failed.
+
+    Only the uploader (or an admin) may delete, and only while no archive,
+    workflow letter or budget transaction references the file.
+    """
+    from sqlalchemy import select
+    from app.models.schema import DokumenArsip, RealisasiAnggaran
+    from app.models.operations import WorkflowLetter
+
+    record = await db.get(FileRecord, file_id)
+    if not record:
+        return None
+    if record.uploaded_by != current_user.id_pegawai and not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Berkas bukan milik pengguna")
+    referenced = (
+        await db.scalar(select(DokumenArsip.id_dokumen).where(DokumenArsip.file_path == str(file_id)).limit(1))
+        or await db.scalar(select(WorkflowLetter.id).where(WorkflowLetter.file_id == file_id).limit(1))
+        or await db.scalar(select(RealisasiAnggaran.id_realisasi).where(
+            RealisasiAnggaran.bukti_file_path == f"/api/v1/files/{file_id}").limit(1))
+    )
+    if referenced:
+        raise HTTPException(status_code=409, detail="Berkas masih digunakan dan tidak dapat dihapus")
+    path = (STORAGE_ROOT / record.relative_path).resolve()
+    await db.delete(record)
+    await db.commit()
+    if STORAGE_ROOT in path.parents:
+        path.unlink(missing_ok=True)
+    return None

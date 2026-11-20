@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--quick', action='store_true', help='Only Python syntax and backend unit tests')
 parser.add_argument('--integration', action='store_true', help='Also run guarded empty-MySQL integration test')
+parser.add_argument('--smoke', action='store_true', help='Also run the every-route smoke test (needs its own EMPTY _test database)')
 args = parser.parse_args()
-python = os.environ.get('PTP_PYTHON', str(ROOT / 'venv/bin/python') if (ROOT/'venv/bin/python').exists() else sys.executable)
+_venv = next((ROOT / c for c in ('venv/bin/python', 'venv/Scripts/python.exe') if (ROOT / c).exists()), None)
+python = os.environ.get('PTP_PYTHON', str(_venv) if _venv else sys.executable)
 results = []
 
 def check(name, command, cwd, timeout=300):
@@ -40,6 +42,8 @@ if not args.quick:
     check('backend_runtime_import', [python, '-c', 'import sqlalchemy.ext.asyncio; from app.main import app'], ROOT/'backend')
 if args.integration:
     check('mysql_integration', [python, 'tests/integration_release.py'], ROOT/'backend', 600)
+if args.smoke:
+    check('smoke_all_routes', [python, 'tests/smoke_all_routes.py'], ROOT/'backend', 600)
 report = ROOT/'reports/automated-checks.json'
 report.parent.mkdir(exist_ok=True)
 report.write_text(json.dumps({'at_utc':datetime.now(timezone.utc).isoformat(), 'quick':args.quick, 'checks':results}, indent=2))

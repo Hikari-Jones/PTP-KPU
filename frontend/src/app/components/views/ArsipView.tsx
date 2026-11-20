@@ -130,13 +130,15 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
               e.preventDefault()
               void run(async () => {
                 if (!file) throw new Error('Silakan pilih berkas dokumen terlebih dahulu')
-                const uploaded = await filesApi.upload(file, 'arsip')
-                await request('/arsip/', 'POST', {
-                  ...form,
-                  id_pegawai: 0,
-                  file_path: String(uploaded.file_id),
-                  ukuran_file: uploaded.size,
-                })
+                // If saving the record fails, the uploaded file is rolled back.
+                await filesApi.uploadThen(file, 'arsip', (uploaded) =>
+                  request('/arsip/', 'POST', {
+                    ...form,
+                    id_pegawai: 0,
+                    file_path: String(uploaded.file_id),
+                    ukuran_file: uploaded.size,
+                  })
+                )
                 setForm({ ...form, nama_dokumen: '', nomor_dokumen: '' })
                 setFile(null)
                 await load()

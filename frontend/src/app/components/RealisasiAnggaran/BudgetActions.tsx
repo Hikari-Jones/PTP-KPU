@@ -24,10 +24,11 @@ export function BudgetActions({ item, userId, canReview, onSuccess }: Props) {
   const action = (name: string) => run(() => request(`/realisasi-anggaran/${item.id_realisasi}/${name}`, 'POST',
     name === 'submit' ? undefined : { catatan_verifikasi: note }))
   const save = () => run(async () => {
-    const uploaded = file ? await filesApi.upload(file, 'realisasi') : null
-    return request(`/realisasi-anggaran/${item.id_realisasi}`, 'PUT', { ...form,
+    const save = (fileId: number | null) => request(`/realisasi-anggaran/${item.id_realisasi}`, 'PUT', { ...form,
       jumlah_realisasi: form.jumlah_realisasi,
-      ...(uploaded ? { bukti_file_path: `/api/v1/files/${uploaded.file_id}` } : {}) })
+      ...(fileId ? { bukti_file_path: `/api/v1/files/${fileId}` } : {}) })
+    // If saving fails, the newly uploaded evidence file is rolled back.
+    return file ? filesApi.uploadThen(file, 'realisasi', (uploaded) => save(uploaded.file_id)) : save(null)
   })
   return <fieldset disabled={busy} className="space-y-2 text-xs">
     <button type="button" className="underline mr-2" onClick={() => run(async () => {

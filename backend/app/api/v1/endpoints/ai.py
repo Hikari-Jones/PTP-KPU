@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import threading
 from contextlib import aclosing
 import logging
 from typing import AsyncIterator, List, Literal, Optional
@@ -65,7 +67,57 @@ def _fallback_reply(query: str) -> str:
     )
 
 
+# Background model download, so a chat request never blocks on a 2 GB transfer.
+_download_thread: Optional[threading.Thread] = None
+_download_error: Optional[str] = None
+
+
+def _start_background_download(llm) -> None:
+    global _download_thread, _download_error
+    if _download_thread is not None and _download_thread.is_alive():
+        return
+
+    def work():
+        global _download_error
+        try:
+            _download_error = None
+            llm.ensure_model()
+            logger.info("KIRANA model download finished")
+        except Exception as exc:  # offline server, disk full, ...
+            _download_error = str(exc)
+            logger.error("KIRANA model download failed: %s", exc)
+
+    _download_thread = threading.Thread(target=work, name="kirana-model-download", daemon=True)
+    _download_thread.start()
+
+
+def _model_unavailable_message() -> Optional[str]:
+    """None when the weights are on disk; otherwise a message for the user."""
+    try:
+        import kirana_llm as llm
+    except Exception:
+        return None  # let the agent fail and use the regular fallback
+    if llm.downloaded_path() is not None:
+        return None
+    if os.environ.get("KIRANA_AUTO_DOWNLOAD", "1") != "0":
+        _start_background_download(llm)
+        return ("Model AI KIRANA sedang disiapkan (diunduh sekitar 2 GB) dan belum dapat menjawab. "
+                "Silakan coba lagi beberapa menit lagi. Administrator dapat menyiapkannya lebih dulu dengan "
+                "`python -m kirana_llm --download`." + (f" Unduhan terakhir gagal: {_download_error}" if _download_error else ""))
+    return ("Model AI KIRANA belum terpasang di server. Administrator perlu menjalankan "
+            "`python -m kirana_llm --download` atau mengatur KIRANA_MODEL_PATH.")
+
+
+async def _unavailable_events(message: str) -> AsyncIterator[dict]:
+    yield {"type": "token", "text": message}
+    yield {"type": "done", "model": f"{FALLBACK_MODEL_NAME} (model belum tersedia)",
+           "source": "fallback_agent", "used_database": False}
+
+
 def _run_agent(payload: ChatRequest, user: Pegawai) -> AsyncIterator[dict]:
+    unavailable = _model_unavailable_message()
+    if unavailable:
+        return _unavailable_events(unavailable)
     # Imported here so the API still starts (and falls back) if the model
     # package or its dependencies are missing.
     from app.services.kirana_agent import run_agent
@@ -89,16 +141,22 @@ async def get_ai_status():
         }
 
     downloaded = llm.downloaded_path() is not None
+    downloading = _download_thread is not None and _download_thread.is_alive()
+    if downloaded:
+        message = "Model lokal siap digunakan."
+    elif downloading:
+        message = "Model sedang diunduh di latar belakang."
+    elif _download_error:
+        message = f"Unduhan model gagal: {_download_error}. Jalankan 'python -m kirana_llm --download'."
+    else:
+        message = "Model belum terunduh; jalankan 'python -m kirana_llm --download' sebelum digunakan."
     return {
-        "status": "online" if downloaded else "offline",
+        "status": "online" if downloaded else ("downloading" if downloading else "offline"),
         "active_model": llm.MODEL_NAME,
         "downloaded": downloaded,
+        "downloading": downloading,
         "loaded": llm.is_loaded(),
-        "message": (
-            "Model lokal siap digunakan."
-            if downloaded
-            else "Model belum terunduh; akan diunduh otomatis saat pertama kali dipanggil."
-        ),
+        "message": message,
     }
 
 
@@ -112,7 +170,7 @@ async def chat_with_ai(payload: ChatRequest, user: Pegawai = Depends(get_current
     await _acquire_slot()
     try:
         parts: List[str] = []
-        model, used_database = FALLBACK_MODEL_NAME, False
+        model, used_database, source = FALLBACK_MODEL_NAME, False, "local_model"
         async for event in _run_agent(payload, user):
             if event["type"] == "token":
                 parts.append(event["text"])
@@ -120,10 +178,11 @@ async def chat_with_ai(payload: ChatRequest, user: Pegawai = Depends(get_current
                 parts.clear()
             elif event["type"] == "done":
                 model, used_database = event["model"], event["used_database"]
+                source = event.get("source", "local_model")
         reply = "".join(parts).strip()
         if reply:
             return ChatResponse(
-                reply=reply, model_used=model, source="local_model", used_database=used_database
+                reply=reply, model_used=model, source=source, used_database=used_database
             )
     except Exception:
         logger.exception("Local model inference failed; using rule-based fallback")
@@ -163,7 +222,7 @@ async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_
                         wrote_text = True
                     elif event["type"] == "reset":
                         wrote_text = False
-                    yield _sse({**event, "source": "local_model"} if event["type"] == "done" else event)
+                    yield _sse({"source": "local_model", **event} if event["type"] == "done" else event)
         except Exception:
             logger.exception("Local model inference failed")
             if wrote_text:

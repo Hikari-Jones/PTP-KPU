@@ -22,7 +22,8 @@ class UserProfileOut(BaseModel):
     id_pegawai: int
     name: str
     nip: str
-    email: str
+    # No e-mail is stored for employees; never invent one.
+    email: Optional[str] = None
     role: str
     jabatan: str
     subbagian: str
@@ -32,6 +33,18 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserProfileOut
+
+def _profile(user: Pegawai, bagian_name: str) -> UserProfileOut:
+    """The user's profile exactly as stored; empty values stay empty."""
+    return UserProfileOut(
+        id_pegawai=user.id_pegawai,
+        name=user.nama,
+        nip=user.nip or "",
+        role="Admin" if (user.role or "").lower() in ["admin", "administrator"] else "Pegawai",
+        jabatan=user.jabatan or "",
+        subbagian=bagian_name,
+        id_bagian=user.id_bagian,
+    )
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -54,7 +67,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         await db.commit()
 
     # Fetch Bagian name
-    subbagian_nama = "Sekretariat KPU Sulut"
+    subbagian_nama = ""
     if user.id_bagian:
         b_res = await db.execute(select(Bagian).where(Bagian.id_bagian == user.id_bagian))
         bagian = b_res.scalar_one_or_none()
@@ -62,32 +75,14 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
             subbagian_nama = bagian.nama_bagian
 
     norm_role = "Admin" if (user.role and user.role.lower() in ["admin", "administrator"]) else "Pegawai"
-    user_out = UserProfileOut(
-        id_pegawai=user.id_pegawai,
-        name=user.nama,
-        nip=user.nip or nip_clean,
-        email=f"{nip_clean.lower()}@kpu.go.id",
-        role=norm_role,
-        jabatan=user.jabatan or "Staf KPU",
-        subbagian=subbagian_nama,
-        id_bagian=user.id_bagian
-    )
+    user_out = _profile(user, subbagian_nama)
 
     token = create_access_token({"sub": user.nip, "role": norm_role, "id": user.id_pegawai, "sv": user.session_version})
     return LoginResponse(access_token=token, user=user_out)
 
 @router.get("/me", response_model=UserProfileOut)
 async def get_me(current_user: Pegawai = Depends(get_current_user)):
-    return UserProfileOut(
-        id_pegawai=current_user.id_pegawai,
-        name=current_user.nama,
-        nip=current_user.nip or "",
-        email=f"{(current_user.nip or '').lower()}@kpu.go.id",
-        role="Admin" if current_user.role.lower() in ["admin", "administrator"] else "Pegawai",
-        jabatan=current_user.jabatan or "",
-        subbagian=current_user.bagian.nama_bagian if current_user.bagian else "",
-        id_bagian=current_user.id_bagian,
-    )
+    return _profile(current_user, current_user.bagian.nama_bagian if current_user.bagian else "")
 
 
 @router.post("/logout")

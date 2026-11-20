@@ -120,6 +120,10 @@ async def create_arsip(
         record = await db.get(FileRecord, file_id)
         if not record or record.uploaded_by != current_user.id_pegawai:
             raise HTTPException(403, 'Berkas bukan milik pengguna')
+    if arsip_in.id_klasifikasi is not None:
+        from app.models.schema import KodeKlasifikasiArsip
+        if not await db.get(KodeKlasifikasiArsip, arsip_in.id_klasifikasi):
+            raise HTTPException(422, 'Kode klasifikasi arsip tidak ditemukan')
     created_obj = await arsip.create(db, obj_in=arsip_in)
     return await arsip.get_by_id(db, created_obj.id_dokumen)
 
