@@ -290,7 +290,7 @@ CREATE TABLE IF NOT EXISTS dokumen_arsip (
 
     -- Relasi dengan Surat Menyurat
     id_surat_keluar INT NULL,
-    id_klasifikasi INT NOT NULL,
+    id_klasifikasi INT NULL,
 
     -- Pemilik / pengunggah
     id_pegawai INT NOT NULL,

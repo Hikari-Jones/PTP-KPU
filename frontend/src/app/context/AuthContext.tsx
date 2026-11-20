@@ -3,12 +3,15 @@ import { request } from "../../services/operations"
 import { authApi } from "../../services/api"
 
 export interface UserProfile {
+  id_pegawai?: number
   name: string
   nip: string
-  email: string
+  /** Not stored for employees yet; null when unknown (never invented). */
+  email?: string | null
   role: "Admin" | "Pegawai" | "Operator"
   jabatan: string
   subbagian: string
+  id_bagian?: number | null
 }
 
 export type ModuleKey = "anggaran" | "surat"
@@ -31,6 +34,8 @@ export function canEditModule(user: UserProfile | null, module: ModuleKey): bool
 
 interface AuthContextType {
   isAuthenticated: boolean
+  isLoadingAuth: boolean
+  isLoggingIn: boolean
   userRole: string
   currentUser: UserProfile | null
   canEdit: (module: ModuleKey) => boolean
@@ -41,6 +46,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true)
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     try {
       const saved = localStorage.getItem("ptp_kpu_user")
@@ -51,24 +58,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   })
 
   useEffect(() => {
-    if (localStorage.getItem("ptp_kpu_token")) {
-      authApi.getMe().then(user => {
-        const profile = user as UserProfile
-        setCurrentUser(profile)
+    const initAuth = async () => {
+      // Tampilkan loading screen awal minimal 900ms agar user mendapat feedback transisi yang elegan
+      const minDelay = new Promise(resolve => setTimeout(resolve, 900))
+
+      if (localStorage.getItem("ptp_kpu_token")) {
         try {
+          const user = await authApi.getMe()
+          const profile = user as UserProfile
+          setCurrentUser(profile)
           localStorage.setItem("ptp_kpu_user", JSON.stringify(profile))
         } catch {
-          // quota
+          localStorage.removeItem("ptp_kpu_token")
+          localStorage.removeItem("ptp_kpu_user")
+          setCurrentUser(null)
         }
-      }).catch(() => {
-        localStorage.removeItem("ptp_kpu_token")
+      } else {
         localStorage.removeItem("ptp_kpu_user")
         setCurrentUser(null)
-      })
-    } else {
-      localStorage.removeItem("ptp_kpu_user")
-      setCurrentUser(null)
+      }
+
+      await minDelay
+      setIsLoadingAuth(false)
     }
+
+    void initAuth()
   }, [])
 
   const isAuthenticated = !!currentUser
@@ -76,15 +90,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canEdit = (module: ModuleKey) => canEditModule(currentUser, module)
 
   const login = async (nip: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+    setIsLoggingIn(true)
     try {
       const result = await authApi.login({ nip: nip.trim(), password: pass })
       localStorage.setItem("ptp_kpu_token", result.access_token)
       const userProfile = result.user as UserProfile
       localStorage.setItem("ptp_kpu_user", JSON.stringify(userProfile))
+      // Delay sejenak (800ms) untuk loading screen masuk dashboard
+      await new Promise(resolve => setTimeout(resolve, 800))
       setCurrentUser(userProfile)
       return { success: true }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "Login gagal" }
+    } finally {
+      setIsLoggingIn(false)
     }
   }
 
@@ -101,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, userRole, currentUser, canEdit, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

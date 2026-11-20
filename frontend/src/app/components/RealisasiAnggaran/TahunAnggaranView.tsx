@@ -28,6 +28,7 @@ import type {
   TahunAnggaranCreatePayload,
   TahunAnggaranUpdatePayload,
 } from "./types"
+import { showToast as notify } from '../../../services/activity'
 
 interface Props {
   theme: "light" | "dark"
@@ -212,7 +213,7 @@ export function TahunAnggaranView({ theme }: Props) {
 
   const handleDelete = async (item: TahunAnggaranResponse) => {
     if (item.status !== "draft") {
-      alert("Hanya tahun anggaran berstatus 'draft' yang dapat dihapus.")
+      notify('error', "Hanya tahun anggaran berstatus 'draft' yang dapat dihapus.")
       return
     }
     if (confirm(`Apakah Anda yakin ingin menghapus Tahun Anggaran ${item.tahun} (Draft)?`)) {

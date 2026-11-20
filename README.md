@@ -101,7 +101,7 @@ npm run dev
 
 #### Akun Super Administrator (Utama):
 * **NIP**: `198507182020031001`
-* **Password**: `admin123`
+* **Password**: `    `
 * **Role**: Admin (Akses penuh seluruh modul, konfigurasi & kontrol user)
 
 ---

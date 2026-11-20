@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { request, message } from '../../../services/operations'
 import type { Employee, Department } from '../../../services/operations'
-import { Workspace, field, button, buttonSecondary, useOperation } from '../ui/operations'
-import { UserPlus, Edit3, UserCheck, UserX, RefreshCw } from 'lucide-react'
+import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
+import { UserPlus, Edit3, UserCheck, UserX, RefreshCw, Loader2 } from 'lucide-react'
 
 export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
   const isDark = theme === 'dark'
@@ -170,7 +170,8 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
         {/* Action Buttons */}
         <div className="pt-4 mt-2 flex items-center gap-3">
           <button disabled={busy} className={button}>
-            {busy ? 'Menyimpan…' : edit ? 'Simpan Perubahan' : 'Tambah Pengguna'}
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <span>{busy ? 'Menyimpan…' : edit ? 'Simpan Perubahan' : 'Tambah Pengguna'}</span>
           </button>
           {edit && (
             <button
@@ -199,7 +200,10 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
           </button>
         </div>
 
-        <div className={`overflow-x-auto rounded-2xl border ${
+        {busy && users.length === 0 ? (
+          <SkeletonTable rows={5} cols={4} />
+        ) : (
+          <div className={`overflow-x-auto rounded-2xl border ${
           isDark ? 'border-white/10 bg-[#111827]/40' : 'border-slate-200 bg-white shadow-xs'
         }`}>
           <table className="w-full text-left text-sm">
@@ -294,6 +298,7 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </Workspace>
   )

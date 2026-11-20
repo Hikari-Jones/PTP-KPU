@@ -25,23 +25,6 @@ import type {
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-export const INITIAL_KLASIFIKASI: KodeKlasifikasiArsip[] = [
-  { id_klasifikasi: 1, kode_klasifikasi: 'PL.01.1', nama_klasifikasi: 'Perencanaan Pemilu & Pilkada', kategori_utama: 'Penyelenggaraan Pemilu', retensi_aktif_tahun: 2, retensi_inaktif_tahun: 5, hak_akses: 'Internal' },
-  { id_klasifikasi: 2, kode_klasifikasi: 'PL.02.1', nama_klasifikasi: 'Pemutakhiran Data Pemilih', kategori_utama: 'Penyelenggaraan Pemilu', retensi_aktif_tahun: 3, retensi_inaktif_tahun: 5, hak_akses: 'Internal' },
-  { id_klasifikasi: 3, kode_klasifikasi: 'HR.01.2', nama_klasifikasi: 'Surat Tugas & Kepegawaian', kategori_utama: 'SDM & Kepegawaian', retensi_aktif_tahun: 2, retensi_inaktif_tahun: 5, hak_akses: 'Internal' },
-  { id_klasifikasi: 4, kode_klasifikasi: 'HK.01.1', nama_klasifikasi: 'Peraturan & Keputusan KPU', kategori_utama: 'Hukum', retensi_aktif_tahun: 5, retensi_inaktif_tahun: 10, hak_akses: 'Publik' },
-  { id_klasifikasi: 5, kode_klasifikasi: 'KU.01.3', nama_klasifikasi: 'DIPA & Pertanggungjawaban Keuangan', kategori_utama: 'Keuangan', retensi_aktif_tahun: 5, retensi_inaktif_tahun: 7, hak_akses: 'Internal' },
-  { id_klasifikasi: 6, kode_klasifikasi: 'IT.01.1', nama_klasifikasi: 'Data & Infrastruktur IT', kategori_utama: 'Data & Informasi', retensi_aktif_tahun: 2, retensi_inaktif_tahun: 5, hak_akses: 'Internal' },
-];
-
-export const INITIAL_JENIS_SURAT: JenisSurat[] = [
-  { id_jenis_surat: 1, kode_jenis: 'SD', nama_jenis: 'Surat Dinas', format_nomor: '{nomor_urut}/{kode_klasifikasi}-SD/71/{bulan_romawi}/{tahun}' },
-  { id_jenis_surat: 2, kode_jenis: 'ST', nama_jenis: 'Surat Tugas', format_nomor: '{nomor_urut}/{kode_klasifikasi}-ST/71/{bulan_romawi}/{tahun}' },
-  { id_jenis_surat: 3, kode_jenis: 'ND', nama_jenis: 'Nota Dinas', format_nomor: '{nomor_urut}/ND-{kode_bagian}/71/{bulan_romawi}/{tahun}' },
-  { id_jenis_surat: 4, kode_jenis: 'Kpt', nama_jenis: 'Keputusan KPU', format_nomor: '{nomor_urut}/{kode_klasifikasi}-Kpt/71/{tahun}' },
-  { id_jenis_surat: 5, kode_jenis: 'Und', nama_jenis: 'Surat Undangan', format_nomor: '{nomor_urut}/{kode_klasifikasi}-Und/71/{bulan_romawi}/{tahun}' },
-];
-
 const getAuthHeaders = (): HeadersInit => {
   const token = localStorage.getItem('ptp_kpu_token');
   return {
@@ -678,5 +661,27 @@ export const filesApi = {
   },
   getDownloadUrl: (fileId: number): string => {
     return `${API_BASE_URL}/files/${fileId}`;
+  },
+  /**
+   * Rollback: delete an upload whose follow-up save failed, so no orphan file is
+   * left behind. The server refuses if the file is already referenced. Never throws.
+   */
+  discard: async (fileId: number): Promise<void> => {
+    try {
+      await fetch(`${API_BASE_URL}/files/${fileId}`, { method: 'DELETE', headers: getAuthHeaders() });
+    } catch { /* best effort: the original error is what the user needs to see */ }
+  },
+  /**
+   * Upload a file, then run `save` with the upload result. If `save` fails the
+   * upload is rolled back (deleted) and the original error is re-thrown.
+   */
+  uploadThen: async <T,>(file: File, category: string, save: (uploaded: FileUploadResponse) => Promise<T>): Promise<T> => {
+    const uploaded = await filesApi.upload(file, category);
+    try {
+      return await save(uploaded);
+    } catch (error) {
+      await filesApi.discard(uploaded.file_id);
+      throw error;
+    }
   },
 };

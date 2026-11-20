@@ -109,6 +109,8 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
       return
     }
 
+    // Replacing the file: discard the previous, now unused, upload.
+    if (uploadedFileData) void filesApi.discard(uploadedFileData.file_id)
     setUploadedFileData(null)
     setSelectedFile(file)
     setFileName(file.name)
@@ -125,6 +127,8 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
   }
 
   const handleHapusFile = () => {
+    // The upload is not referenced by any transaction yet; remove it from the server.
+    if (uploadedFileData) void filesApi.discard(uploadedFileData.file_id)
     setSelectedFile(null)
     setFileName("")
     setUploadedFileData(null)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { request, message } from '../../../services/operations'
-import { Workspace, button, buttonSecondary } from '../ui/operations'
+import { Workspace, button, buttonSecondary, SkeletonCards } from '../ui/operations'
 import { Users, UserCheck, Mail, Database, ShieldAlert, Clock, RefreshCw } from 'lucide-react'
 
 type Status = {
@@ -41,19 +41,24 @@ export function AdminDashboardView({ theme }: { theme: 'light' | 'dark' }) {
       category="Administrator"
       title="Dashboard Administrator"
       description="Ringkasan status basis data, aktivitas persuratan, dan audit anggaran sistem PTP-KPU"
-    >
-      <div className="flex items-center justify-end">
-        <button className={buttonSecondary} disabled={busy} onClick={load}>
+      actions={
+        <button
+          className={`${buttonSecondary} !px-3.5 !py-2 !text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow-xs transition-all active:scale-95`}
+          disabled={busy}
+          onClick={load}
+        >
           <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
-          <span>Muat ulang</span>
+          <span>Muat Ulang</span>
         </button>
-      </div>
-
+      }
+    >
       {error && (
         <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-semibold">
           {error}
         </div>
       )}
+
+      {busy && !status && <SkeletonCards count={4} />}
 
       {status && (
         <div className="space-y-6">
