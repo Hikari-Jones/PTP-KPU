@@ -431,7 +431,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                 {currentUser?.name || "Pengguna"}
               </p>
               <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-slate-500"}`}>
-                {currentUser?.role === "Admin" ? "Administrator" : currentUser?.subbagian || "Staf Instansi"}
+                {currentUser?.role === "Admin" ? "Administrator" : currentUser?.subbagian || currentUser?.jabatan || "-"}
               </p>
             </div>
           )}

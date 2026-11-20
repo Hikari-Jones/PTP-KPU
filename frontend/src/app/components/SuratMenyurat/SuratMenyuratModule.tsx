@@ -146,11 +146,11 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan' }: SuratMenyur
             onSubmit={(e) => {
               e.preventDefault()
               void run(async () => {
-                const uploaded = file ? await filesApi.upload(file, 'surat') : null
-                await request('/operations/letters', 'POST', {
-                  ...form,
-                  file_id: uploaded?.file_id || null,
-                })
+                // If saving the letter fails, the uploaded file is rolled back.
+                const save = (fileId: number | null) =>
+                  request('/operations/letters', 'POST', { ...form, file_id: fileId })
+                if (file) await filesApi.uploadThen(file, 'surat', (uploaded) => save(uploaded.file_id))
+                else await save(null)
                 setForm(blank)
                 setFile(null)
                 await load()

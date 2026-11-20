@@ -23,7 +23,18 @@ async def upgrade():
         if not any(c['column_names'] == ['nip'] for c in constraints):
             await connection.execute(text('ALTER TABLE pegawai ADD CONSTRAINT uq_pegawai_nip UNIQUE (nip)'))
         await connection.run_sync(Base.metadata.create_all)
+        # Archive uploads from the UI carry no classification; allow NULL.
+        archive_columns = await connection.run_sync(
+            lambda c: {col['name']: col for col in inspect(c).get_columns('dokumen_arsip')})
+        if not archive_columns.get('id_klasifikasi', {}).get('nullable', True):
+            await connection.execute(text('ALTER TABLE dokumen_arsip MODIFY id_klasifikasi INT NULL'))
+    # Reference data the letter/archive screens need (inserts only missing codes).
+    from app.core.database import AsyncSessionLocal
+    from app.core.reference_data import ensure_reference_data
+    async with AsyncSessionLocal() as session:
+        await ensure_reference_data(session)
+        await session.commit()
     await engine.dispose()
-    print('Operations schema upgrade completed without reseeding data')
+    print('Operations schema upgrade completed without reseeding demo data')
 
 if __name__ == '__main__': asyncio.run(upgrade())

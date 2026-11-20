@@ -1051,6 +1051,9 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
     async def _audit(self, db, row, actor_id, action):
         from app.models.operations import BudgetEvent
         await db.flush()
+        # Server-generated columns (created_at/updated_at) are expired by the flush;
+        # load them asynchronously, otherwise reading them triggers sync IO (MissingGreenlet).
+        await db.refresh(row)
         snapshot = {c.name: (str(value) if isinstance(value, (Decimal, date, datetime)) else value)
                     for c in row.__table__.columns if (value := getattr(row, c.name)) is not None}
         db.add(BudgetEvent(realization_id=row.id_realisasi, actor_id=actor_id,

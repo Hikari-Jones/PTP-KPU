@@ -26,6 +26,7 @@ import { BugReportView } from "./app/components/views/BugReportView"
 import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
 import { ReadOnlyBanner } from "./app/components/ui/read-only"
 import { LoadingScreen } from "./app/components/ui/LoadingScreen"
+import { GlobalActivity } from "./app/components/ui/GlobalActivity"
 
 function MainLayout() {
   const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser } = useAuth()
@@ -211,6 +212,23 @@ function MainLayout() {
           </div>
         )}
 
+        {/* Tombol Menu Navigasi Mobile di Pojok Kiri Atas (Tetap Mengambang/Floating Saat Scroll) */}
+        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 lg:hidden">
+          <button
+            type="button"
+            onClick={() => { setSidebarCollapsed(false); setMobileMenuOpen(!mobileMenuOpen) }}
+            aria-label="Buka navigasi"
+            title="Buka Menu Navigasi"
+            className={`p-2 sm:p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs active:scale-95 backdrop-blur-md ${
+              isDark
+                ? "bg-[#1e293b]/80 border-white/10 text-slate-200 hover:bg-[#1e293b] hover:text-white shadow-black/30"
+                : "bg-white/80 border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 shadow-slate-200/50"
+            }`}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
+
         {/* Tombol Switch Mode Gelap / Terang di Pojok Kanan Atas */}
         <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
           <button
@@ -218,7 +236,7 @@ function MainLayout() {
             onClick={() => toggleTheme()}
             aria-label={isDark ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
             title={isDark ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
-            className={`p-2 sm:p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs active:scale-95 ${
+            className={`p-2 sm:p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs active:scale-95 backdrop-blur-md ${
               isDark
                 ? "bg-[#1e293b]/80 border-white/10 text-amber-400 hover:bg-[#1e293b] hover:text-amber-300 shadow-black/30"
                 : "bg-white/80 border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 shadow-slate-200/50"
@@ -229,16 +247,8 @@ function MainLayout() {
         </div>
 
         {/* Dynamic Content Area */}
-        <main id="main-content" className="app-content flex-1 overflow-y-auto px-4 pt-8 pb-6 sm:px-6 sm:pt-10 xl:px-8 xl:pt-12">
+        <main id="main-content" className="app-content flex-1 overflow-y-auto px-4 pt-16 pb-6 sm:px-6 sm:pt-16 lg:pt-8 xl:px-8 xl:pt-10">
           <div className="max-w-[1440px] mx-auto min-w-0">
-            <button
-              type="button"
-              onClick={() => { setSidebarCollapsed(false); setMobileMenuOpen(!mobileMenuOpen) }}
-              aria-label="Buka navigasi"
-              className="lg:hidden mb-5 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            >
-              <Menu className="size-5" />
-            </button>
             {(activeMenu === "realisasi_anggaran" || activeMenu.startsWith("realization-")) && !canEdit("anggaran") && (
               <div className="mb-5">
                 <ReadOnlyBanner theme={theme} modul="realisasi anggaran" pengelola="Sub Bagian Keuangan dan Sub Bagian Perencanaan, Data dan Informasi (RENDATIN)" />
@@ -259,6 +269,7 @@ export default function App() {
   return (
     <AuthProvider>
       <MainLayout />
+      <GlobalActivity />
     </AuthProvider>
   )
 }

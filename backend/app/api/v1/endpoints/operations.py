@@ -115,9 +115,21 @@ class BugStatus(BaseModel):
 
 @router.get('/bugs')
 async def bugs(db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user)):
-    q = select(BugReport).order_by(BugReport.id.desc())
-    if not is_admin(user): q = q.where(BugReport.owner_id == user.id_pegawai)
-    return [output(x) for x in (await db.scalars(q)).all()]
+    q = (
+        select(BugReport, Pegawai.nama.label("pelapor_nama"), Pegawai.nip.label("pelapor_nip"))
+        .join(Pegawai, BugReport.owner_id == Pegawai.id_pegawai, isouter=True)
+        .order_by(BugReport.id.desc())
+    )
+    if not is_admin(user):
+        q = q.where(BugReport.owner_id == user.id_pegawai)
+    rows = (await db.execute(q)).all()
+    results = []
+    for bug, nama, nip in rows:
+        data = output(bug)
+        data['pelapor_nama'] = nama or f'Pengguna #{bug.owner_id}'
+        data['pelapor_nip'] = nip or '-'
+        results.append(data)
+    return results
 
 @router.post('/bugs', status_code=201)
 async def create_bug(payload: BugInput, db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user)):

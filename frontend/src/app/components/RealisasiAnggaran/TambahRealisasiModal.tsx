@@ -110,6 +110,8 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
       return
     }
 
+    // Replacing the file: discard the previous, now unused, upload.
+    if (uploadedFileData) void filesApi.discard(uploadedFileData.file_id)
     setUploadedFileData(null)
     setSelectedFile(file)
     setFileName(file.name)
@@ -126,6 +128,8 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   }
 
   const handleHapusFile = () => {
+    // The upload is not referenced by any transaction yet; remove it from the server.
+    if (uploadedFileData) void filesApi.discard(uploadedFileData.file_id)
     setSelectedFile(null)
     setFileName(null)
     setUploadedFileData(null)

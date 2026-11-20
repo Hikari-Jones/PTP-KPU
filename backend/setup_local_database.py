@@ -157,44 +157,10 @@ async def run_setup():
             p_map[nip] = p.id_pegawai
         print("  ✓ Struktur Pegawai siap: 1 Kabag, 1 Kasubbag, 2 Pegawai di setiap bagian (Keuangan & UMLOG terpisah).")
 
-        # C. Master Klasifikasi Arsip
-        klas_list = [
-            ("PL.01.1", "Perencanaan Pemilu & Pilkada", "Penyelenggaraan Pemilu", 2, 5, "Internal"),
-            ("PL.02.1", "Pemutakhiran Data Pemilih", "Penyelenggaraan Pemilu", 3, 5, "Internal"),
-            ("HR.01.2", "Surat Tugas & Kepegawaian", "SDM & Kepegawaian", 2, 5, "Internal"),
-            ("HK.01.1", "Peraturan & Keputusan KPU", "Hukum", 5, 10, "Publik"),
-            ("KU.01.3", "DIPA & Pertanggungjawaban Keuangan", "Keuangan", 5, 7, "Internal"),
-            ("IT.01.1", "Data & Infrastruktur IT", "Data & Informasi", 2, 5, "Internal"),
-        ]
-        k_map = {}
-        for kode, nama, kat, r_akt, r_inakt, akses in klas_list:
-            res = await session.execute(select(KodeKlasifikasiArsip).where(KodeKlasifikasiArsip.kode_klasifikasi == kode))
-            k = res.scalar_one_or_none()
-            if not k:
-                k = KodeKlasifikasiArsip(kode_klasifikasi=kode, nama_klasifikasi=nama, kategori_utama=kat,
-                                         retensi_aktif_tahun=r_akt, retensi_inaktif_tahun=r_inakt, hak_akses=akses)
-                session.add(k)
-                await session.flush()
-            k_map[kode] = k.id_klasifikasi
-        print("  ✓ 6 Master Klasifikasi Arsip Kepemiluan siap.")
-
-        # D. Master Jenis Surat
-        jenis_list = [
-            ("SD", "Surat Dinas", "{nomor_urut}/{kode_klasifikasi}-SD/71/{bulan_romawi}/{tahun}"),
-            ("ST", "Surat Tugas", "{nomor_urut}/{kode_klasifikasi}-ST/71/{bulan_romawi}/{tahun}"),
-            ("ND", "Nota Dinas", "{nomor_urut}/ND-{kode_bagian}/71/{bulan_romawi}/{tahun}"),
-            ("Kpt", "Keputusan KPU", "{nomor_urut}/{kode_klasifikasi}-Kpt/71/{tahun}"),
-            ("Und", "Surat Undangan", "{nomor_urut}/{kode_klasifikasi}-Und/71/{bulan_romawi}/{tahun}"),
-        ]
-        j_map = {}
-        for kode, nama, fmt in jenis_list:
-            res = await session.execute(select(JenisSurat).where(JenisSurat.kode_jenis == kode))
-            j = res.scalar_one_or_none()
-            if not j:
-                j = JenisSurat(kode_jenis=kode, nama_jenis=nama, format_nomor=fmt)
-                session.add(j)
-                await session.flush()
-            j_map[kode] = j.id_jenis_surat
+        # C/D. Master Klasifikasi Arsip & Jenis Surat (shared reference data)
+        from app.core.reference_data import ensure_reference_data
+        k_map, j_map = await ensure_reference_data(session)
+        print("  ✓ Master Klasifikasi Arsip Kepemiluan siap.")
         print("  ✓ Format Penomoran Resmi Surat Dinas KPU siap.")
 
         # E. Tahun Anggaran & Akun Anggaran

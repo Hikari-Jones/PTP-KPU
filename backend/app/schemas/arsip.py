@@ -21,6 +21,7 @@ class DokumenArsipUpdate(BaseModel):
     nama_dokumen: Optional[str] = Field(None, max_length=255)
     nomor_dokumen: Optional[str] = Field(None, max_length=100)
     id_pegawai: Optional[int] = None
+    id_klasifikasi: Optional[int] = None
     kategori: Optional[str] = Field(None, max_length=100)
     event: Optional[str] = Field(None, max_length=150)
     tanggal_dokumen: Optional[date] = None

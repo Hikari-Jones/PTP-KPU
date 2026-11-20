@@ -1,26 +1,27 @@
+import { useEffect, useState } from "react"
 import { Building, Award, IdCard, Mail, Shield, Calendar, User } from "lucide-react"
+import { tahunAnggaranApi } from "../../../services/api"
 import { useAuth } from "../../context/AuthContext"
 
 export function ProfilView({ theme }: { theme: "light" | "dark" }) {
   const { currentUser, userRole } = useAuth()
   const isDark = theme === "dark"
 
-  // Penentuan unit bagian induk untuk Kabag atau subbagian staf
-  const getUnitKerja = () => {
-    const jab = currentUser?.jabatan || ""
-    if (jab.toLowerCase().includes("perencanaan, data dan informasi") && jab.toLowerCase().includes("sdm")) {
-      return "Bagian Perencanaan, Data & Informasi, Partisipasi, Hubungan Masyarakat & SDM"
-    }
-    if (jab.toLowerCase().includes("teknis penyelenggaraan") && jab.toLowerCase().includes("hukum")) {
-      return "Bagian Teknis Penyelenggaraan Pemilu dan Hukum"
-    }
-    if (jab.toLowerCase().includes("keuangan, umum dan logistik")) {
-      return "Bagian Keuangan, Umum dan Logistik"
-    }
-    return currentUser?.subbagian || "Sekretariat KPU Provinsi Sulawesi Utara"
-  }
+  // Unit kerja is the department stored for this employee (bagian).
+  const unitKerja = currentUser?.subbagian || "-"
 
-  const unitKerja = getUnitKerja()
+  // Active budget year, from the backend
+  const [activeYear, setActiveYear] = useState<string>("…")
+  useEffect(() => {
+    let alive = true
+    tahunAnggaranApi.getAll({ limit: 100 })
+      .then((res) => {
+        const active = res.items.find((item) => item.status === "active")
+        if (alive) setActiveYear(active ? `TA ${active.tahun}` : "Belum ada TA aktif")
+      })
+      .catch(() => { if (alive) setActiveYear("Tidak dapat dimuat") })
+    return () => { alive = false }
+  }, [])
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -171,7 +172,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                   Email Kedinasan
                 </span>
                 <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
-                  {currentUser?.email || `${(currentUser?.nip || "pegawai").toLowerCase()}@kpu.go.id`}
+                  {currentUser?.email || "Belum tercatat"}
                 </span>
               </div>
             </div>
@@ -192,7 +193,7 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                   Tahun Anggaran
                 </span>
                 <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
-                  TA 2026 / Terpadu
+                  {activeYear}
                 </span>
               </div>
             </div>

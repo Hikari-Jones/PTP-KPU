@@ -122,12 +122,40 @@ permissions, stale workflow versions, persisted history, report access, archive
 upload/download/delete/restore, last-admin protection, and account deactivation.
 It retains test records for inspection and never deletes operational records.
 
-Validation completed in this checkout: 14 unit tests; Python syntax parsing;
-frontend syntax/local-import bundling using esbuild (external dependencies excluded).
-Full TypeScript/Vite/lint, database integration, Docker startup, browser UAT, and a
-real MySQL backup/restore drill have NOT been verified here. npm registry DNS is
-unavailable and the local Python environment lacks greenlet. The dependency file
-now explicitly requests sqlalchemy[asyncio], which installs that requirement.
+Every-route smoke test: provision a SECOND empty `_test` database and run
+
+```bash
+../venv/bin/python tests/smoke_all_routes.py
+```
+
+It drives every API route the web UI uses (128 steps) as admin, operator and an
+unrelated user, including user mistakes: wrong passwords, missing fields, wrong
+role, duplicates, stale versions, over-budget amounts, deleting data still in use,
+oversized/forbidden files. Any 5xx, unexpected status, or error without a readable
+`detail` message fails the run. `python scripts/check.py --integration --smoke`
+runs everything (set DATABASE_URL to the empty database before each).
+
+Validation completed on 2026-11-20 against MySQL 8.0 in Docker: 30 backend unit
+tests, integration test, 128/128 smoke steps, 12 frontend unit tests, Vite
+production build, and a production `docker compose` stack exercised through nginx
+(login rate limit, upload/download, 25 MB limit, upload rollback, backup ZIP,
+AI chat with no model present). `npm run lint` runs but reports 74 pre-existing
+style findings (`any` types, unused imports, hook dependency warnings).
+Browser UAT and a full backup/restore drill are still manual steps.
+
+### Upgrading an existing installation to this release
+
+Archive documents no longer require a classification code (the upload screen never
+sent one, so every archive upload failed). Apply the schema change once:
+
+```bash
+docker compose -f docker-compose.production.yml build
+docker compose -f docker-compose.production.yml run --rm backend python upgrade_operations.py
+docker compose -f docker-compose.production.yml up -d
+```
+
+`upgrade_operations.py` is idempotent; Alembic installations can instead apply
+revision `c4d5e6f7a8b9`.
 
 ## Additional security and regulatory gates
 

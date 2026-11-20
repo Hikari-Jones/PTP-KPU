@@ -1,4 +1,6 @@
+import logging
 from fastapi import FastAPI, HTTPException
+from sqlalchemy.exc import IntegrityError, OperationalError
 from fastapi.security import HTTPAuthorizationCredentials
 from app.core.auth import get_current_user
 from app.core.database import AsyncSessionLocal
@@ -15,6 +17,41 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENABLE_API_DOCS else None,
     openapi_url="/openapi.json" if settings.ENABLE_API_DOCS else None
 )
+
+logger = logging.getLogger("ptp_kpu")
+
+
+# Every request uses its own session; uncommitted changes are discarded (rolled back)
+# when the session closes. These handlers turn failures into a JSON "detail" message
+# that the frontend shows to the user instead of a bare "500".
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request, exc: IntegrityError):
+    logger.warning("Integrity error on %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Data tidak dapat disimpan karena bertentangan dengan data yang ada "
+                           "atau ada data wajib yang belum diisi. Tidak ada perubahan yang disimpan."},
+    )
+
+
+@app.exception_handler(OperationalError)
+async def database_unavailable_handler(request, exc: OperationalError):
+    logger.error("Database error on %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database sedang tidak dapat dihubungi. Silakan coba lagi beberapa saat lagi."},
+    )
+
+
+@app.exception_handler(Exception)
+async def unexpected_error_handler(request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Terjadi kesalahan pada server dan permintaan tidak selesai. Muat ulang halaman "
+                           "untuk memeriksa data sebelum mencoba lagi, atau hubungi administrator."},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

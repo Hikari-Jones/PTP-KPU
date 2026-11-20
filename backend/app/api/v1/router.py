@@ -33,6 +33,7 @@ api_router.include_router(anggaran.revisi_router, prefix="/revisi-anggaran", tag
 api_router.include_router(anggaran.realisasi_router, prefix="/realisasi-anggaran", tags=["Realisasi Anggaran"])
 api_router.include_router(anggaran.dashboard_router, prefix="/anggaran", tags=["Ringkasan Anggaran"])
 
-from app.api.v1.endpoints import operations, backups
+from app.api.v1.endpoints import operations, backups, dashboard
 api_router.include_router(operations.router)
+api_router.include_router(dashboard.router)
 api_router.include_router(backups.router)

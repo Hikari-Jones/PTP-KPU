@@ -3,12 +3,15 @@ import { request } from "../../services/operations"
 import { authApi } from "../../services/api"
 
 export interface UserProfile {
+  id_pegawai?: number
   name: string
   nip: string
-  email: string
+  /** Not stored for employees yet; null when unknown (never invented). */
+  email?: string | null
   role: "Admin" | "Pegawai" | "Operator"
   jabatan: string
   subbagian: string
+  id_bagian?: number | null
 }
 
 export type ModuleKey = "anggaran" | "surat"

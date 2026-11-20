@@ -9,19 +9,19 @@ export function FAQView({ theme }: { theme: "light" | "dark" }) {
   const faqs = [
     {
       q: "Apa fungsi utama Chatbot KIRANA Agent di PTP-KPU?",
-      a: "KIRANA Agent adalah asisten AI cerdas yang dapat memproses draf Surat Dinas, Nota Dinas, Laporan Anggaran, Rekapitulasi Surat, dan Jadwal Kegiatan secara otomatis beserta file lampiran yang langsung bisa diunduh.",
+      a: "KIRANA adalah asisten AI lokal yang berjalan di server kantor. KIRANA dapat menjawab pertanyaan tentang data surat, arsip, dan anggaran sesuai hak akses Anda, serta membantu menyusun draf seperti nota dinas. Draf dari AI tetap wajib diperiksa sebelum digunakan.",
     },
     {
       q: "Bagaimana cara mengunduh berkas draf dari KIRANA Agent?",
-      a: "Klik tombol atau ketik nama dokumen di widget KIRANA (misal: [Surat Dinas]), KIRANA akan memberikan tanggapan beserta tombol 'Unduh' pada gelembung percakapan.",
+      a: "Setelah KIRANA selesai menjawab, gunakan tombol unduh pada gelembung jawaban untuk menyimpan isinya sebagai berkas .txt.",
     },
     {
       q: "Siapa saja yang dapat mengakses Menu Admin?",
-      a: "Menu Admin secara dinamis hanya ditampilkan untuk pengguna dengan role 'Admin' (contoh: akun admin@kpu.go.id). Pegawai hanya memiliki akses ke menu standar.",
+      a: "Menu Admin secara dinamis hanya ditampilkan untuk pengguna dengan role 'Admin' (akun yang diberi peran Administrator oleh admin melalui menu Kelola User). Pegawai hanya memiliki akses ke menu standar.",
     },
     {
       q: "Apakah data dokumen di PTP-KPU bersifat terenkripsi?",
-      a: "Ya, seluruh arsip dan registrasi surat disimpan secara aman dengan otentikasi role-based access control.",
+      a: "Akses ke arsip dan surat dibatasi dengan login dan hak akses per peran dan bagian. Data disimpan di server kantor; gunakan HTTPS untuk mengenkripsi koneksi dan simpan salinan cadangan di media yang terkunci.",
     },
   ]
 
