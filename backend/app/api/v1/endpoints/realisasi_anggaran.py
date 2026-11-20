@@ -117,23 +117,52 @@ async def create_realisasi(
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
 
+def require_rendatin_user(user: Pegawai) -> None:
+    """
+    Enforces strict authorization: ONLY officers of Subbagian RENDATIN (BAG-02)
+    have edit and delete privileges on budget realization transactions.
+    - BAG-02 is the primary authoritative identifier.
+    - Strict name fallback is provided if kode_bagian is missing.
+    - Non-RENDATIN Admins and non-RENDATIN Operators are strictly forbidden (HTTP 403).
+    """
+    if not user or not user.bagian:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak: Hanya pegawai Subbagian RENDATIN (BAG-02) yang memiliki kewenangan mengubah atau menghapus transaksi realisasi anggaran",
+        )
+
+    kode = (user.bagian.kode_bagian or "").strip().upper()
+    nama = (user.bagian.nama_bagian or "").strip().lower()
+
+    is_rendatin = (kode == "BAG-02") or ("rendatin" in nama) or ("perencanaan, data dan informasi" in nama)
+    if not is_rendatin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak: Anda bukan anggota Subbagian RENDATIN (Perencanaan, Data dan Informasi). Role Admin dari bagian lain tidak memiliki hak ini.",
+        )
+
+
 @router.put(
     "/{id_realisasi}",
     response_model=RealisasiAnggaranResponse,
-    summary="Update Transaksi Draft / Rejected",
-    description="Memperbarui data transaksi realisasi. Sesuai business rule, hanya transaksi berstatus 'draft' atau 'rejected' yang diizinkan untuk diubah. Jika sebelumnya berstatus 'rejected', status otomatis kembali ke 'draft'.",
+    summary="Update Transaksi Realisasi (Khusus RENDATIN)",
+    description="Memperbarui data transaksi realisasi verified secara atomik oleh Subbagian RENDATIN (BAG-02). Melakukan validasi pagu dengan SELECT ... FOR UPDATE.",
 )
-async def update_realisasi_draft(
+async def update_realisasi_rendatin_endpoint(
     id_realisasi: int,
     realisasi_in: RealisasiAnggaranUpdateDraft,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_budget_operator),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
-    db_obj = await realisasi_anggaran.update_draft(
+    # 1. Enforce RENDATIN strict authorization
+    require_rendatin_user(current_user)
+
+    # 2. Execute atomic update with concurrency protection
+    db_obj = await realisasi_anggaran.update_realisasi_rendatin(
         db,
         id_realisasi=id_realisasi,
         obj_in=realisasi_in,
-        current_user_id=current_user.id_pegawai,
+        user=current_user,
     )
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
@@ -141,27 +170,23 @@ async def update_realisasi_draft(
 @router.delete(
     "/{id_realisasi}",
     response_model=RealisasiAnggaranResponse,
-    summary="Hapus Transaksi Draft",
-    description="Menghapus transaksi realisasi belanja. Sesuai business rule, hanya transaksi berstatus 'draft' yang dapat dihapus.",
+    summary="Hapus Transaksi Realisasi (Khusus RENDATIN)",
+    description="Menghapus transaksi realisasi verified secara atomik oleh Subbagian RENDATIN (BAG-02). Saldo pagu aktif otomatis pulih.",
 )
-async def delete_realisasi_draft(
+async def delete_realisasi_rendatin_endpoint(
     id_realisasi: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_budget_operator),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
-    db_obj = await realisasi_anggaran.get_detail(db, id_realisasi)
-    if not db_obj:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
-        )
-    enriched = await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
-    await realisasi_anggaran.delete_draft(
+    # 1. Enforce RENDATIN strict authorization
+    require_rendatin_user(current_user)
+
+    # 2. Execute atomic deletion
+    return await realisasi_anggaran.delete_realisasi_rendatin(
         db,
         id_realisasi=id_realisasi,
-        current_user_id=current_user.id_pegawai,
+        user=current_user,
     )
-    return enriched
 
 
 # =========================================================

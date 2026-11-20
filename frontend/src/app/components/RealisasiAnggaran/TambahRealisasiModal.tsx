@@ -181,7 +181,7 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
       })
 
       setSuccessMessage(
-        `Transaksi berhasil disimpan sebagai draft; ajukan melalui daftar transaksi! Nomor: ${res.nomor_dokumen} (Status: ${res.status})`
+        `Transaksi berhasil disimpan langsung sah (Direct Realisasi)! Nomor: ${res.nomor_dokumen} (Status: ${res.status})`
       )
 
       // Trigger server-side refresh in parent component

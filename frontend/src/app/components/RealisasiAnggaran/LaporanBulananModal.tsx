@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react"
 import { X, Download, Filter, FileSpreadsheet } from "lucide-react"
-import type { TransaksiRealisasi } from "./types"
+import type { TransaksiRealisasi, RealisasiAnggaranResponse } from "./types"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { Badge } from "../ui/badge"
+import { exportRealisasiAnggaranToExcel } from "../../../services/excelReport"
 
 interface Props {
   isOpen: boolean
@@ -17,6 +18,7 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
 
   const [selectedPeriode, setSelectedPeriode] = useState("Semua")
   const [selectedSubbagian, setSelectedSubbagian] = useState("Semua")
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
   const tableContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -62,6 +64,45 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
 
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(val)
+  }
+
+  const handleExportFullExcel = async () => {
+    setIsExportingExcel(true)
+    try {
+      // Map TransaksiRealisasi to RealisasiAnggaranResponse format for Excel generator
+      const mappedTransactions: RealisasiAnggaranResponse[] = filteredList.map((t) => ({
+        id_realisasi: Number(t.id) || 0,
+        id_akun_anggaran: 0,
+        nomor_dokumen: t.noDokumen,
+        tanggal_transaksi: t.tanggal,
+        uraian_kegiatan: t.usulanKegiatan,
+        jumlah_realisasi: t.jumlah,
+        bukti_file_path: null,
+        bukti_file_nama: t.buktiFile || null,
+        status: (t.status === "Disetujui"
+          ? "verified"
+          : t.status === "Ditolak"
+            ? "rejected"
+            : "pending") as any,
+        created_at: t.tanggal,
+        updated_at: t.tanggal,
+        kode_akun: t.kodeAkun,
+        nama_akun: t.namaAkun,
+        nama_bagian: t.subbagian,
+        periode: t.periode,
+      }))
+
+      await exportRealisasiAnggaranToExcel({
+        tahun: new Date().getFullYear(),
+        namaBagian: selectedSubbagian !== "Semua" ? selectedSubbagian : null,
+        namaBulan: selectedPeriode !== "Semua" ? selectedPeriode : null,
+        transactions: mappedTransactions,
+      })
+    } catch (err: any) {
+      alert("Gagal mengunduh file Excel: " + (err.message || "Terjadi kesalahan"))
+    } finally {
+      setIsExportingExcel(false)
+    }
   }
 
   const handleDownloadExcel = () => {
@@ -157,13 +198,25 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
             </div>
           </div>
 
-          <button
-            onClick={handleDownloadExcel}
-            className="btn-kpu-red px-3.5 py-1.5 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shrink-0 active:scale-95"
-          >
-            <Download className="w-4 h-4" />
-            <span>Unduh Laporan (.xlsx / .csv)</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportFullExcel}
+              disabled={isExportingExcel}
+              className="btn-kpu-red px-3.5 py-1.5 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shrink-0 active:scale-95 disabled:opacity-50"
+              title="Download Workbook Excel (.xlsx) dengan 3 Sheet"
+            >
+              <Download className={`w-4 h-4 ${isExportingExcel ? "animate-bounce" : ""}`} />
+              <span>{isExportingExcel ? "Membuat Excel..." : "Unduh Excel (.xlsx)"}</span>
+            </button>
+            <button
+              onClick={handleDownloadExcel}
+              className={`px-3 py-1.5 border text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shrink-0 active:scale-95 ${isDark ? "border-slate-700 bg-slate-900 text-white" : "border-slate-300 bg-white text-black"
+                }`}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-red-600" />
+              <span>Unduh CSV</span>
+            </button>
+          </div>
         </div>
 
         {/* Modal Table Body */}
@@ -172,63 +225,63 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
             <CardContent className="p-0">
               <div ref={tableContainerRef} className="overflow-x-auto pb-2 custom-scrollbar">
                 <Table className="min-w-[880px]">
-                <TableHeader>
-                  <TableRow className={isDark ? "border-b border-white/30 bg-[#0a0e1a]" : "border-b border-slate-200 bg-slate-100"}>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>No. Dokumen</TableHead>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Tanggal</TableHead>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Kode & Nama Akun</TableHead>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Subbagian</TableHead>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Usulan Kegiatan</TableHead>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Jumlah (Rp)</TableHead>
-                    <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredList.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-6 text-slate-400 text-xs">
-                        Tidak ada transaksi realisasi anggaran yang sesuai dengan filter.
-                      </TableCell>
+                  <TableHeader>
+                    <TableRow className={isDark ? "border-b border-white/30 bg-[#0a0e1a]" : "border-b border-slate-200 bg-slate-100"}>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>No. Dokumen</TableHead>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Tanggal</TableHead>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Kode & Nama Akun</TableHead>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Subbagian</TableHead>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Usulan Kegiatan</TableHead>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Jumlah (Rp)</TableHead>
+                      <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Status</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredList.map((item) => (
-                      <TableRow
-                        key={item.id}
-                        className={
-                          isDark ? "border-b border-white/20" : "border-b border-slate-100"
-                        }
-                      >
-                        <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400 whitespace-nowrap">{item.noDokumen}</TableCell>
-                        <TableCell className={`text-xs font-semibold whitespace-nowrap ${isDark ? "text-gray-300" : "text-black"}`}>{item.tanggal}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">
-                          <span className={`font-mono font-bold block ${isDark ? "text-white" : "text-black"}`}>{item.kodeAkun}</span>
-                          <span className={`text-[11px] font-semibold ${isDark ? "text-gray-300" : "text-slate-800"}`}>{item.namaAkun}</span>
-                        </TableCell>
-                        <TableCell className={`text-xs font-bold whitespace-nowrap ${isDark ? "text-gray-200" : "text-black"}`}>{item.subbagian}</TableCell>
-                        <TableCell className={`font-bold text-xs max-w-xs truncate ${isDark ? "text-white" : "text-black"}`}>{item.usulanKegiatan}</TableCell>
-                        <TableCell className="text-xs font-black text-red-600 dark:text-red-400 whitespace-nowrap">
-                          {formatRupiah(item.jumlah)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <Badge
-                            variant={
-                              item.status === "Disetujui"
-                                ? "terkirim"
-                                : item.status === "Menunggu Verifikasi"
-                                  ? "diproses"
-                                  : item.status === "Draft"
-                                    ? "draft"
-                                    : "diterima"
-                            }
-                          >
-                            {item.status}
-                          </Badge>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredList.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-6 text-slate-400 text-xs">
+                          Tidak ada transaksi realisasi anggaran yang sesuai dengan filter.
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      filteredList.map((item) => (
+                        <TableRow
+                          key={item.id}
+                          className={
+                            isDark ? "border-b border-white/20" : "border-b border-slate-100"
+                          }
+                        >
+                          <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400 whitespace-nowrap">{item.noDokumen}</TableCell>
+                          <TableCell className={`text-xs font-semibold whitespace-nowrap ${isDark ? "text-gray-300" : "text-black"}`}>{item.tanggal}</TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            <span className={`font-mono font-bold block ${isDark ? "text-white" : "text-black"}`}>{item.kodeAkun}</span>
+                            <span className={`text-[11px] font-semibold ${isDark ? "text-gray-300" : "text-slate-800"}`}>{item.namaAkun}</span>
+                          </TableCell>
+                          <TableCell className={`text-xs font-bold whitespace-nowrap ${isDark ? "text-gray-200" : "text-black"}`}>{item.subbagian}</TableCell>
+                          <TableCell className={`font-bold text-xs max-w-xs truncate ${isDark ? "text-white" : "text-black"}`}>{item.usulanKegiatan}</TableCell>
+                          <TableCell className="text-xs font-black text-red-600 dark:text-red-400 whitespace-nowrap">
+                            {formatRupiah(item.jumlah)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <Badge
+                              variant={
+                                item.status === "Disetujui"
+                                  ? "terkirim"
+                                  : item.status === "Menunggu Verifikasi"
+                                    ? "diproses"
+                                    : item.status === "Draft"
+                                      ? "draft"
+                                      : "diterima"
+                              }
+                            >
+                              {item.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
             </CardContent>
           </Card>

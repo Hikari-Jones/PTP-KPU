@@ -422,6 +422,66 @@ export const realisasiAnggaranApi = {
     if (!res.ok) throw new Error(`Gagal memuat realisasi anggaran (${res.status})`);
     return await res.json();
   },
+  getAllPages: async (params?: {
+    id_pagu?: number;
+    id_tahun_anggaran?: number;
+    id_bagian?: number;
+    id_akun_anggaran?: number;
+    bulan?: number;
+    status?: 'draft' | 'submitted' | 'verified' | 'rejected';
+    search?: string;
+    tanggal_mulai?: string;
+    tanggal_selesai?: string;
+    batchSize?: number;
+    maxPages?: number;
+  }): Promise<RealisasiAnggaranResponse[]> => {
+    const batchLimit = Math.min(Math.max(params?.batchSize || 500, 1), 500);
+    const maxSafetyPages = params?.maxPages || 50; // Safeguard up to 25,000 transactions
+    const allItems: RealisasiAnggaranResponse[] = [];
+    let skip = 0;
+    let pageCount = 0;
+    let totalItems = Infinity;
+
+    while (skip < totalItems && pageCount < maxSafetyPages) {
+      pageCount++;
+      const res = await realisasiAnggaranApi.getAll({
+        id_pagu: params?.id_pagu,
+        id_tahun_anggaran: params?.id_tahun_anggaran,
+        id_bagian: params?.id_bagian,
+        id_akun_anggaran: params?.id_akun_anggaran,
+        bulan: params?.bulan,
+        status: params?.status,
+        search: params?.search,
+        tanggal_mulai: params?.tanggal_mulai,
+        tanggal_selesai: params?.tanggal_selesai,
+        skip,
+        limit: batchLimit,
+      });
+
+      if (typeof res.total === 'number') {
+        totalItems = res.total;
+      }
+
+      const items = res.items || [];
+      if (items.length === 0 && skip < totalItems && totalItems !== Infinity) {
+        throw new Error(`Data tidak konsisten: server melaporkan total ${totalItems} data tetapi halaman ke-${pageCount} kosong.`);
+      }
+
+      allItems.push(...items);
+
+      if (items.length < batchLimit || items.length === 0) {
+        break;
+      }
+
+      skip += items.length;
+    }
+
+    if (pageCount >= maxSafetyPages && skip < totalItems && totalItems !== Infinity) {
+      throw new Error(`Batas pengunduhan halaman tercapai (${maxSafetyPages} halaman). Silakan persempit filter data.`);
+    }
+
+    return allItems;
+  },
   getById: async (id: number): Promise<RealisasiAnggaranResponse> => {
     const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/${id}`, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error(`Gagal memuat detail realisasi (${res.status})`);
@@ -436,6 +496,29 @@ export const realisasiAnggaranApi = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
       throw new Error(err.detail || `Gagal menyimpan transaksi realisasi (${res.status})`);
+    }
+    return await res.json();
+  },
+  update: async (id: number, payload: Partial<RealisasiAnggaranCreatePayload>): Promise<RealisasiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal memperbarui transaksi realisasi (${res.status})`);
+    }
+    return await res.json();
+  },
+  delete: async (id: number): Promise<RealisasiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal menghapus transaksi realisasi (${res.status})`);
     }
     return await res.json();
   },

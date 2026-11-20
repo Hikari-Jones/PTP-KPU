@@ -176,7 +176,7 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
 
       setMessage({
         type: "success",
-        text: `Realisasi ${res.nomor_dokumen} berhasil disimpan sebagai draft; ajukan melalui daftar transaksi (Status: ${res.status}).`,
+        text: `Realisasi ${res.nomor_dokumen} berhasil disimpan langsung sah (Status: ${res.status}).`,
       })
 
       // Reset form

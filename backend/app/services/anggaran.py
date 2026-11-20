@@ -1091,13 +1091,32 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         if path:
             import re
             match = re.fullmatch(r"/api/v1/files/([1-9][0-9]*)", path)
-            record = await db.get(FileRecord, int(match[1])) if match else None
-            if not record or record.uploaded_by != owner_id:
-                raise HTTPException(403, "Bukti harus berupa berkas unggahan milik operator")
-            data.update(bukti_file_nama=record.original_name, bukti_file_ukuran=record.file_size,
-                        bukti_file_mime=record.mime_type)
+            if match:
+                record = await db.get(FileRecord, int(match[1]))
+                if record and record.uploaded_by == owner_id:
+                    data.update(
+                        bukti_file_nama=record.original_name,
+                        bukti_file_ukuran=record.file_size,
+                        bukti_file_mime=record.mime_type,
+                    )
+                else:
+                    data.update(
+                        bukti_file_nama=data.get("bukti_file_nama"),
+                        bukti_file_ukuran=data.get("bukti_file_ukuran"),
+                        bukti_file_mime=data.get("bukti_file_mime"),
+                    )
+            else:
+                data.update(
+                    bukti_file_nama=data.get("bukti_file_nama"),
+                    bukti_file_ukuran=data.get("bukti_file_ukuran"),
+                    bukti_file_mime=data.get("bukti_file_mime"),
+                )
         else:
-            data.update(bukti_file_nama=None, bukti_file_ukuran=None, bukti_file_mime=None)
+            data.update(
+                bukti_file_nama=data.get("bukti_file_nama") or None,
+                bukti_file_ukuran=data.get("bukti_file_ukuran") or None,
+                bukti_file_mime=data.get("bukti_file_mime") or None,
+            )
         return data
 
     async def create_realisasi_direct(
@@ -1107,7 +1126,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         obj_in: RealisasiAnggaranCreateDraft,
         id_pegawai: int,
     ) -> RealisasiAnggaran:
-        """Create an unapproved draft. Budget availability is checked again at review."""
+        """Direct Approved: Creates transaction directly with verified status after row-lock budget validation."""
         if obj_in.jumlah_realisasi <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1184,24 +1203,24 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
                 detail=f"Jumlah realisasi ({obj_in.jumlah_realisasi:,.2f}) melebihi sisa anggaran yang tersedia ({available_budget:,.2f})",
             )
 
-        # Input is never financial approval.
+        # Direct Approved: Transaksi langsung sah dan terverifikasi
         db_obj = RealisasiAnggaran(
             id_pagu=obj_in.id_pagu,
             id_akun_anggaran=pagu.id_akun_anggaran,
             id_pegawai=id_pegawai,
-            id_verifier=None,  # Tidak ada klaim verifikasi admin palsu
+            id_verifier=None,  # Otomatis sistem
             tanggal_transaksi=obj_in.tanggal_transaksi,
             nomor_dokumen=obj_in.nomor_dokumen.strip(),
             uraian_kegiatan=obj_in.uraian_kegiatan.strip(),
             jumlah_realisasi=obj_in.jumlah_realisasi,
-            status="draft",
+            status="verified",
             periode=obj_in.periode,
             bukti_file_path=obj_in.bukti_file_path,
             bukti_file_nama=validated["bukti_file_nama"],
             bukti_file_ukuran=validated["bukti_file_ukuran"],
             bukti_file_mime=validated["bukti_file_mime"],
-            catatan_verifikasi=None,
-            verified_at=None,
+            catatan_verifikasi="Validasi otomatis sistem (Direct Realisasi)",
+            verified_at=datetime.now(),
         )
         db.add(db_obj)
         await self._audit(db, db_obj, id_pegawai, "create")
@@ -1484,6 +1503,182 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         await db.delete(tx)
         await db.commit()
         return tx
+
+    async def update_realisasi_rendatin(
+        self,
+        db: AsyncSession,
+        *,
+        id_realisasi: int,
+        obj_in: Any,
+        user: Pegawai,
+    ) -> RealisasiAnggaran:
+        """
+        Allows authorized RENDATIN officers (BAG-02) to edit verified realization transactions.
+        - Guarantees transactional atomicity and concurrency protection via SELECT ... FOR UPDATE.
+        - Dynamically accounts for previous transaction amount to prevent double-counting.
+        - Validates available budget when amount increases or when switching budget lines (id_pagu).
+        - Maintains verified status without resetting to draft.
+        - Records changes to BudgetEvent via self._audit().
+        """
+        # 1. Lock the transaction row
+        tx_stmt = select(RealisasiAnggaran).where(RealisasiAnggaran.id_realisasi == id_realisasi).with_for_update()
+        tx_res = await db.execute(tx_stmt)
+        tx = tx_res.scalar_one_or_none()
+        if not tx:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
+            )
+
+        if tx.status != "verified":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hanya transaksi berstatus 'verified' yang dapat diedit oleh RENDATIN (status saat ini: '{tx.status}')",
+            )
+
+        update_data = obj_in.model_dump(exclude_unset=True) if hasattr(obj_in, 'model_dump') else dict(obj_in)
+        old_amount = Decimal(str(tx.jumlah_realisasi or 0))
+        new_amount = Decimal(str(update_data.get("jumlah_realisasi", old_amount)))
+        if new_amount <= Decimal("0.00"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Jumlah realisasi transaksi harus lebih besar dari 0",
+            )
+
+        # Check maximum two decimal places
+        if new_amount.as_tuple().exponent < -2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Nominal realisasi tidak boleh memiliki lebih dari 2 angka di belakang desimal",
+            )
+
+        target_pagu_id = update_data.get("id_pagu", tx.id_pagu)
+        if not target_pagu_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Transaksi belum terikat pada pagu anggaran resmi",
+            )
+
+        # 2. Consistent ordering for SELECT ... FOR UPDATE on Pagu to prevent deadlocks
+        pagu_ids_to_lock = sorted(list({tx.id_pagu, target_pagu_id}))
+        pagus_by_id = {}
+        for pid in pagu_ids_to_lock:
+            p_stmt = select(PaguAnggaran).where(PaguAnggaran.id_pagu == pid).with_for_update()
+            p_res = await db.execute(p_stmt)
+            p_obj = p_res.scalar_one_or_none()
+            if not p_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Pagu anggaran dengan ID {pid} tidak ditemukan",
+                )
+            pagus_by_id[pid] = p_obj
+
+        target_pagu = pagus_by_id[target_pagu_id]
+
+        # 3. Validate Fiscal Year of target Pagu
+        ta_res = await db.execute(select(TahunAnggaran).where(TahunAnggaran.id_tahun_anggaran == target_pagu.id_tahun_anggaran))
+        ta_obj = ta_res.scalar_one_or_none()
+        if not ta_obj or ta_obj.status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Pagu anggaran berada pada tahun anggaran yang tidak aktif atau ditutup",
+            )
+
+        # 4. Check available budget on target Pagu
+        if target_pagu_id == tx.id_pagu:
+            # Same pagu: recalculate verified sum excluding this transaction's old amount
+            sum_stmt = (
+                select(func.coalesce(func.sum(RealisasiAnggaran.jumlah_realisasi), Decimal("0.00")))
+                .where(
+                    RealisasiAnggaran.id_pagu == target_pagu_id,
+                    RealisasiAnggaran.status == "verified",
+                    RealisasiAnggaran.id_realisasi != tx.id_realisasi,
+                )
+            )
+            sum_res = await db.execute(sum_stmt)
+            other_verified = Decimal(str(sum_res.scalar_one() or 0))
+            available = (target_pagu.pagu_aktif or Decimal("0.00")) - other_verified
+
+            if new_amount > available:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Update gagal: Jumlah realisasi baru ({new_amount:,.2f}) melebihi sisa anggaran pagu ({available:,.2f})",
+                )
+        else:
+            # Pindah Pagu: target pagu must accommodate the entire new_amount
+            sum_stmt = (
+                select(func.coalesce(func.sum(RealisasiAnggaran.jumlah_realisasi), Decimal("0.00")))
+                .where(
+                    RealisasiAnggaran.id_pagu == target_pagu_id,
+                    RealisasiAnggaran.status == "verified",
+                )
+            )
+            sum_res = await db.execute(sum_stmt)
+            target_verified = Decimal(str(sum_res.scalar_one() or 0))
+            available = (target_pagu.pagu_aktif or Decimal("0.00")) - target_verified
+
+            if new_amount > available:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Pindah pagu gagal: Nominal ({new_amount:,.2f}) melebihi sisa anggaran pagu tujuan ({available:,.2f})",
+                )
+            tx.id_pagu = target_pagu_id
+            tx.id_akun_anggaran = target_pagu.id_akun_anggaran
+
+        # Apply updates
+        if "nomor_dokumen" in update_data and update_data["nomor_dokumen"]:
+            tx.nomor_dokumen = str(update_data["nomor_dokumen"]).strip()
+        if "uraian_kegiatan" in update_data and update_data["uraian_kegiatan"]:
+            tx.uraian_kegiatan = str(update_data["uraian_kegiatan"]).strip()
+        if "tanggal_transaksi" in update_data and update_data["tanggal_transaksi"]:
+            tx.tanggal_transaksi = update_data["tanggal_transaksi"]
+        if "jumlah_realisasi" in update_data and update_data["jumlah_realisasi"]:
+            tx.jumlah_realisasi = new_amount
+        if "periode" in update_data:
+            tx.periode = update_data["periode"]
+
+        # Ensure status stays verified
+        tx.status = "verified"
+
+        db.add(tx)
+        # Record audit event before commit
+        await self._audit(db, tx, user.id_pegawai, "rendatin_edit")
+        await db.commit()
+        await db.refresh(tx)
+        return await self.get_detail(db, tx.id_realisasi)
+
+    async def delete_realisasi_rendatin(
+        self,
+        db: AsyncSession,
+        *,
+        id_realisasi: int,
+        user: Pegawai,
+    ) -> RealisasiAnggaran:
+        """
+        Allows authorized RENDATIN officers (BAG-02) to delete verified realization transactions.
+        - Guarantees atomic deletion and automatic budget restoration.
+        - Locked using SELECT ... FOR UPDATE on Pagu then Realisasi.
+        - Records delete event in BudgetEvent before row deletion.
+        """
+        tx = await self._locked(db, id_realisasi)
+        if not tx:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
+            )
+
+        if tx.status != "verified":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hanya transaksi berstatus 'verified' yang dapat dihapus oleh RENDATIN (status saat ini: '{tx.status}')",
+            )
+
+        enriched = await self.enrich_realisasi_response(db, tx)
+        # Record audit before deletion so snapshot is captured
+        await self._audit(db, tx, user.id_pegawai, "rendatin_delete")
+        await db.delete(tx)
+        await db.commit()
+        return enriched
 
     async def get_filtered(
         self,

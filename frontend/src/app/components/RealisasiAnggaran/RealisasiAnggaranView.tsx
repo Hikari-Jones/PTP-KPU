@@ -12,7 +12,10 @@ import {
   FileCheck,
   ChevronDown,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Edit2,
+  Trash2
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
@@ -26,6 +29,7 @@ import type {
   MonthlyReportResponse
 } from "./types"
 import { TambahRealisasiModal } from "./TambahRealisasiModal"
+import { EditRealisasiModal } from "./EditRealisasiModal"
 import { BudgetActions } from "./BudgetActions"
 import { request } from "../../../services/operations"
 import { saveCsv } from "../../../services/csv"
@@ -37,6 +41,7 @@ import {
   realisasiAnggaranApi,
   dashboardAnggaranApi
 } from "../../../services/api"
+import { exportRealisasiAnggaranToExcel } from "../../../services/excelReport"
 
 export type RealisasiSubTab = "ringkasan" | "transaksi" | "laporan" | "verifikasi"
 
@@ -53,7 +58,21 @@ const MONTH_NAMES = [
 
 export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate }: Props) {
   const isDark = theme === "dark"
-  const readOnly = !useAuth().canEdit("anggaran")
+  const auth = useAuth()
+  const readOnly = !auth.canEdit("anggaran")
+
+  // Subbagian RENDATIN privilege check:
+  // Only users affiliated with Subbagian RENDATIN (BAG-02) have permission to Edit and Delete realization transactions.
+  const isRendatin = !!(
+    auth.currentUser?.subbagian && (
+      auth.currentUser.subbagian.toUpperCase().includes("BAG-02") ||
+      auth.currentUser.subbagian.toLowerCase().includes("rendatin") ||
+      auth.currentUser.subbagian.toLowerCase().includes("perencanaan")
+    )
+  )
+
+  const [editingItem, setEditingItem] = useState<RealisasiAnggaranResponse | null>(null)
+  const [isDeleting, setIsDeleting] = useState<number | null>(null)
 
   // Master Filter Options
   const [tahunList, setTahunList] = useState<TahunAnggaranResponse[]>([])
@@ -81,6 +100,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
   const [report, setReport] = useState<MonthlyReportResponse | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -208,6 +228,65 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
     verifikasi: "Verifikasi & Audit Realisasi",
   }
 
+  // Full-dataset export to Excel handler with auto-batch pagination
+  const handleExportFullExcel = async () => {
+    setIsExportingExcel(true)
+    try {
+      // 1. Fetch complete transaction dataset across all pages (batch size 500)
+      const allTransactions = await realisasiAnggaranApi.getAllPages({
+        id_tahun_anggaran: selectedTahunId ?? undefined,
+        id_bagian: selectedBagianId ?? undefined,
+        id_akun_anggaran: selectedAkunId ?? undefined,
+        bulan: selectedBulan ?? undefined,
+        search: searchQuery.trim() || undefined,
+        status: "verified",
+      })
+
+      // 2. Fetch full-year monthly report for MAK breakdown matrix
+      const fullMonthlyRes = await dashboardAnggaranApi.getMonthlyReport({
+        id_tahun_anggaran: selectedTahunId ?? undefined,
+        id_bagian: selectedBagianId ?? undefined,
+        id_akun_anggaran: selectedAkunId ?? undefined,
+      }).catch(() => null)
+
+      // 3. Resolve active filter names
+      const selectedBagian = bagianList.find((b) => b.id_bagian === selectedBagianId)
+      const selectedAkun = akunList.find((a) => a.id_akun_anggaran === selectedAkunId)
+
+      await exportRealisasiAnggaranToExcel({
+        tahun: Number(displayYear),
+        bulan: selectedBulan,
+        namaBulan: selectedBulan ? MONTH_NAMES[selectedBulan - 1] : null,
+        namaBagian: selectedBagian?.nama_bagian || null,
+        kodeAkun: selectedAkun ? `${selectedAkun.kode_akun} - ${selectedAkun.nama_akun}` : null,
+        summary: summary,
+        monthlyReport: fullMonthlyRes || report,
+        transactions: allTransactions,
+      })
+    } catch (err: any) {
+      alert("Gagal mengunduh laporan Excel: " + (err.message || "Terjadi kesalahan sistem"))
+    } finally {
+      setIsExportingExcel(false)
+    }
+  }
+
+  // Handle delete action (RENDATIN only)
+  const handleDeleteTransaction = async (item: RealisasiAnggaranResponse) => {
+    if (!window.confirm(`Yakin ingin menghapus transaksi realisasi ${item.nomor_dokumen} sebesar ${formatRupiah(item.jumlah_realisasi)}?\n\nSaldo pagu yang terikat akan otomatis dikembalikan.`)) {
+      return
+    }
+
+    setIsDeleting(item.id_realisasi)
+    try {
+      await realisasiAnggaranApi.delete(item.id_realisasi)
+      await refetchData()
+    } catch (err: any) {
+      alert("Gagal menghapus transaksi: " + (err.message || "Terjadi kesalahan sistem"))
+    } finally {
+      setIsDeleting(null)
+    }
+  }
+
   // Export the complete server aggregate, independent of the current page.
   const exportReport = async () => {
     try {
@@ -266,6 +345,17 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               <span>Tambah Realisasi</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={handleExportFullExcel}
+            disabled={isExportingExcel || loading}
+            className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+            title="Download Workbook Excel (.xlsx) dengan 3 Sheet Terstruktur"
+          >
+            <Download className={`w-4 h-4 ${isExportingExcel ? "animate-bounce" : ""}`} />
+            <span>{isExportingExcel ? "Membuat Excel..." : "Export Excel (.xlsx)"}</span>
+          </button>
 
           <button
             type="button"
@@ -604,18 +694,21 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                     <TableHead className={`text-[11px] font-extrabold ${isDark ? "text-white" : "text-black"}`}>Uraian Kegiatan</TableHead>
                     <TableHead className={`text-[11px] font-extrabold text-right ${isDark ? "text-white" : "text-black"}`}>Jumlah (Rp)</TableHead>
                     <TableHead className={`text-[11px] font-extrabold text-center ${isDark ? "text-white" : "text-black"}`}>Status</TableHead>
+                    {isRendatin && (
+                      <TableHead className={`text-[11px] font-extrabold text-center ${isDark ? "text-white" : "text-black"}`}>Aksi (RENDATIN)</TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-6 text-xs text-slate-500">
+                      <TableCell colSpan={isRendatin ? 8 : 7} className="text-center py-6 text-xs text-slate-500">
                         Memuat transaksi realisasi...
                       </TableCell>
                     </TableRow>
                   ) : realisasiList.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-6 text-xs text-slate-500">
+                      <TableCell colSpan={isRendatin ? 8 : 7} className="text-center py-6 text-xs text-slate-500">
                         Tidak ada transaksi realisasi sesuai filter yang dipilih.
                       </TableCell>
                     </TableRow>
@@ -655,6 +748,37 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                           </Badge>
                           <BudgetActions item={item} userId={capabilities.user_id} canReview={capabilities.can_review} onSuccess={refetchData} />
                         </TableCell>
+                        {isRendatin && (
+                          <TableCell className="text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setEditingItem(item)}
+                                className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 ${
+                                  isDark
+                                    ? "border-blue-900 bg-blue-950/60 text-blue-400 hover:bg-blue-900/60"
+                                    : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                }`}
+                                title="Edit Transaksi Realisasi"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTransaction(item)}
+                                disabled={isDeleting === item.id_realisasi}
+                                className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 disabled:opacity-50 ${
+                                  isDark
+                                    ? "border-red-900 bg-red-950/60 text-red-400 hover:bg-red-900/60"
+                                    : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                }`}
+                                title="Hapus Transaksi Realisasi"
+                              >
+                                <Trash2 className={`w-3.5 h-3.5 ${isDeleting === item.id_realisasi ? "animate-spin" : ""}`} />
+                              </button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))
                   )}
@@ -680,14 +804,28 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                   Agregasi realisasi terverifikasi selama 12 bulan; ekspor mencakup seluruh akun sesuai filter tahun, bagian, dan akun.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={exportReport}
-                className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>Unduh Laporan (.csv)</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportFullExcel}
+                  disabled={isExportingExcel || loading}
+                  className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                  title="Download Workbook Excel (.xlsx) dengan 3 Sheet Terstruktur"
+                >
+                  <Download className={`w-4 h-4 ${isExportingExcel ? "animate-bounce" : ""}`} />
+                  <span>{isExportingExcel ? "Membuat Excel..." : "Unduh Excel (.xlsx)"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={exportReport}
+                  className={`px-4 py-2 border text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all active:scale-95 ${
+                    isDark ? "border-slate-700 bg-slate-900 text-white" : "border-slate-300 bg-white text-black"
+                  }`}
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-red-600" />
+                  <span>Unduh CSV</span>
+                </button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -780,6 +918,14 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSuccess={refetchData}
+        theme={theme}
+      />
+
+      <EditRealisasiModal
+        isOpen={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        onSuccess={refetchData}
+        transaksi={editingItem}
         theme={theme}
       />
 
