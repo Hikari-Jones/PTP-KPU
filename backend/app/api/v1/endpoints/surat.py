@@ -49,6 +49,15 @@ class KlasifikasiOut(BaseModel):
     class Config:
         from_attributes = True
 
+class KlasifikasiCreate(BaseModel):
+    kode_klasifikasi: str = Field(..., max_length=20)
+    nama_klasifikasi: str = Field(..., max_length=200)
+    kategori_utama: str = Field(..., max_length=100)
+    deskripsi: Optional[str] = Field(None, max_length=255)
+    retensi_aktif_tahun: int = Field(2, ge=0)
+    retensi_inaktif_tahun: int = Field(5, ge=0)
+    hak_akses: str = Field("Terbatas", max_length=50)
+
 class JenisSuratOut(BaseModel):
     id_jenis_surat: int
     kode_jenis: str
@@ -124,6 +133,32 @@ async def require_letter_access(db, surat, user):
 async def list_klasifikasi(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(KodeKlasifikasiArsip).order_by(KodeKlasifikasiArsip.kode_klasifikasi))
     return result.scalars().all()
+
+@router.post("/klasifikasi", response_model=KlasifikasiOut)
+async def create_klasifikasi(
+    payload: KlasifikasiCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_admin),
+):
+    existing = await db.scalar(
+        select(KodeKlasifikasiArsip).where(KodeKlasifikasiArsip.kode_klasifikasi == payload.kode_klasifikasi)
+    )
+    if existing:
+        raise HTTPException(400, f"Kode Klasifikasi '{payload.kode_klasifikasi}' sudah terdaftar")
+
+    item = KodeKlasifikasiArsip(
+        kode_klasifikasi=payload.kode_klasifikasi.strip().upper(),
+        nama_klasifikasi=payload.nama_klasifikasi.strip(),
+        kategori_utama=payload.kategori_utama.strip(),
+        deskripsi=payload.deskripsi,
+        retensi_aktif_tahun=payload.retensi_aktif_tahun,
+        retensi_inaktif_tahun=payload.retensi_inaktif_tahun,
+        hak_akses=payload.hak_akses.strip(),
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
 
 @router.get("/jenis-surat", response_model=List[JenisSuratOut])
 async def list_jenis_surat(db: AsyncSession = Depends(get_db)):

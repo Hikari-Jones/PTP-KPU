@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import type { SuratKeluar, KodeKlasifikasiArsip, JenisSurat } from "../../../types"
 import { request, download, message } from "../../../services/operations"
+import { createKlasifikasi } from "../../../services/api"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Badge } from "../ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
@@ -90,6 +91,17 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
 
   const [searchQuery, setSearchQuery] = useState("")
   const [showDraftModal, setShowDraftModal] = useState(false)
+  const [showKlasifikasiModal, setShowKlasifikasiModal] = useState(false)
+  const [isSubmittingKlasifikasi, setIsSubmittingKlasifikasi] = useState(false)
+  const [klasifikasiForm, setKlasifikasiForm] = useState({
+    kode_klasifikasi: "",
+    nama_klasifikasi: "",
+    kategori_utama: "Penyelenggaraan Pemilu",
+    deskripsi: "",
+    retensi_aktif_tahun: 2,
+    retensi_inaktif_tahun: 5,
+    hak_akses: "Terbatas",
+  })
   const blankForm = {
     id_klasifikasi: "",
     id_jenis_surat: "",
@@ -527,6 +539,21 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
       {/* 4. KODE KLASIFIKASI */}
       {activeTab === "klasifikasi" && (
         <Card className={cardClass}>
+          {isAdmin && (
+            <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-white/10" : "border-slate-200"}`}>
+              <span className={`text-xs font-semibold ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                Daftar Kode Klasifikasi Resmi KPU
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowKlasifikasiModal(true)}
+                className="btn-kpu-red px-3.5 py-1.5 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah Kode Klasifikasi</span>
+              </button>
+            </div>
+          )}
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -632,6 +659,177 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </button>
               <button type="submit" disabled={busy} className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer">
                 {busy ? "Menyimpan…" : "Simpan Draft"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL TAMBAH KODE KLASIFIKASI (ADMIN ONLY) */}
+      {showKlasifikasiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200" role="dialog" aria-modal="true">
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (!klasifikasiForm.kode_klasifikasi || !klasifikasiForm.nama_klasifikasi) {
+                notify("error", "Harap lengkapi kode dan nama klasifikasi!")
+                return
+              }
+              try {
+                setIsSubmittingKlasifikasi(true)
+                await createKlasifikasi(klasifikasiForm)
+                notify("success", `Kode klasifikasi ${klasifikasiForm.kode_klasifikasi} berhasil didaftarkan`)
+                setShowKlasifikasiModal(false)
+                setKlasifikasiForm({
+                  kode_klasifikasi: "",
+                  nama_klasifikasi: "",
+                  kategori_utama: "Penyelenggaraan Pemilu",
+                  deskripsi: "",
+                  retensi_aktif_tahun: 2,
+                  retensi_inaktif_tahun: 5,
+                  hak_akses: "Terbatas",
+                })
+                await load()
+              } catch (err: any) {
+                notify("error", err.message || "Gagal menambahkan kode klasifikasi")
+              } finally {
+                setIsSubmittingKlasifikasi(false)
+              }
+            }}
+            className={`w-full max-w-lg rounded-2xl border p-6 space-y-4 shadow-2xl backdrop-blur-md ${
+              isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Database className="w-5 h-5 text-red-600" />
+                Tambah Kode Klasifikasi Arsip
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowKlasifikasiModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs font-semibold">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Kode Klasifikasi *
+                  </label>
+                  <input
+                    required
+                    placeholder="Contoh: PL.01"
+                    value={klasifikasiForm.kode_klasifikasi}
+                    onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, kode_klasifikasi: e.target.value })}
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Kategori Utama *
+                  </label>
+                  <select
+                    value={klasifikasiForm.kategori_utama}
+                    onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, kategori_utama: e.target.value })}
+                    className={field}
+                  >
+                    <option value="Penyelenggaraan Pemilu">Penyelenggaraan Pemilu</option>
+                    <option value="Fasilitasi & Dukungan Teknis">Fasilitasi & Dukungan Teknis</option>
+                    <option value="Pengawasan & Hukum">Pengawasan & Hukum</option>
+                    <option value="Sosialisasi & Partisipasi">Sosialisasi & Partisipasi</option>
+                    <option value="Keuangan & Logistik">Keuangan & Logistik</option>
+                    <option value="Umum & Kepegawaian">Umum & Kepegawaian</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                  Nama Klasifikasi *
+                </label>
+                <input
+                  required
+                  placeholder="Contoh: Pencalonan Peserta Pemilu dan Pemilihan"
+                  value={klasifikasiForm.nama_klasifikasi}
+                  onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, nama_klasifikasi: e.target.value })}
+                  className={field}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                  Deskripsi / Keterangan
+                </label>
+                <input
+                  placeholder="Keterangan dokumen yang dicakup..."
+                  value={klasifikasiForm.deskripsi}
+                  onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, deskripsi: e.target.value })}
+                  className={field}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Retensi Aktif (th)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={klasifikasiForm.retensi_aktif_tahun}
+                    onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, retensi_aktif_tahun: Number(e.target.value) || 0 })}
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Retensi Inaktif (th)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={klasifikasiForm.retensi_inaktif_tahun}
+                    onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, retensi_inaktif_tahun: Number(e.target.value) || 0 })}
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Hak Akses
+                  </label>
+                  <select
+                    value={klasifikasiForm.hak_akses}
+                    onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, hak_akses: e.target.value })}
+                    className={field}
+                  >
+                    <option value="Terbuka">Terbuka</option>
+                    <option value="Terbatas">Terbatas</option>
+                    <option value="Rahasia">Rahasia</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowKlasifikasiModal(false)}
+                className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${
+                  isDark ? "border-white/10 hover:bg-slate-800 text-gray-300" : "border-slate-300 hover:bg-slate-100 text-slate-700"
+                }`}
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingKlasifikasi}
+                className="btn-kpu-red px-5 py-2 text-white text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer shadow-md"
+              >
+                {isSubmittingKlasifikasi ? "Menyimpan…" : "Simpan Klasifikasi"}
               </button>
             </div>
           </form>

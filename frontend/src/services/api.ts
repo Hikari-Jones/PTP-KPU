@@ -92,6 +92,52 @@ export const fetchSatker = async (): Promise<SatkerData[]> => {
   return res.json();
 };
 
+export interface SatkerCreatePayload {
+  kode_satker: string;
+  nama_satker: string;
+  tingkat: string;
+  alamat: string;
+  pagu: number;
+  realisasi: number;
+  status_dipa: string;
+}
+
+export const createSatker = async (payload: SatkerCreatePayload): Promise<SatkerData> => {
+  const res = await fetch(`${API_BASE_URL}/satker/`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(typeof error.detail === 'string' ? error.detail : `Gagal menambahkan Satker (${res.status})`);
+  }
+  return res.json();
+};
+
+export interface KlasifikasiCreatePayload {
+  kode_klasifikasi: string;
+  nama_klasifikasi: string;
+  kategori_utama: string;
+  deskripsi?: string;
+  retensi_aktif_tahun: number;
+  retensi_inaktif_tahun: number;
+  hak_akses: string;
+}
+
+export const createKlasifikasi = async (payload: KlasifikasiCreatePayload): Promise<KodeKlasifikasiArsip> => {
+  const res = await fetch(`${API_BASE_URL}/surat/klasifikasi`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(typeof error.detail === 'string' ? error.detail : `Gagal menambahkan klasifikasi (${res.status})`);
+  }
+  return res.json();
+};
+
 // ----------------- AI Chatbot KIRANA (model lokal di backend) -----------------
 
 export interface ChatAttachment {

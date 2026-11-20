@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react"
-import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, MapPin } from "lucide-react"
+import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, MapPin, Plus, X } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { Badge } from "../ui/badge"
-import { fetchSatker, type SatkerData } from "../../../services/api"
+import { fetchSatker, createSatker, type SatkerData } from "../../../services/api"
+import { useAuth } from "../../context/AuthContext"
+import { showToast } from "../../../services/activity"
 
 interface Props {
   theme: "light" | "dark"
@@ -12,19 +14,69 @@ interface Props {
 
 export function SatkerView({ theme, onNavigate }: Props) {
   const isDark = theme === "dark"
+  const { userRole } = useAuth()
+  const isAdmin = userRole === "Admin"
   const [satkers, setSatkers] = useState<SatkerData[]>([])
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTingkat, setFilterTingkat] = useState("Semua")
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formData, setFormData] = useState({
+    kode_satker: "",
+    nama_satker: "",
+    tingkat: "Kabupaten/Kota",
+    alamat: "",
+    pagu: 0,
+    realisasi: 0,
+    status_dipa: "Aktif",
+  })
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const data = await fetchSatker()
+      setSatkers(data)
+      setError("")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Data Satker tidak tersedia')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let active = true
-    fetchSatker().then(data => { if (active) setSatkers(data) })
-      .catch(e => { if (active) setError(e instanceof Error ? e.message : 'Data Satker tidak tersedia') })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+    void loadData()
   }, [])
+
+  const handleCreateSatker = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.kode_satker || !formData.nama_satker || !formData.alamat) {
+      showToast("error", "Harap isi semua kolom wajib!")
+      return
+    }
+    try {
+      setIsSubmitting(true)
+      await createSatker(formData)
+      showToast("success", `Satker "${formData.nama_satker}" berhasil ditambahkan`)
+      setShowAddModal(false)
+      setFormData({
+        kode_satker: "",
+        nama_satker: "",
+        tingkat: "Kabupaten/Kota",
+        alamat: "",
+        pagu: 0,
+        realisasi: 0,
+        status_dipa: "Aktif",
+      })
+      await loadData()
+    } catch (err: any) {
+      showToast("error", err.message || "Gagal menambahkan Satker")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   if (loading) return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -113,13 +165,26 @@ export function SatkerView({ theme, onNavigate }: Props) {
             Pengelolaan Data Satker KPU Provinsi dan 15 KPU Kabupaten/Kota Se-Sulawesi Utara
           </p>
         </div>
-        <button
-          onClick={exportCSV}
-          className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-md"
-        >
-          <Download className="w-4 h-4" />
-          <span>Ekspor CSV</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-md"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Satker</span>
+            </button>
+          )}
+          <button
+            onClick={exportCSV}
+            className={`px-4 py-2 font-bold text-xs rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-xs ${
+              isDark ? "bg-[#1e293b]/80 border-white/10 text-slate-200 hover:bg-[#1e293b]" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            <span>Ekspor CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -317,6 +382,145 @@ export function SatkerView({ theme, onNavigate }: Props) {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Modal Tambah Satker */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-lg rounded-2xl border p-6 shadow-2xl backdrop-blur-md ${
+            isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-red-600" />
+                Tambah Satuan Kerja (Satker) Baru
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSatker} className="mt-4 space-y-4 text-xs font-semibold">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Kode Satker *
+                  </label>
+                  <input
+                    required
+                    placeholder="Contoh: 652817"
+                    value={formData.kode_satker}
+                    onChange={(e) => setFormData({ ...formData, kode_satker: e.target.value })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Tingkat Wilayah
+                  </label>
+                  <select
+                    value={formData.tingkat}
+                    onChange={(e) => setFormData({ ...formData, tingkat: e.target.value })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  >
+                    <option value="Kabupaten/Kota">Kabupaten/Kota</option>
+                    <option value="Provinsi">Provinsi</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                  Nama Satuan Kerja *
+                </label>
+                <input
+                  required
+                  placeholder="Contoh: KPU Kabupaten Kepulauan Baru"
+                  value={formData.nama_satker}
+                  onChange={(e) => setFormData({ ...formData, nama_satker: e.target.value })}
+                  className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                    isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                  Alamat Kantor *
+                </label>
+                <input
+                  required
+                  placeholder="Contoh: Jl. Trans Sulawesi No. 10"
+                  value={formData.alamat}
+                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
+                  className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                    isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Alokasi Pagu (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.pagu || ""}
+                    placeholder="0"
+                    onChange={(e) => setFormData({ ...formData, pagu: Number(e.target.value) || 0 })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Realisasi Saat Ini (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.realisasi || ""}
+                    placeholder="0"
+                    onChange={(e) => setFormData({ ...formData, realisasi: Number(e.target.value) || 0 })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold ${
+                    isDark ? "border-white/10 hover:bg-slate-800 text-gray-300" : "border-slate-300 hover:bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-kpu-red px-5 py-2 text-white font-bold text-xs rounded-xl shadow-md disabled:opacity-50"
+                >
+                  {isSubmitting ? "Menyimpan…" : "Simpan Satker"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
