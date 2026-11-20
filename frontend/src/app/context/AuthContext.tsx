@@ -96,6 +96,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem("ptp_kpu_token", result.access_token)
       const userProfile = result.user as UserProfile
       localStorage.setItem("ptp_kpu_user", JSON.stringify(userProfile))
+      // Tandai flag bahwa user baru saja berhasil login untuk menampilkan notifikasi login
+      sessionStorage.setItem("ptp_just_logged_in", "true")
       // Delay sejenak (800ms) untuk loading screen masuk dashboard
       await new Promise(resolve => setTimeout(resolve, 800))
       setCurrentUser(userProfile)

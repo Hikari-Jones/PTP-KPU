@@ -49,7 +49,7 @@ export function GlobalActivity() {
         {activity.toasts.map((toast) => {
           const Icon = toast.kind === 'success' ? CheckCircle2 : toast.kind === 'error' ? AlertTriangle : Info
           const tone = toast.kind === 'success'
-            ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+            ? 'border-red-500/40 text-red-600 dark:text-red-400'
             : toast.kind === 'error'
               ? 'border-red-500/40 text-red-700 dark:text-red-300'
               : 'border-slate-300 text-slate-700 dark:text-slate-200'

@@ -52,10 +52,20 @@ export function LoadingScreen({
             : "bg-white/90 border-slate-200 backdrop-blur-md shadow-xl text-slate-900"
         }`}
       >
-        {/* Seal Logo with pulsing border */}
+        {/* Seal Logo */}
         <div className="relative">
-          <div className="absolute -inset-2 rounded-full bg-red-600/30 blur-md animate-pulse" />
-          <div className="relative w-24 h-24 rounded-full overflow-hidden shadow-2xl border-2 border-red-600/50 bg-white">
+          {useLoginBackdrop && (
+            <div className="absolute -inset-2 rounded-full bg-red-600/30 blur-md animate-pulse" />
+          )}
+          <div
+            className={`relative w-24 h-24 rounded-full overflow-hidden transition-all ${
+              useLoginBackdrop
+                ? "bg-white shadow-2xl border-2 border-red-600/50"
+                : isDark
+                ? "bg-[#1f293d] border border-white/15"
+                : "bg-white border border-slate-200/80"
+            }`}
+          >
             <img
               src={kpuLogo}
               alt="Logo KPU Sulawesi Utara"

@@ -79,12 +79,12 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
           </div>
         </div>
 
-        {/* Card Dalam 2: Informasi Atribut Kedinasan (3 Kolom Simetris) */}
+        {/* Card Dalam 2: Informasi Atribut Kedinasan (2 Kolom Simetris) */}
         <div>
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2 px-1">
             Atribut Penugasan Resmi
           </span>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {/* Box Jabatan */}
             <div
               className={`p-4 rounded-xl border flex items-center gap-3.5 transition-all ${
@@ -102,27 +102,6 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                 </span>
                 <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
                   {currentUser?.jabatan || "-"}
-                </span>
-              </div>
-            </div>
-
-            {/* Box Instansi */}
-            <div
-              className={`p-4 rounded-xl border flex items-center gap-3.5 transition-all ${
-                isDark
-                  ? "bg-[#111827]/70 border-white/10 shadow-xs"
-                  : "bg-slate-50 border-slate-200 shadow-2xs"
-              }`}
-            >
-              <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                <Building className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">
-                  Instansi
-                </span>
-                <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
-                  KPU Sulawesi Utara
                 </span>
               </div>
             </div>

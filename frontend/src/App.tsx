@@ -27,6 +27,7 @@ import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
 import { ReadOnlyBanner } from "./app/components/ui/read-only"
 import { LoadingScreen } from "./app/components/ui/LoadingScreen"
 import { GlobalActivity } from "./app/components/ui/GlobalActivity"
+import { showToast } from "./services/activity"
 
 function MainLayout() {
   const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser } = useAuth()
@@ -39,18 +40,14 @@ function MainLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState("dashboard")
-  const [showLoginToast, setShowLoginToast] = useState(false)
 
-  // Tampilkan notifikasi tipis saat berhasil masuk (login)
+  // Tampilkan notifikasi saat berhasil masuk (login)
   useEffect(() => {
     if (isAuthenticated && currentUser) {
-      const shownKey = `ptp_toast_shown_${currentUser.nip}`
-      const hasShown = sessionStorage.getItem(shownKey)
-      if (!hasShown) {
-        setShowLoginToast(true)
-        sessionStorage.setItem(shownKey, "true")
-        const timer = setTimeout(() => setShowLoginToast(false), 5000)
-        return () => clearTimeout(timer)
+      const isJustLoggedIn = sessionStorage.getItem("ptp_just_logged_in")
+      if (isJustLoggedIn) {
+        sessionStorage.removeItem("ptp_just_logged_in")
+        showToast("success", `Berhasil masuk ke sistem sebagai ${currentUser.name || "Pengguna"}`)
       }
     }
   }, [isAuthenticated, currentUser])
@@ -188,30 +185,6 @@ function MainLayout() {
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* Notifikasi Tipis Berhasil Masuk (Login Toast) */}
-        {showLoginToast && (
-          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
-            <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-full border shadow-lg backdrop-blur-md text-xs font-semibold ${
-              isDark
-                ? "bg-[#111827]/90 border-white/15 text-gray-100 shadow-black/50"
-                : "bg-white/95 border-slate-200 text-slate-800 shadow-slate-300/40"
-            }`}>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span>
-                Berhasil masuk sebagai <strong className="text-red-600 dark:text-red-400 font-bold">{currentUser?.name || "Pengguna"}</strong>
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowLoginToast(false)}
-                className="ml-2 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                aria-label="Tutup notifikasi"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Tombol Menu Navigasi Mobile di Pojok Kiri Atas (Tetap Mengambang/Floating Saat Scroll) */}
         <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 lg:hidden">
           <button

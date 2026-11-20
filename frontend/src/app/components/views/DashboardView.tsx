@@ -278,32 +278,18 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Title & Dynamic Filters */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
-              Dashboard Operasional Terpadu — TA {displayYear}
-            </h1>
-            <Badge
-              variant={
-                displayStatus === "active"
-                  ? "success"
-                  : displayStatus === "closed"
-                  ? "secondary"
-                  : "draft"
-              }
-              className="text-[10px] font-extrabold uppercase"
-            >
-              {displayStatus || "—"}
-            </Badge>
-          </div>
+          <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
+            Dashboard Operasional Terpadu — TA {displayYear}
+          </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
             Pusat pemantauan eksekutif realisasi anggaran, persuratan digital, dan arsip dokumen KPU Sulawesi Utara
           </p>
         </div>
 
         {/* Global Toolbar Filters */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-start xl:justify-end gap-2 shrink-0">
           {/* Filter Tahun */}
           <select
             value={selectedTahunId ?? ""}
@@ -317,7 +303,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
           >
             {tahunList.map((t) => (
               <option key={t.id_tahun_anggaran} value={t.id_tahun_anggaran}>
-                TA {t.tahun} ({t.status})
+                TA {t.tahun}
               </option>
             ))}
           </select>
@@ -687,10 +673,10 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
 
         <div className="min-w-0">
           <Card className={`h-full overflow-hidden ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
-            <div className={`p-5 pb-5 border-b flex items-center justify-between ${isDark ? "border-white/15" : "border-slate-200"}`}>
+            <div className={`p-5 pb-4 border-b flex items-center justify-between ${isDark ? "border-white/15" : "border-slate-200"}`}>
               <h3 className={`text-sm font-bold ${isDark ? "text-white" : "text-black"}`}>Aktivitas Terkini</h3>
             </div>
-            <CardContent className="p-4 space-y-2.5">
+            <CardContent className="p-5 pt-5 space-y-3">
               {(overview?.recent_activity ?? []).length === 0 && (
                 <p className="py-6 text-center text-xs text-slate-500">
                   {overviewLoading ? "Memuat aktivitas…" : "Belum ada aktivitas."}
@@ -701,7 +687,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
                 return (
                   <div
                     key={`${act.type}-${act.at}-${index}`}
-                    className={`flex min-h-[60px] items-center gap-3 rounded-xl border p-3 text-xs transition-colors ${
+                    className={`flex min-h-[64px] items-center gap-3.5 rounded-xl border p-3.5 text-xs transition-colors ${
                       isDark
                         ? "border-white/10 bg-[#111827]/70"
                         : "border-slate-200 bg-slate-50"
@@ -711,11 +697,11 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
                       <Icon className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
+                      <p className={`font-semibold leading-relaxed ${isDark ? "text-white" : "text-slate-900"}`}>
                         {ACTIVITY_NOUN[act.type]} &ldquo;{act.title}&rdquo; {ACTION_LABEL[act.action] ?? act.action}
                         {act.actor ? ` oleh ${act.actor}` : ""}
                       </p>
-                      <span className={`text-[10px] font-semibold mt-1 block ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                      <span className={`text-[10px] font-semibold mt-1.5 block ${isDark ? "text-gray-400" : "text-slate-500"}`}>
                         {relativeTime(act.at)}
                       </span>
                     </div>

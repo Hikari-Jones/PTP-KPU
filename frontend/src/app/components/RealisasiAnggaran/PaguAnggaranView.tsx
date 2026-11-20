@@ -389,7 +389,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                         <TableCell className={`whitespace-nowrap text-xs font-semibold ${isDark ? "text-gray-400" : "text-slate-500"}`}>{formatRupiah(item.pagu_awal)}</TableCell>
                         <TableCell className={`whitespace-nowrap text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{formatRupiah(item.pagu_aktif)}</TableCell>
                         <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.total_realisasi_verified)}</TableCell>
-                        <TableCell className={`whitespace-nowrap text-xs font-bold ${item.sisa_anggaran < 0 ? "text-rose-500" : isDark ? "text-emerald-400" : "text-emerald-600"}`}>{formatRupiah(item.sisa_anggaran)}</TableCell>
+                        <TableCell className={`whitespace-nowrap text-xs font-bold ${item.sisa_anggaran < 0 ? "text-rose-500" : isDark ? "text-red-400" : "text-red-600"}`}>{formatRupiah(item.sisa_anggaran)}</TableCell>
                         <TableCell><div className="flex min-w-[105px] items-center justify-center gap-2"><div className={`h-2 flex-1 overflow-hidden rounded-full ${isDark ? "bg-slate-800" : "bg-slate-200"}`}><div className="h-full rounded-full bg-red-600" style={{ width: `${Math.min(percentage, 100)}%` }} /></div><span className="text-[11px] font-bold text-red-600 dark:text-red-400">{percentage}%</span></div></TableCell>
                       </TableRow>
                     )
@@ -408,9 +408,6 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
           <CardContent className="p-0">
             <div className={`p-4 border-b text-xs font-semibold flex items-center justify-between ${isDark ? "border-white/10 bg-[#0a0f1d]/50 text-slate-300" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
               <span>Jejak Audit Pergeseran & Revisi Anggaran (BPK/KPU Compliant)</span>
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                Immutable History Enforced
-              </span>
             </div>
             <Table>
               <TableHeader><TableRow className={isDark ? "bg-[#0a0f1d]" : "bg-slate-50"}>
