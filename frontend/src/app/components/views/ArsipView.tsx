@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { request, download, message } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
+import { showToast as notify } from '../../../services/activity'
+import { useAuth } from '../../context/AuthContext'
 import { Workspace, field, button, useOperation, SkeletonTable } from '../ui/operations'
-import { Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw, Loader2 } from 'lucide-react'
+import { ArsipBulkImport } from './ArsipBulkImport'
+import { Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw, Loader2, Filter, RefreshCw, X } from 'lucide-react'
 
 interface Archive {
   id_dokumen: number
@@ -14,6 +17,35 @@ interface Archive {
   tanggal_dokumen: string
   file_path: string | null
   nama_pengunggah?: string
+  sumber_modul?: string
+  sub_kategori?: string | null
+  ref_tipe?: string | null
+  id_pegawai?: number
+  dihapus_oleh?: number | null
+  hapus_status?: 'diajukan' | 'ditolak' | null
+  hapus_alasan?: string | null
+  hapus_catatan_admin?: string | null
+  hapus_diajukan_pada?: string | null
+  nama_pengaju_hapus?: string | null
+}
+
+interface FilterOptions {
+  years: number[]
+  sumber_modul: string[]
+  sub_kategori: Record<string, string[]>
+}
+
+const SUMBER_LABEL: Record<string, string> = {
+  arsip: 'Arsip Umum (Unggahan)',
+  surat: 'Surat Menyurat',
+  realisasi: 'Realisasi Anggaran',
+}
+
+/** Label for the second-level filter, depending on the chosen module. */
+const SUB_LABEL: Record<string, string> = {
+  arsip: 'Semua Sub-Kategori',
+  surat: 'Semua Jenis Surat',
+  realisasi: 'Semua Akun Anggaran',
 }
 
 export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
@@ -31,17 +63,55 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
     hak_akses: 'internal',
   })
   const { busy, error, run, setError } = useOperation()
+  const { userRole, currentUser } = useAuth()
+  const isAdmin = userRole === 'Admin'
+  // Permanent deletion: users request it with a reason, an administrator approves or rejects.
+  const [onlyRequests, setOnlyRequests] = useState(false)
+  const [requestFor, setRequestFor] = useState<number | null>(null)
+  const [requestReason, setRequestReason] = useState('')
+  const [rejectFor, setRejectFor] = useState<number | null>(null)
+  const [rejectNote, setRejectNote] = useState('')
+  const [sumber, setSumber] = useState('')
+  const [subKategori, setSubKategori] = useState('')
+  const [tahun, setTahun] = useState('')
+  const [options, setOptions] = useState<FilterOptions>({ years: [], sumber_modul: [], sub_kategori: {} })
+  const [reloadKey, setReloadKey] = useState(0)
 
-  const load = async () =>
-    setItems(
-      await request<Archive[]>(
-        `/arsip/${trash ? 'trash' : ''}?limit=50&skip=${page * 50}&search=${encodeURIComponent(search)}`
-      )
-    )
+  const load = async () => {
+    const params = new URLSearchParams({ limit: '50', skip: String(page * 50), search })
+    if (sumber) params.set('sumber_modul', sumber)
+    if (subKategori) params.set('sub_kategori', subKategori)
+    if (tahun) params.set('year', tahun)
+    if (trash && onlyRequests) params.set('hapus_status', 'diajukan')
+    setItems(await request<Archive[]>(`/arsip/${trash ? 'trash' : ''}?${params}`))
+  }
+
+  const loadOptions = () =>
+    request<FilterOptions>('/arsip/filter-options')
+      .then((o) => setOptions({ years: o.years ?? [], sumber_modul: o.sumber_modul ?? [], sub_kategori: o.sub_kategori ?? {} }))
+      .catch(() => notify('error', 'Pilihan filter arsip gagal dimuat'))
+
+  useEffect(() => {
+    void loadOptions()
+  }, [])
 
   useEffect(() => {
     load().catch((e) => setError(message(e)))
-  }, [trash, page])
+  }, [trash, page, sumber, subKategori, tahun, reloadKey, onlyRequests])
+
+  // Always offer the three modules; the second filter lists what actually exists.
+  const sumberOptions = [...new Set(['surat', 'realisasi', 'arsip', ...options.sumber_modul])]
+  const subOptions = sumber ? options.sub_kategori[sumber] ?? [] : []
+  const filtersActive = Boolean(sumber || subKategori || tahun || search)
+  const resetFilters = () => {
+    setSumber('')
+    setSubKategori('')
+    setTahun('')
+    setSearch('')
+    setPage(0)
+    setReloadKey((k) => k + 1)
+    notify('info', 'Filter arsip direset')
+  }
 
   const fieldCompact =
     'w-full rounded-lg border px-3 py-1.5 text-xs transition-all outline-hidden ' +
@@ -91,10 +161,31 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
             <Search className="w-3.5 h-3.5" />
             <span>Cari</span>
           </button>
+          {isAdmin && (
+            <button
+              className={buttonCompact}
+              disabled={busy}
+              title="Salin ulang seluruh dokumen Surat Menyurat dan bukti Realisasi Anggaran ke arsip"
+              onClick={() =>
+                void run(async () => {
+                  const res = await request<{ surat: number; realisasi: number }>('/arsip/sinkronkan', 'POST')
+                  notify('success', `Arsip tersinkron: ${res.surat} dokumen surat, ${res.realisasi} bukti realisasi`)
+                  await loadOptions()
+                  await load()
+                })
+              }
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
+              <span>Sinkronkan</span>
+            </button>
+          )}
           <button
             className={buttonCompact}
             onClick={() => {
               setTrash(!trash)
+              setOnlyRequests(false)
+              setRequestFor(null)
+              setRejectFor(null)
               setPage(0)
             }}
           >
@@ -111,6 +202,79 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
             )}
           </button>
         </div>
+      </div>
+
+      {/* Admin: antrean persetujuan hapus permanen */}
+      {trash && isAdmin && (
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={onlyRequests}
+            onChange={(e) => {
+              setOnlyRequests(e.target.checked)
+              setPage(0)
+            }}
+          />
+          Tampilkan hanya permintaan hapus permanen yang menunggu persetujuan
+        </label>
+      )}
+
+      {/* Filter bertingkat: modul asal -> sub-kategori -> tahun */}
+      <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
+          <Filter className="w-3.5 h-3.5" /> Filter Dokumen:
+        </span>
+        <select
+          aria-label="Filter modul asal dokumen"
+          className={`${fieldCompact} !w-auto`}
+          value={sumber}
+          onChange={(e) => {
+            setSumber(e.target.value)
+            setSubKategori('')
+            setPage(0)
+          }}
+        >
+          <option value="">Semua Dokumen</option>
+          {sumberOptions.map((s) => (
+            <option key={s} value={s}>{SUMBER_LABEL[s] ?? s}</option>
+          ))}
+        </select>
+        {sumber && (
+          <select
+            aria-label="Filter sub-kategori dokumen"
+            className={`${fieldCompact} !w-auto max-w-xs`}
+            value={subKategori}
+            disabled={subOptions.length === 0}
+            onChange={(e) => {
+              setSubKategori(e.target.value)
+              setPage(0)
+            }}
+          >
+            <option value="">{subOptions.length ? SUB_LABEL[sumber] ?? 'Semua' : 'Belum ada dokumen pada modul ini'}</option>
+            {subOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        )}
+        <select
+          aria-label="Filter tahun dokumen"
+          className={`${fieldCompact} !w-auto`}
+          value={tahun}
+          onChange={(e) => {
+            setTahun(e.target.value)
+            setPage(0)
+          }}
+        >
+          <option value="">Semua Tahun</option>
+          {options.years.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        {filtersActive && (
+          <button type="button" onClick={resetFilters} className="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline inline-flex items-center gap-1 cursor-pointer">
+            <X className="w-3.5 h-3.5" /> Reset
+          </button>
+        )}
       </div>
 
       {/* Form Unggah Dokumen - Tata Letak Rapi, Berjarak & Berhuruf Kapital di Tiap Kata */}
@@ -141,6 +305,7 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
                 )
                 setForm({ ...form, nama_dokumen: '', nomor_dokumen: '' })
                 setFile(null)
+                await loadOptions()
                 await load()
               })
             }}
@@ -203,12 +368,22 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
         </details>
       )}
 
+      {/* Impor massal: banyak berkas sekaligus dengan data bersama */}
+      {!trash && (
+        <ArsipBulkImport
+          onImported={async () => {
+            await loadOptions()
+            await load()
+          }}
+        />
+      )}
+
       {/* List Dokumen Arsip */}
       {busy && !items.length ? (
         <SkeletonTable rows={5} cols={3} />
       ) : !items.length ? (
         <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
-          Tidak ada dokumen pada halaman ini.
+          {filtersActive ? 'Tidak ada dokumen yang cocok dengan filter.' : 'Tidak ada dokumen pada halaman ini.'}
         </div>
       ) : (
         <div className="space-y-3">
@@ -223,8 +398,19 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
                   {x.nomor_dokumen}
                 </span>
               </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-600/10 text-red-600 dark:text-red-400">
+                  {SUMBER_LABEL[x.sumber_modul ?? 'arsip'] ?? x.sumber_modul}
+                </span>
+                {x.sub_kategori && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300">
+                    {x.sub_kategori}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {x.tanggal_dokumen} · Kategori: {x.kategori} · Akses: {x.hak_akses}
+                {!x.file_path && ' · Tanpa berkas lampiran'}
               </p>
               {(x.event || x.nama_pengunggah) && (
                 <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -266,24 +452,159 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
                     </>
                   )}
                 </button>
-                {trash && (
+                {trash && x.ref_tipe && (
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Dokumen dari modul {SUMBER_LABEL[x.sumber_modul ?? ''] ?? 'asal'} tidak dapat dihapus permanen.
+                  </span>
+                )}
+                {/* Pengguna: ajukan hapus permanen (perlu persetujuan admin) */}
+                {trash && !x.ref_tipe && !isAdmin && x.hapus_status !== 'diajukan' &&
+                  (x.id_pegawai === currentUser?.id_pegawai || x.dihapus_oleh === currentUser?.id_pegawai) && (
                   <button
                     className={`${button} !px-3 !py-1.5 !text-xs !bg-red-700 hover:!bg-red-800`}
                     disabled={busy}
                     onClick={() => {
-                      if (window.confirm(`Yakin ingin menghapus dokumen "${x.nama_dokumen}" secara permanen? Dokumen tidak dapat dikembalikan.`)) {
-                        void run(async () => {
-                          await request(`/arsip/${x.id_dokumen}/permanent`, 'DELETE')
-                          await load()
-                        })
-                      }
+                      setRequestFor(requestFor === x.id_dokumen ? null : x.id_dokumen)
+                      setRequestReason('')
                     }}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Hapus Permanen</span>
+                    <span>{x.hapus_status === 'ditolak' ? 'Ajukan Ulang Hapus Permanen' : 'Ajukan Hapus Permanen'}</span>
                   </button>
                 )}
+                {/* Admin: setujui atau tolak permintaan; atau hapus langsung */}
+                {trash && !x.ref_tipe && isAdmin && (
+                  <>
+                    <button
+                      className={`${button} !px-3 !py-1.5 !text-xs !bg-red-700 hover:!bg-red-800`}
+                      disabled={busy}
+                      onClick={() => {
+                        const pesan = x.hapus_status === 'diajukan'
+                          ? `Setujui permintaan ${x.nama_pengaju_hapus ?? 'pengguna'} dan hapus "${x.nama_dokumen}" secara permanen? Dokumen tidak dapat dikembalikan.`
+                          : `Yakin ingin menghapus dokumen "${x.nama_dokumen}" secara permanen? Dokumen tidak dapat dikembalikan.`
+                        if (window.confirm(pesan)) {
+                          void run(async () => {
+                            await request(`/arsip/${x.id_dokumen}/permanent`, 'DELETE')
+                            await loadOptions()
+                            await load()
+                          })
+                        } else {
+                          notify('info', 'Hapus permanen dibatalkan')
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{x.hapus_status === 'diajukan' ? 'Setujui & Hapus Permanen' : 'Hapus Permanen'}</span>
+                    </button>
+                    {x.hapus_status === 'diajukan' && (
+                      <button
+                        className={`${button} !px-3 !py-1.5 !text-xs !bg-slate-700 hover:!bg-slate-800`}
+                        disabled={busy}
+                        onClick={() => {
+                          setRejectFor(rejectFor === x.id_dokumen ? null : x.id_dokumen)
+                          setRejectNote('')
+                        }}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Tolak Permintaan</span>
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
+
+              {/* Status permintaan hapus permanen */}
+              {trash && x.hapus_status === 'diajukan' && (
+                <p className="text-[11px] font-semibold rounded-lg px-3 py-2 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                  Menunggu persetujuan admin untuk hapus permanen
+                  {x.nama_pengaju_hapus ? ` · diajukan oleh ${x.nama_pengaju_hapus}` : ''}
+                  {x.hapus_diajukan_pada ? ` · ${new Date(x.hapus_diajukan_pada).toLocaleString('id-ID')}` : ''}
+                  {x.hapus_alasan ? ` · Alasan: ${x.hapus_alasan}` : ''}
+                </p>
+              )}
+              {trash && x.hapus_status === 'ditolak' && (
+                <p className="text-[11px] font-semibold rounded-lg px-3 py-2 bg-red-500/10 text-red-600 dark:text-red-400">
+                  Permintaan hapus permanen ditolak admin{x.hapus_catatan_admin ? `: ${x.hapus_catatan_admin}` : ''}
+                </p>
+              )}
+
+              {/* Form alasan pengajuan (pengguna) */}
+              {requestFor === x.id_dokumen && (
+                <form
+                  className="space-y-2 rounded-lg border border-slate-200 dark:border-white/10 p-3"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (requestReason.trim().length < 5) {
+                      notify('error', 'Tuliskan alasan minimal 5 karakter')
+                      return
+                    }
+                    void run(async () => {
+                      await request(`/arsip/${x.id_dokumen}/ajukan-hapus`, 'POST', { alasan: requestReason.trim() })
+                      setRequestFor(null)
+                      setRequestReason('')
+                      await load()
+                    })
+                  }}
+                >
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Alasan hapus permanen (akan diperiksa admin) <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    autoFocus
+                    rows={2}
+                    maxLength={255}
+                    className={fieldCompact}
+                    value={requestReason}
+                    onChange={(e) => setRequestReason(e.target.value)}
+                    placeholder="Contoh: dokumen duplikat dari unggahan sebelumnya"
+                  />
+                  <div className="flex gap-2">
+                    <button className={buttonCompact} disabled={busy}>Kirim Permintaan</button>
+                    <button type="button" className="text-xs font-semibold text-slate-500 hover:underline cursor-pointer" onClick={() => setRequestFor(null)}>
+                      Batal
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Form catatan penolakan (admin) */}
+              {rejectFor === x.id_dokumen && (
+                <form
+                  className="space-y-2 rounded-lg border border-slate-200 dark:border-white/10 p-3"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (rejectNote.trim().length < 3) {
+                      notify('error', 'Tuliskan catatan penolakan minimal 3 karakter')
+                      return
+                    }
+                    void run(async () => {
+                      await request(`/arsip/${x.id_dokumen}/tolak-hapus`, 'POST', { catatan: rejectNote.trim() })
+                      setRejectFor(null)
+                      setRejectNote('')
+                      await load()
+                    })
+                  }}
+                >
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Catatan penolakan untuk pengaju <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    autoFocus
+                    rows={2}
+                    maxLength={255}
+                    className={fieldCompact}
+                    value={rejectNote}
+                    onChange={(e) => setRejectNote(e.target.value)}
+                    placeholder="Contoh: masih dalam masa retensi aktif"
+                  />
+                  <div className="flex gap-2">
+                    <button className={buttonCompact} disabled={busy}>Tolak Permintaan</button>
+                    <button type="button" className="text-xs font-semibold text-slate-500 hover:underline cursor-pointer" onClick={() => setRejectFor(null)}>
+                      Batal
+                    </button>
+                  </div>
+                </form>
+              )}
             </article>
           ))}
         </div>

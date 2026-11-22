@@ -167,7 +167,7 @@ async def run_setup():
         ta_res = await session.execute(select(TahunAnggaran).where(TahunAnggaran.tahun == 2025))
         ta2025 = ta_res.scalar_one_or_none()
         if not ta2025:
-            ta2025 = TahunAnggaran(tahun=2025, status="Aktif", tanggal_mulai=date(2025, 1, 1), tanggal_selesai=date(2025, 12, 31),
+            ta2025 = TahunAnggaran(tahun=2025, status="active", tanggal_mulai=date(2025, 1, 1), tanggal_selesai=date(2025, 12, 31),
                                    deskripsi="Tahun Anggaran Berjalan 2025")
             session.add(ta2025)
             await session.flush()
@@ -175,7 +175,7 @@ async def run_setup():
         ta_res26 = await session.execute(select(TahunAnggaran).where(TahunAnggaran.tahun == 2026))
         ta2026 = ta_res26.scalar_one_or_none()
         if not ta2026:
-            ta2026 = TahunAnggaran(tahun=2026, status="Perencanaan", tanggal_mulai=date(2026, 1, 1), tanggal_selesai=date(2026, 12, 31),
+            ta2026 = TahunAnggaran(tahun=2026, status="draft", tanggal_mulai=date(2026, 1, 1), tanggal_selesai=date(2026, 12, 31),
                                    deskripsi="Tahun Anggaran Pilkada 2026")
             session.add(ta2026)
             await session.flush()

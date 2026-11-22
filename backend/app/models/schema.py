@@ -854,6 +854,10 @@ class FileRecord(Base):
 
 class DokumenArsip(Base):
     __tablename__ = "dokumen_arsip"
+    # One archive row per source record (letters, budget evidence) so syncing is idempotent.
+    __table_args__ = (
+        UniqueConstraint("ref_tipe", "ref_id", name="uq_dokumen_arsip_ref"),
+    )
 
     id_dokumen: Mapped[int] = mapped_column(
         Integer,
@@ -944,6 +948,33 @@ class DokumenArsip(Base):
         index=True,
     )
 
+    # Asal dokumen: "arsip" (unggahan manual), "surat" (Surat Menyurat), "realisasi" (Realisasi Anggaran)
+    sumber_modul: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="arsip",
+        server_default="arsip",
+        index=True,
+    )
+    # Sub-kategori dalam modul: Surat Masuk/Keluar/Tugas, atau akun anggaran untuk bukti realisasi
+    sub_kategori: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+        index=True,
+    )
+    # Rekaman sumber (mis. "workflow_letter", "surat_keluar", "realisasi") dan ID-nya
+    ref_tipe: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    ref_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Permintaan hapus permanen: pengguna mengajukan, administrator menyetujui/menolak
+    hapus_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)  # diajukan | ditolak
+    hapus_diajukan_oleh: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("pegawai.id_pegawai", onupdate="CASCADE", ondelete="SET NULL"), nullable=True
+    )
+    hapus_diajukan_pada: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hapus_alasan: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    hapus_catatan_admin: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     # Soft delete
     status_hapus: Mapped[bool] = mapped_column(
         Boolean,
@@ -1004,6 +1035,13 @@ class DokumenArsip(Base):
         back_populates="dokumen_dihapus",
     )
 
+    # Pegawai yang mengajukan hapus permanen (dimuat langsung agar nama tampil untuk admin)
+    pengaju_hapus: Mapped[Optional["Pegawai"]] = relationship(
+        "Pegawai",
+        foreign_keys=[hapus_diajukan_oleh],
+        lazy="selectin",
+    )
+
     # =====================================================
     # Helper Properties
     # =====================================================
@@ -1015,6 +1053,10 @@ class DokumenArsip(Base):
     @property
     def nama_penghapus(self) -> Optional[str]:
         return self.penghapus.nama if self.penghapus else None
+
+    @property
+    def nama_pengaju_hapus(self) -> Optional[str]:
+        return self.pengaju_hapus.nama if self.pengaju_hapus else None
 
     @property
     def nama_bagian(self) -> Optional[str]:
@@ -1613,4 +1655,26 @@ class ChatMessage(Base):
     session: Mapped["ChatSession"] = relationship(
         "ChatSession",
         back_populates="messages",
+    )
+
+
+# =========================================================
+# SATUAN KERJA (SATKER)
+# =========================================================
+
+class Satker(Base):
+    """Satuan kerja KPU (provinsi dan kabupaten/kota). Diisi oleh administrator."""
+    __tablename__ = "satker"
+
+    id_satker: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kode_satker: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    nama_satker: Mapped[str] = mapped_column(String(200), nullable=False)
+    tingkat: Mapped[str] = mapped_column(String(30), nullable=False, default="Kabupaten/Kota")
+    alamat: Mapped[str] = mapped_column(String(255), nullable=False)
+    pagu: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), nullable=False, default=0, server_default="0")
+    realisasi: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), nullable=False, default=0, server_default="0")
+    status_dipa: Mapped[str] = mapped_column(String(30), nullable=False, default="Aktif", server_default="Aktif")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
     )

@@ -33,6 +33,15 @@ from app.schemas.anggaran import (
 )
 from app.services.base import CRUDBase
 
+_TAHUN_STATUS_ALIASES = {"aktif": "active", "perencanaan": "draft", "tutup": "closed", "ditutup": "closed"}
+
+
+def normalize_tahun_status(raw: Optional[str]) -> str:
+    """Map legacy Indonesian labels to draft/active/closed so responses never fail validation."""
+    value = (raw or "draft").strip().lower()
+    value = _TAHUN_STATUS_ALIASES.get(value, value)
+    return value if value in ("draft", "active", "closed") else "draft"
+
 
 # =========================================================
 # REUSABLE BUDGET CALCULATION HELPER
@@ -105,6 +114,49 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
         res = await db.execute(stmt)
         return res.scalar_one_or_none()
 
+    async def close_previous_active_year(
+        self,
+        db: AsyncSession,
+        *,
+        tahun_baru: int,
+        exclude_id: Optional[int],
+        konfirmasi_tutup_tahun: Optional[int],
+    ) -> Optional[TahunAnggaran]:
+        """Only one fiscal year may be active. Activating a new one closes the current one,
+        but only when the caller re-types the active year's number (second verification).
+        Closing is permanent, so every mismatch is rejected before anything changes."""
+        stmt = select(TahunAnggaran).where(TahunAnggaran.status == "active")
+        if exclude_id is not None:
+            stmt = stmt.where(TahunAnggaran.id_tahun_anggaran != exclude_id)
+        actives = list((await db.execute(stmt.with_for_update())).scalars().all())
+        if not actives:
+            return None
+        if len(actives) > 1:
+            daftar = ", ".join(str(t.tahun) for t in sorted(actives, key=lambda t: t.tahun))
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Terdapat lebih dari satu tahun anggaran aktif ({daftar}). Tutup secara manual terlebih dahulu.",
+            )
+        previous = actives[0]
+        if tahun_baru <= previous.tahun:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tahun yang diaktifkan harus lebih baru dari TA {previous.tahun} yang sedang aktif",
+            )
+        if konfirmasi_tutup_tahun is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"TA {previous.tahun} masih aktif. Konfirmasi penutupan TA {previous.tahun} diperlukan sebelum mengaktifkan TA {tahun_baru}.",
+            )
+        if konfirmasi_tutup_tahun != previous.tahun:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Konfirmasi tidak cocok: ketik {previous.tahun} untuk menutup tahun anggaran yang sedang aktif.",
+            )
+        previous.status = "closed"
+        db.add(previous)
+        return previous
+
     async def create_tahun(self, db: AsyncSession, *, obj_in: TahunAnggaranCreate, current_user_id: Optional[int] = None) -> TahunAnggaran:
         # Check unique constraint on tahun
         existing = await self.get_by_tahun(db, obj_in.tahun)
@@ -119,6 +171,14 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Tanggal mulai harus lebih awal dari tanggal selesai",
+            )
+
+        if obj_in.status == "active":
+            await self.close_previous_active_year(
+                db,
+                tahun_baru=obj_in.tahun,
+                exclude_id=None,
+                konfirmasi_tutup_tahun=obj_in.konfirmasi_tutup_tahun,
             )
 
         db_obj = TahunAnggaran(
@@ -182,6 +242,7 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             )
 
         update_data = obj_in.model_dump(exclude_unset=True)
+        konfirmasi_tutup_tahun = update_data.pop("konfirmasi_tutup_tahun", None)
 
         # If tahun is updated, ensure uniqueness and prevent modifying year if active/closed
         if "tahun" in update_data and update_data["tahun"] != db_obj.tahun:
@@ -198,9 +259,9 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
                 )
 
         # Validate Lifecycle State Transitions (draft -> active -> closed)
-        if "status" in update_data and update_data["status"] != db_obj.status:
+        if "status" in update_data and update_data["status"] != normalize_tahun_status(db_obj.status):
             new_status = update_data["status"]
-            current_status = db_obj.status
+            current_status = normalize_tahun_status(db_obj.status)
             allowed_transitions = {
                 "draft": ["active"],
                 "active": ["closed"],
@@ -219,6 +280,14 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Tanggal mulai harus lebih awal dari tanggal selesai",
+            )
+
+        if update_data.get("status") == "active" and normalize_tahun_status(db_obj.status) != "active":
+            await self.close_previous_active_year(
+                db,
+                tahun_baru=update_data.get("tahun", db_obj.tahun),
+                exclude_id=db_obj.id_tahun_anggaran,
+                konfirmasi_tutup_tahun=konfirmasi_tutup_tahun,
             )
 
         for field, val in update_data.items():
@@ -334,7 +403,7 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
         return {
             "id_tahun_anggaran": t.id_tahun_anggaran,
             "tahun": t.tahun,
-            "status": t.status,
+            "status": normalize_tahun_status(t.status),
             "tanggal_mulai": t.tanggal_mulai,
             "tanggal_selesai": t.tanggal_selesai,
             "deskripsi": t.deskripsi,
@@ -1070,7 +1139,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
             RealisasiAnggaran.id_realisasi == ident).with_for_update()
             .execution_options(populate_existing=True))).scalar_one_or_none()
 
-    async def _validate_payload(self, db, pagu, data, owner_id, exclude_id=None):
+    async def _validate_payload(self, db, pagu, data, owner_id, exclude_id=None, require_own_file=False):
         year = (await db.execute(select(TahunAnggaran).where(
             TahunAnggaran.id_tahun_anggaran == pagu.id_tahun_anggaran).with_for_update(read=True)
             .execution_options(populate_existing=True))).scalar_one_or_none()
@@ -1094,8 +1163,13 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         if path:
             import re
             match = re.fullmatch(r"/api/v1/files/([1-9][0-9]*)", path)
+            if require_own_file and not match:
+                raise HTTPException(422, "Bukti harus berupa berkas yang diunggah melalui aplikasi")
             if match:
                 record = await db.get(FileRecord, int(match[1]))
+                if require_own_file and (not record or record.uploaded_by != owner_id):
+                    # Attaching another user's upload would expose it through this transaction and the archive.
+                    raise HTTPException(403, "Berkas bukti bukan milik pengguna")
                 if record and record.uploaded_by == owner_id:
                     data.update(
                         bukti_file_nama=record.original_name,
@@ -1183,7 +1257,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
                 detail=f"Status tahun anggaran {tahun_obj.tahun} ({tahun_obj.status}) tidak mengizinkan transaksi baru",
             )
 
-        validated = await self._validate_payload(db, pagu, obj_in.model_dump(), id_pegawai)
+        validated = await self._validate_payload(db, pagu, obj_in.model_dump(), id_pegawai, require_own_file=True)
 
         # 4. Atomic calculation of verified realization under row lock (LOCK IN SHARE MODE guarantees fresh read)
         sum_stmt = (
@@ -1276,7 +1350,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
             raise HTTPException(409, "Transaksi belum terhubung dengan pagu")
         merged = {c.name: getattr(db_obj, c.name) for c in db_obj.__table__.columns}
         merged.update(update_data)
-        validated = await self._validate_payload(db, pagu, merged, current_user_id, id_realisasi)
+        validated = await self._validate_payload(db, pagu, merged, current_user_id, id_realisasi, require_own_file=True)
         for field in ("bukti_file_nama", "bukti_file_ukuran", "bukti_file_mime"):
             update_data[field] = validated[field]
         for field in ("nomor_dokumen", "uraian_kegiatan"):
@@ -1696,12 +1770,17 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         bulan: Optional[int] = None,
         tanggal_mulai: Optional[date] = None,
         tanggal_selesai: Optional[date] = None,
+        has_bukti: Optional[bool] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> Tuple[List[Dict[str, Any]], int]:
         conditions = []
         if status:
             conditions.append(RealisasiAnggaran.status == status)
+        if has_bukti is True:
+            conditions.append(and_(RealisasiAnggaran.bukti_file_path.is_not(None), RealisasiAnggaran.bukti_file_path != ""))
+        elif has_bukti is False:
+            conditions.append(or_(RealisasiAnggaran.bukti_file_path.is_(None), RealisasiAnggaran.bukti_file_path == ""))
         if id_pagu:
             conditions.append(RealisasiAnggaran.id_pagu == id_pagu)
         if id_akun_anggaran:

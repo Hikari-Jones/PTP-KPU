@@ -46,7 +46,7 @@ ALLOWED_TABLES = {
 }
 
 # Columns that must never reach the model, whatever the query looks like.
-BLOCKED_COLUMNS = {"password", "session_version", "file_path", "path_file"}
+BLOCKED_COLUMNS = {"password", "session_version", "file_path", "path_file", "bukti_file_path", "relative_path", "stored_name"}
 
 _BLOCKED_WORDS = re.compile(
     r"\b(load_file|outfile|dumpfile|sleep|benchmark|get_lock|release_lock|"
@@ -68,12 +68,12 @@ surat_tugas(id_surat_tugas PK, id_surat_keluar FK surat_keluar, nomor_tugas, mak
 surat_tugas_pelaksana(id_pelaksana PK, id_surat_tugas FK surat_tugas, id_pegawai FK pegawai, peran_tugas)
 riwayat_status_surat(id_riwayat PK, id_surat_keluar FK surat_keluar, id_pegawai FK pegawai, status_lama, status_baru, catatan, waktu DATETIME)
 disposisi(id_disposisi PK, id_surat_keluar FK surat_keluar, id_pegawai FK pegawai [penerima], instruksi, tanggal_disposisi DATE)
-dokumen_arsip(id_dokumen PK, id_surat_keluar FK surat_keluar NULL, id_klasifikasi FK kode_klasifikasi_arsip, id_pegawai FK pegawai [pengunggah], nama_dokumen, nomor_dokumen, kategori, event, tanggal_dokumen DATE, ukuran_file, hak_akses, status_hapus [0=aktif, 1=di tempat sampah], created_at)
+dokumen_arsip(id_dokumen PK, id_surat_keluar FK surat_keluar NULL, id_klasifikasi FK kode_klasifikasi_arsip, id_pegawai FK pegawai [pengunggah], nama_dokumen, nomor_dokumen, kategori, event, tanggal_dokumen DATE, ukuran_file, hak_akses, status_hapus [0=aktif, 1=di tempat sampah], sumber_modul ['arsip','surat','realisasi'], sub_kategori [Surat Masuk/Surat Keluar/Surat Tugas atau akun], created_at)
 tahun_anggaran(id_tahun_anggaran PK, tahun, status ['draft','active','closed'], tanggal_mulai, tanggal_selesai, deskripsi)
 akun_anggaran(id_akun_anggaran PK, id_bagian FK bagian, kode_akun, nama_akun, total_pagu, jenis_belanja, program, sub_program, status ['active','inactive'])
-pagu_anggaran(id_pagu PK, id_tahun_anggaran FK tahun_anggaran, id_akun_anggaran FK akun_anggaran, pagu_awal, pagu_aktif [pagu yang berlaku sekarang], nomor_sk, tanggal_sk, keterangan)
+pagu_anggaran(id_pagu PK, id_tahun_anggaran FK tahun_anggaran, tahun [tahun anggaran, mis. 2026], id_akun_anggaran FK akun_anggaran, pagu_awal, pagu_aktif [pagu yang berlaku sekarang], nomor_sk, tanggal_sk, keterangan)
 revisi_anggaran(id_revisi PK, id_pagu FK pagu_anggaran, id_pegawai FK pegawai, nomor_revisi, tanggal_revisi DATE, pagu_sebelum, pagu_sesudah, alasan_revisi)
-realisasi_anggaran(id_realisasi PK, id_pagu FK pagu_anggaran, id_akun_anggaran FK akun_anggaran, id_pegawai FK pegawai [penginput], id_verifier FK pegawai, tanggal_transaksi DATE, nomor_dokumen, uraian_kegiatan, jumlah_realisasi, status ['draft','submitted','verified','rejected'], periode, catatan_verifikasi, verified_at)"""
+realisasi_anggaran(id_realisasi PK, id_pagu FK pagu_anggaran, tahun [tahun anggaran, mis. 2026], id_akun_anggaran FK akun_anggaran, id_pegawai FK pegawai [penginput], id_verifier FK pegawai, tanggal_transaksi DATE, nomor_dokumen, uraian_kegiatan, jumlah_realisasi, status ['draft','submitted','verified','rejected'], periode, catatan_verifikasi, verified_at)"""
 
 
 class QueryRejected(ValueError):
@@ -161,6 +161,13 @@ def validate_sql(sql: str, *, user=None) -> str:
     return tree.sql(dialect=_dialect())
 
 
+_WITH_TAHUN = {
+    "realisasi_anggaran": "LEFT JOIN `pagu_anggaran` pg ON pg.`id_pagu` = x.`id_pagu`",
+    "pagu_anggaran": "",
+}
+_TAHUN_KEY = {"realisasi_anggaran": "pg.`id_tahun_anggaran`", "pagu_anggaran": "x.`id_tahun_anggaran`"}
+
+
 def _scoped_relation(name: str, user) -> str:
     """Project safe columns and enforce the existing module's row permissions."""
     import app.models.schema  # noqa: F401
@@ -174,6 +181,13 @@ def _scoped_relation(name: str, user) -> str:
         raise QueryRejected("Tabel tidak tersedia.")
     columns = ", ".join(f"`{c.name}`" for c in table.columns if c.name.lower() not in BLOCKED_COLUMNS)
     query = f"SELECT {columns} FROM `{name}`"
+    if name in _WITH_TAHUN:
+        # Budget rows carry their fiscal year directly, so "WHERE tahun = 2026" works
+        # without the multi-table join small models get wrong. Read-only, unrestricted
+        # tables only (same rows as before, one extra column).
+        prefixed = ", ".join(f"x.`{c.name}`" for c in table.columns if c.name.lower() not in BLOCKED_COLUMNS)
+        query = (f"SELECT {prefixed}, t.`tahun` AS `tahun` FROM `{name}` x "
+                 f"{_WITH_TAHUN[name]} LEFT JOIN `tahun_anggaran` t ON t.`id_tahun_anggaran` = {_TAHUN_KEY[name]}")
     if is_admin(user):
         return query
     # IDs originate from the authenticated database user, never the prompt.

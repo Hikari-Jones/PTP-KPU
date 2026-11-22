@@ -45,3 +45,10 @@ data/
 uploads/
 *.sql.gz
 *.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated check reports (scripts/check.py)
+reports/

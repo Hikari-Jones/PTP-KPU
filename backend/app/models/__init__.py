@@ -17,6 +17,7 @@ from app.models.schema import (
     RealisasiAnggaran,
     ChatSession,
     ChatMessage,
+    Satker,
 )
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "RealisasiAnggaran",
     "ChatSession",
     "ChatMessage",
+    "Satker",
 ]
 
 from app.models.operations import WorkflowLetter, BugReport, BudgetEvent

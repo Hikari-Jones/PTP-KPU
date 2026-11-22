@@ -1,4 +1,5 @@
 import { API_BASE_URL } from './api'
+import { saveFile } from './csv'
 
 export async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const token = localStorage.getItem('ptp_kpu_token')
@@ -13,10 +14,12 @@ export async function request<T>(path: string, method = 'GET', body?: unknown): 
 }
 export async function download(path: string, filename: string) {
   const res = await fetch(API_BASE_URL + path, { headers: { Authorization: `Bearer ${localStorage.getItem('ptp_kpu_token')}` } })
-  if (!res.ok) throw new Error(`Unduhan gagal (${res.status})`)
-  const url = URL.createObjectURL(await res.blob())
-  const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  if (!res.ok) {
+    // Show the server's reason (e.g. "Akses berkas ditolak") rather than just the status code.
+    const error = await res.json().catch(() => ({}))
+    throw new Error(typeof error.detail === 'string' ? `Unduhan gagal: ${error.detail}` : `Unduhan gagal (${res.status})`)
+  }
+  saveFile(filename, await res.blob())
 }
 export interface Employee { id_pegawai: number; nama: string; nip: string; role: string; id_bagian: number | null; jabatan: string | null; is_active: boolean }
 export interface Department { id_bagian: number; nama_bagian: string }

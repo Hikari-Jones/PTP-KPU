@@ -46,5 +46,9 @@ N_THREADS = _int("KIRANA_N_THREADS", 0) or None
 N_THREADS_BATCH = _int("KIRANA_N_THREADS_BATCH", 0) or None
 # Upper bound on the length of one answer, in tokens.
 MAX_TOKENS = _int("KIRANA_MAX_TOKENS", 1024)
+# Free the model's memory (about 3.5 GB with the default model) after this many
+# minutes without use; the next question loads it again in a few seconds.
+# 0 = keep it loaded until the process exits.
+IDLE_UNLOAD_MINUTES = _int("KIRANA_IDLE_UNLOAD_MINUTES", 15)
 
 MODEL_NAME = os.path.basename(MODEL_PATH) if MODEL_PATH else MODEL_FILE

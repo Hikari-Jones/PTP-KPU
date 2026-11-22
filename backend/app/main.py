@@ -21,6 +21,29 @@ app = FastAPI(
 logger = logging.getLogger("ptp_kpu")
 
 
+async def _backfill_archive() -> None:
+    from app.services.arsip_sync import sync_all
+    try:
+        async with AsyncSessionLocal() as session:
+            counts = await sync_all(session)
+        logger.info("Arsip tersinkron: %s", counts)
+    except Exception:  # noqa: BLE001 - e.g. migration not applied yet; never block startup
+        logger.exception("Sinkronisasi arsip saat startup gagal; jalankan migrasi lalu POST /arsip/sinkronkan")
+
+
+_background_tasks: set = set()
+
+
+@app.on_event("startup")
+async def backfill_archive() -> None:
+    """Make sure letters and budget evidence saved earlier appear in the archive.
+    Runs in the background so the app is available immediately after a restart."""
+    import asyncio
+    task = asyncio.create_task(_backfill_archive())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 # Every request uses its own session; uncommitted changes are discarded (rolled back)
 # when the session closes. These handlers turn failures into a JSON "detail" message
 # that the frontend shows to the user instead of a bare "500".
@@ -108,6 +131,9 @@ async def require_jwt(request, call_next):
             await get_current_user(db, HTTPAuthorizationCredentials(scheme='Bearer', credentials=authorization[7:].strip()))
     except HTTPException as exc:
         return JSONResponse(status_code=exc.status_code, content={'detail': exc.detail})
+    except OperationalError as exc:
+        # Exception handlers do not cover middleware: report the outage the same way.
+        return await database_unavailable_handler(request, exc)
     return await call_next(request)
 
 app.include_router(api_router, prefix="/api/v1")

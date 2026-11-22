@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { SATKER_MENU_ENABLED } from "../../../config/features"
 import {
   LayoutDashboard,
   FileCheck,
@@ -62,7 +63,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   const realisasiSubmenus = [
     { id: "realization-summary", label: "Dashboard" },
     { id: "realization-ta", label: "Tahun Anggaran" },
-    { id: "realization-satker", label: "Satker" },
+    ...(SATKER_MENU_ENABLED ? [{ id: "realization-satker", label: "Satker" }] : []),
     { id: "realization-akun", label: "Akun Anggaran" },
     { id: "realization-pagu", label: "Pagu Anggaran" },
     { id: "realization-input", label: "Input Realisasi" },
@@ -71,10 +72,11 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
 
   const suratSubmenus = [
     { id: "surat-summary", label: "Dashboard" },
+    { id: "surat-masuk", label: "Surat Masuk" },
     { id: "surat-keluar", label: "Surat Keluar" },
     { id: "surat-tugas", label: "Surat Tugas" },
     { id: "surat-klasifikasi", label: "Kode Klasifikasi" },
-    { id: "surat-alur", label: "Alur Disposisi & TTE" },
+    { id: "surat-alur", label: "Alur Disposisi" },
   ]
 
   const adminMenu = [

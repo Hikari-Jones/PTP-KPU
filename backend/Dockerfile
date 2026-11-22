@@ -4,6 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends default-mysql-c
 COPY requirements.txt .
 COPY kirana-llm ./kirana-llm
 ENV KIRANA_MODEL_DIR=/models
+# Current pip (older versions carry known installer vulnerabilities).
+RUN pip install --no-cache-dir --upgrade pip
 RUN KIRANA_SKIP_MODEL_DOWNLOAD=1 pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY setup_local_database.py upgrade_operations.py restore_backup.py bootstrap.py ./

@@ -32,6 +32,9 @@ class CRUDArsip(CRUDBase[DokumenArsip, DokumenArsipCreate, DokumenArsipUpdate]):
         kategori: Optional[str] = None,
         hak_akses: Optional[str] = None,
         sub_bagian: Optional[str] = None,
+        sumber_modul: Optional[str] = None,
+        sub_kategori: Optional[str] = None,
+        hapus_status: Optional[str] = None,
         status_hapus: bool = False,
         viewer: Optional[Pegawai] = None,
         skip: int = 0,
@@ -87,6 +90,15 @@ class CRUDArsip(CRUDBase[DokumenArsip, DokumenArsipCreate, DokumenArsipUpdate]):
                     Pegawai.bagian.has(Bagian.nama_bagian == sub_bagian.strip())
                 )
             )
+
+        # 8. Module of origin, then the sub-category inside that module
+        if sumber_modul and sumber_modul.strip():
+            conditions.append(DokumenArsip.sumber_modul == sumber_modul.strip())
+        if sub_kategori and sub_kategori.strip():
+            conditions.append(DokumenArsip.sub_kategori == sub_kategori.strip())
+        # 9. Permanent-deletion request state (admin approval queue)
+        if hapus_status and hapus_status.strip():
+            conditions.append(DokumenArsip.hapus_status == hapus_status.strip())
 
         # Count total matching rows
         count_stmt = select(func.count(DokumenArsip.id_dokumen)).where(*conditions)
@@ -182,7 +194,23 @@ class CRUDArsip(CRUDBase[DokumenArsip, DokumenArsipCreate, DokumenArsipUpdate]):
         bagian_res = await db.execute(bagian_stmt)
         sub_bagian = [str(r[0]) for r in bagian_res.fetchall() if r[0] is not None]
 
+        # 7. Modules that have documents, and each module's sub-categories
+        sumber_res = await db.execute(
+            select(DokumenArsip.sumber_modul, DokumenArsip.sub_kategori)
+            .where(DokumenArsip.status_hapus == status_hapus)
+            .distinct()
+        )
+        sub_kategori: Dict[str, List[str]] = {}
+        for modul, sub in sumber_res.fetchall():
+            values = sub_kategori.setdefault(modul or "arsip", [])
+            if sub and sub not in values:
+                values.append(sub)
+        for values in sub_kategori.values():
+            values.sort()
+
         return {
+            "sumber_modul": sorted(sub_kategori.keys()),
+            "sub_kategori": sub_kategori,
             "years": years,
             "months": months,
             "events": events,
@@ -214,6 +242,12 @@ class CRUDArsip(CRUDBase[DokumenArsip, DokumenArsipCreate, DokumenArsipUpdate]):
         doc.status_hapus = False
         doc.dihapus_oleh = None
         doc.dihapus_pada = None
+        # Restoring cancels any pending permanent-deletion request.
+        doc.hapus_status = None
+        doc.hapus_diajukan_oleh = None
+        doc.hapus_diajukan_pada = None
+        doc.hapus_alasan = None
+        doc.hapus_catatan_admin = None
         db.add(doc)
         await db.commit()
         await db.refresh(doc)

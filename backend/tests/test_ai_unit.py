@@ -88,9 +88,13 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
         model.stream_chat.assert_not_called()
 
     async def test_satker_does_not_present_samples_as_live_data(self):
-        with self.assertRaises(HTTPException) as result:
-            await satker.list_satker()
-        self.assertEqual(result.exception.status_code, 503)
+        # Satker come only from the database; an empty table yields an empty list, never samples.
+        from unittest.mock import AsyncMock
+        rows = MagicMock()
+        rows.all.return_value = []
+        db = MagicMock(scalars=AsyncMock(return_value=rows))
+        self.assertEqual(await satker.list_satker(db=db, current_user=MagicMock()), [])
+        self.assertFalse(hasattr(satker, 'KPU_SULUT_SATKER'))
 
     def test_input_limits_and_history_roles(self):
         for payload in [{'message':'   '}, {'message':'x'*8001},

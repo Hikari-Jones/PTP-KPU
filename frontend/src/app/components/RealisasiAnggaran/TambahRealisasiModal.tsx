@@ -55,14 +55,19 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
       try {
         const taRes = await tahunAnggaranApi.getAll({ status: "active", limit: 1 })
-        const active = taRes.items[0] || null
+        // Fall back to scanning all years if the status filter finds nothing (e.g. legacy labels).
+        let active = taRes.items[0] || null
+        if (!active) {
+          const all = await tahunAnggaranApi.getAll({ limit: 100 }).catch(() => ({ total: 0, items: [] as typeof taRes.items }))
+          active = all.items.find((t) => ["active", "aktif"].includes(String(t.status).trim().toLowerCase())) || null
+        }
         if (!isMounted) return
         setActiveTahun(active)
 
         if (active) {
           const paguRes = await paguAnggaranApi.getAll({
             id_tahun_anggaran: active.id_tahun_anggaran,
-            limit: 200,
+            limit: 500,
           })
           if (!isMounted) return
           setPaguList(paguRes.items)

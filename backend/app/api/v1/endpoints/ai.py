@@ -21,6 +21,14 @@ FALLBACK_MODEL_NAME = "KIRANA"
 
 
 _inference_slots = asyncio.Semaphore(2)
+# Last inference failure (e.g. a corrupt model file). Reported by /ai/status so an
+# administrator is not told "ready" while every question fails; cleared on success.
+_last_inference_error: Optional[str] = None
+
+
+def _record_inference(error: Optional[BaseException]) -> None:
+    global _last_inference_error
+    _last_inference_error = None if error is None else f"{type(error).__name__}: {error}"[:300]
 
 
 class HistoryMessage(BaseModel):
@@ -142,6 +150,17 @@ async def get_ai_status():
 
     downloaded = llm.downloaded_path() is not None
     downloading = _download_thread is not None and _download_thread.is_alive()
+    if downloaded and _last_inference_error:
+        return {
+            "status": "error",
+            "active_model": llm.MODEL_NAME,
+            "downloaded": True,
+            "downloading": False,
+            "loaded": llm.is_loaded(),
+            "message": ("Berkas model ada, tetapi model gagal dimuat atau menjawab. Kemungkinan berkas rusak: "
+                        "hapus lalu unduh ulang dengan 'python -m kirana_llm --download'."),
+            "error": _last_inference_error,
+        }
     if downloaded:
         message = "Model lokal siap digunakan."
     elif downloading:
@@ -181,11 +200,14 @@ async def chat_with_ai(payload: ChatRequest, user: Pegawai = Depends(get_current
                 source = event.get("source", "local_model")
         reply = "".join(parts).strip()
         if reply:
+            if source == "local_model":
+                _record_inference(None)
             return ChatResponse(
                 reply=reply, model_used=model, source=source, used_database=used_database
             )
-    except Exception:
+    except Exception as exc:
         logger.exception("Local model inference failed; using rule-based fallback")
+        _record_inference(exc)
     finally:
         _inference_slots.release()
 
@@ -222,9 +244,12 @@ async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_
                         wrote_text = True
                     elif event["type"] == "reset":
                         wrote_text = False
+                    if event["type"] == "done" and event.get("source", "local_model") == "local_model":
+                        _record_inference(None)
                     yield _sse({"source": "local_model", **event} if event["type"] == "done" else event)
-        except Exception:
+        except Exception as exc:
             logger.exception("Local model inference failed")
+            _record_inference(exc)
             if wrote_text:
                 yield _sse({"type": "error", "text": "Jawaban terhenti karena terjadi galat pada model."})
             else:

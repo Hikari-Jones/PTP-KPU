@@ -1,5 +1,10 @@
+from pathlib import Path
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_REPO_DIR = _BACKEND_DIR.parent
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "PTP-KPU Local Operations API"
@@ -22,7 +27,14 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 25
 
     class Config:
-        env_file = (".env", "app/.env")
+        # Absolute paths so scripts work from any folder. Later files override earlier
+        # ones; real environment variables (Docker) override all of them.
+        env_file = (
+            str(_REPO_DIR / ".env"),
+            str(_BACKEND_DIR / ".env"),
+            str(_BACKEND_DIR / "app" / ".env"),
+            ".env",
+        )
         extra = "ignore"
 
 settings = Settings()

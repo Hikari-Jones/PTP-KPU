@@ -1,3 +1,4 @@
+import { saveCsv } from "../../../services/csv"
 import { useState, useEffect } from "react"
 import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, MapPin, Plus, X } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
@@ -59,7 +60,6 @@ export function SatkerView({ theme, onNavigate }: Props) {
     try {
       setIsSubmitting(true)
       await createSatker(formData)
-      showToast("success", `Satker "${formData.nama_satker}" berhasil ditambahkan`)
       setShowAddModal(false)
       setFormData({
         kode_satker: "",
@@ -71,8 +71,8 @@ export function SatkerView({ theme, onNavigate }: Props) {
         status_dipa: "Aktif",
       })
       await loadData()
-    } catch (err: any) {
-      showToast("error", err.message || "Gagal menambahkan Satker")
+    } catch {
+      // The global notification already shows the server's message; keep the form open to fix it.
     } finally {
       setIsSubmitting(false)
     }
@@ -130,24 +130,9 @@ export function SatkerView({ theme, onNavigate }: Props) {
   const exportCSV = () => {
     const headers = ["Kode Satker", "Nama Satker", "Tingkat", "Alamat", "Pagu (Rp)", "Realisasi (Rp)", "Persentase (%)", "Status DIPA"]
     const rows = filteredSatkers.map((s) => [
-      s.kode_satker,
-      `"${s.nama_satker}"`,
-      s.tingkat,
-      `"${s.alamat}"`,
-      s.pagu,
-      s.realisasi,
-      s.persentase,
-      s.status_dipa,
+      s.kode_satker, s.nama_satker, s.tingkat, s.alamat, s.pagu, s.realisasi, s.persentase, s.status_dipa,
     ])
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.setAttribute("download", `Data_Satker_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    saveCsv(`Data_Satker_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`, [headers, ...rows])
   }
 
   return (
@@ -163,6 +148,9 @@ export function SatkerView({ theme, onNavigate }: Props) {
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
             Pengelolaan Data Satker KPU Provinsi dan 15 KPU Kabupaten/Kota Se-Sulawesi Utara
+            <span className="block mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+              Nilai pagu dan realisasi Satker diisi manual oleh administrator; belum terhubung otomatis ke data keuangan satker.
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -270,7 +258,7 @@ export function SatkerView({ theme, onNavigate }: Props) {
                   {avgPct.toFixed(1)}%
                 </h2>
                 <span className={`text-[10px] font-bold ${isDark ? "text-gray-400" : "text-slate-600"}`}>
-                  Target: 80%
+                  dari total pagu
                 </span>
               </div>
             </div>
@@ -337,6 +325,17 @@ export function SatkerView({ theme, onNavigate }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {filteredSatkers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center text-xs text-slate-500">
+                    {satkers.length === 0
+                      ? isAdmin
+                        ? "Belum ada data Satker. Gunakan tombol \"Tambah Satker\" untuk menambahkan satuan kerja."
+                        : "Belum ada data Satker. Hubungi administrator untuk menambahkan satuan kerja."
+                      : "Tidak ada Satker yang cocok dengan pencarian atau filter."}
+                  </TableCell>
+                </TableRow>
+              )}
               {filteredSatkers.map((s) => (
                 <TableRow key={s.id_satker} className={isDark ? "border-b border-white/10 hover:bg-white/5" : "border-b border-slate-100 hover:bg-slate-50"}>
                   <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{s.kode_satker}</TableCell>

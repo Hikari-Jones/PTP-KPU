@@ -1,8 +1,28 @@
+# Rotate container logs so they cannot fill the server disk (5 x 10 MB per service).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   mysql-db:
     image: mysql:8.0
+    logging: *default-logging
     restart: unless-stopped
+    # Sized for an 8 GB office AIO: ~330 MB idle instead of ~570 MB with defaults.
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=256M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=60
+      - --table-open-cache=400
+      - --tmp-table-size=16M
+      - --max-heap-table-size=16M
+    mem_limit: 768m
     environment:
+      # Office time (WITA, UTC+8): "today" and timestamps must match Sulawesi Utara.
+      TZ: ${TZ:-Asia/Makassar}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: kpu_db
       MYSQL_USER: kpu_app
@@ -17,7 +37,10 @@ services:
 
   backend:
     build: ./backend
+    logging: *default-logging
     restart: unless-stopped
+    # Measured: API ~100 MB; the AI model needs ~1.7 GB working memory (runs at full speed under this cap).
+    mem_limit: 2560m
     command:
       - sh
       - -c
@@ -36,12 +59,18 @@ services:
         " || python bootstrap.py
         exec uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
+      TZ: ${TZ:-Asia/Makassar}
       DATABASE_URL: mysql+aiomysql://kpu_app:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql-db:3306/kpu_db
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
       AUTHORITY_GRANTS: ${AUTHORITY_GRANTS:-[]}
-      OFFICIAL_ISSUANCE_ENABLED: "false"
+      # Keep "false" until the office validates number format and signing authority.
+      OFFICIAL_ISSUANCE_ENABLED: ${OFFICIAL_ISSUANCE_ENABLED:-false}
       ENABLE_API_DOCS: "false"
       KIRANA_MODEL_DIR: /models
+      # Free the AI model's ~3.5 GB after this many idle minutes (0 = never).
+      KIRANA_IDLE_UNLOAD_MINUTES: ${KIRANA_IDLE_UNLOAD_MINUTES:-15}
+      # 0 = automatic (physical cores). Lower it to leave CPU for other users.
+      KIRANA_N_THREADS: ${KIRANA_N_THREADS:-0}
       BOOTSTRAP_ADMIN_NIP: ${BOOTSTRAP_ADMIN_NIP:?Set BOOTSTRAP_ADMIN_NIP}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:?Set BOOTSTRAP_ADMIN_NAME}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD}
@@ -67,7 +96,9 @@ services:
 
   frontend:
     build: ./frontend
+    logging: *default-logging
     restart: unless-stopped
+    mem_limit: 128m
     ports:
       - "127.0.0.1:8080:80"
     depends_on:

@@ -111,8 +111,8 @@ async def seed_all():
 
         # 5. Tahun Anggaran
         ta_data = [
-            (2025, "Aktif", date(2025, 1, 1), date(2025, 12, 31), "Tahun Anggaran Berjalan 2025", "Admin KPU"),
-            (2026, "Perencanaan", date(2026, 1, 1), date(2026, 12, 31), "Tahun Anggaran Pilkada Serentak 2026", "Admin KPU"),
+            (2025, "active", date(2025, 1, 1), date(2025, 12, 31), "Tahun Anggaran Berjalan 2025", "Admin KPU"),
+            (2026, "draft", date(2026, 1, 1), date(2026, 12, 31), "Tahun Anggaran Pilkada Serentak 2026", "Admin KPU"),
         ]
         for thn, stat, tgl_m, tgl_s, dsk, created_by in ta_data:
             res = await session.execute(select(TahunAnggaran).where(TahunAnggaran.tahun == thn))

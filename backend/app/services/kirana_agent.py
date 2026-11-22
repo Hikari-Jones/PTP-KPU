@@ -60,6 +60,7 @@ Anda asisten serba bisa: menjawab pertanyaan umum, menjelaskan, merangkum, mener
 - Menjelaskan kode klasifikasi arsip, alur disposisi, dan administrasi perkantoran KPU.
 
 Cara menjawab:
+- Permintaan membuat, menyusun, atau menulis draf (nota dinas, surat, undangan, surat tugas) dijawab LANGSUNG dengan draf, TANPA query_database, walaupun menyebut nama bagian atau pejabat.
 - Gunakan bahasa pengguna; bawaan bahasa Indonesia yang baku, jelas, dan ramah. Langsung ke inti, tidak bertele-tele.
 - Gunakan Markdown bila membantu: daftar, **tebal**, dan tabel untuk data berbaris.
 - Tulis nominal uang sebagai Rupiah dengan pemisah ribuan, contoh Rp 1.250.000.
@@ -106,6 +107,10 @@ Petunjuk query:
 - Pencarian teks memakai LIKE '%kata%'. Urutkan data terbaru dengan ORDER BY tanggal DESC dan batasi dengan LIMIT.
 - Realisasi anggaran yang sah adalah yang status = 'verified'. Sisa anggaran = pagu_aktif - total realisasi verified. Tabel pagu_anggaran tidak punya kolom status.
 - Satu panggilan berisi satu query.
+- JANGAN menambahkan filter yang tidak diminta. "Berapa jumlah surat masuk" berarti semua status (termasuk archived). Tambahkan filter status hanya jika pengguna menyebut statusnya.
+- Contoh jumlah surat masuk: SELECT COUNT(*) AS jumlah FROM workflow_letter WHERE kind = 'masuk'
+- realisasi_anggaran dan pagu_anggaran sudah memiliki kolom tahun (tahun anggaran). Contoh total realisasi terverifikasi tahun 2026: SELECT COALESCE(SUM(jumlah_realisasi), 0) AS total FROM realisasi_anggaran WHERE status = 'verified' AND tahun = 2026
+- Jika hasil query 0 atau kosong, itulah jawabannya: sampaikan "0" atau "belum ada data" dengan jelas. Jangan mengulang query yang sama.
 - Contoh TOTAL keseluruhan (satu baris): SELECT (SELECT SUM(pagu_aktif) FROM pagu_anggaran) AS total_pagu, (SELECT SUM(jumlah_realisasi) FROM realisasi_anggaran WHERE status = 'verified') AS total_realisasi
 - Arsip yang aktif adalah dokumen_arsip dengan status_hapus = 0. Cari arsip lewat nama_dokumen LIKE '%kata%'; cari surat lewat perihal LIKE '%kata%'.
 - Contoh RINCIAN per akun (hanya bila diminta per akun): SELECT a.kode_akun, a.nama_akun, p.pagu_aktif, COALESCE(SUM(r.jumlah_realisasi), 0) AS realisasi, p.pagu_aktif - COALESCE(SUM(r.jumlah_realisasi), 0) AS sisa FROM pagu_anggaran p JOIN akun_anggaran a ON a.id_akun_anggaran = p.id_akun_anggaran LEFT JOIN realisasi_anggaran r ON r.id_pagu = p.id_pagu AND r.status = 'verified' GROUP BY p.id_pagu, a.kode_akun, a.nama_akun, p.pagu_aktif
@@ -137,6 +142,19 @@ _BULAN = ("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli",
 def _today() -> str:
     today = date.today()
     return f"{today.day} {_BULAN[today.month - 1]} {today.year} ({today.isoformat()})"
+
+
+_DRAFT_REQUEST = re.compile(
+    r"\b(buat(kan|lah)?|susun(kan|lah)?|tulis(kan|lah)?|bikin(kan)?|rancang(kan)?|siapkan)\b"
+    r".{0,60}\b(draf|draft|konsep|nota\s+dinas|surat\s+dinas|surat\s+undangan|undangan|surat\s+tugas|surat\s+edaran)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+# Requests that mention a letter type but actually ask for data ("buat rekap surat tugas").
+_DATA_REQUEST = re.compile(r"\b(rekap|daftar|jumlah|berapa|total|statistik|laporan\s+realisasi)\b", re.IGNORECASE)
+
+
+def _is_draft_request(message: str) -> bool:
+    return bool(_DRAFT_REQUEST.search(message or "")) and not _DATA_REQUEST.search(message or "")
 
 
 def build_system_prompt(context: Optional[str] = None) -> str:
@@ -270,10 +288,17 @@ async def run_agent(
 ) -> AsyncIterator[Dict[str, Any]]:
     import kirana_llm
 
+    # Drafting needs no data; small models still tend to look up names they see in
+    # the request, so the request is marked and any database call is redirected.
+    draft_mode = _is_draft_request(message)
+    user_content = message
+    if draft_mode:
+        user_content += ("\n\n(Catatan sistem: ini permintaan penyusunan draf. Tulis drafnya langsung "
+                         "dengan tanda kurung siku untuk data yang belum diketahui; jangan memanggil query_database.)")
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": build_system_prompt(context)},
         *_clean_history(history),
-        {"role": "user", "content": message},
+        {"role": "user", "content": user_content},
     ]
     used_database = False
     wrote_text = False
@@ -323,7 +348,10 @@ async def run_agent(
             wrote_text = False
             yield {"type": "reset"}
 
-        if queries:
+        if queries and draft_mode:
+            results = ["ERROR: Untuk draf, jangan membaca database. Tulis draf lengkap sekarang; "
+                       "isi data yang belum diketahui dengan tanda kurung siku, contoh [nama pejabat]."]
+        elif queries:
             yield {"type": "status", "text": "Membaca database…"}
             results = [_with_guidance(await kirana_db.run_query(sql, user=user)) for sql in queries]
             used_database = True

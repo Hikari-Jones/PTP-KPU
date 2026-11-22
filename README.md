@@ -1,223 +1,309 @@
-# PTP-KPU Sulut (Digitalisasi proses kinerja kantor KPU-SULUT)
-### Sistem Informasi Terintegrasi Komisi Pemilihan Umum Provinsi Sulawesi Utara
-**Struktur Monorepo (Frontend + Backend FastAPI + Local Database + Local AI Model)**
+# PTP-KPU Sulut
+
+**Sistem informasi kantor KPU Provinsi Sulawesi Utara** untuk persuratan, realisasi anggaran,
+arsip dokumen, dan asisten AI lokal. Seluruhnya berjalan di **satu PC server kantor (Acer AIO)**
+tanpa layanan cloud, sehingga data tetap berada di kantor.
 
 ---
 
-## 📌 Gambaran Umum Arsitektur Sistem
+## Daftar isi
 
-Proyek ini dirancang secara khusus untuk lingkungan kantor pemerintahan (**KPU - Komisi Pemilihan Umum**) yang memerlukan **kedaulatan data penuh (*data sovereignty*)** dan dapat dioperasikan secara **100% lokal (*on-premises / air-gapped*)** di PC kantor tanpa ketergantungan pada layanan cloud eksternal.
-
-```
-PTP-KPU/
-├── backend/                  # REST API FastAPI (Python 3.11+)
-│   ├── app/
-│   │   ├── api/v1/          # Endpoints: Persuratan, Anggaran, Arsip, AI, Auth, Satker
-│   │   ├── core/            # Database async engine, Config pydantic
-│   │   ├── models/          # Skema model SQLAlchemy (InnoDB)
-│   │   └── services/        # Business logic tata persuratan & DIPA
-│   ├── database_schema.sql  # DDL SQL resmi kpu_db
-│   ├── setup_local_database.py # Otomasi inisialisasi & seeder basis data lokal
-│   ├── requirements.txt     # Dependensi Python
-│   └── .env                 # Konfigurasi lokal PC kantor
-│
-├── frontend/                 # Web App Modern (React 19, TypeScript, Vite, Tailwind CSS v4)
-│   ├── src/
-│   │   ├── app/components/  # Modul Persuratan, Realisasi Anggaran, Chatbot KIRANA, Views
-│   │   ├── services/api.ts  # Client API terpusat dengan proxy /api
-│   │   └── context/         # AuthContext
-│   ├── package.json
-│   ├── vite.config.ts       # Reverse proxy ke localhost:8000
-│   └── tsconfig.app.json
-│
-├── docker-compose.yml        # Orchestration 1-klik (MySQL, Backend + KIRANA, Frontend)
-├── .env.example              # Template konfigurasi environment kantor
-└── README.md
-```
+1. [Tentang aplikasi](#1-tentang-aplikasi)
+2. [Cara kerja aplikasi](#2-cara-kerja-aplikasi)
+3. [Kebutuhan server (Acer AIO)](#3-kebutuhan-server-acer-aio)
+4. [Instalasi pertama](#4-instalasi-pertama)
+5. [Menjalankan sehari-hari](#5-menjalankan-sehari-hari)
+6. [Cara update](#6-cara-update)
+7. [Mode pengembangan](#7-mode-pengembangan-untuk-developer)
+8. [Pengujian](#8-pengujian)
+9. [Masalah umum](#9-masalah-umum)
 
 ---
 
-## 🏛️ 1. Persiapan Basis Data Lokal PC Kantor (MySQL `kpu_db`)
+## 1. Tentang aplikasi
 
-Sistem menggunakan basis data relasional **MySQL 8.0** yang berjalan di PC kantor lokal (port `3306`):
+| Modul | Fungsi |
+|---|---|
+| **Surat Menyurat** | Registrasi Surat Masuk, draf Surat Keluar, Surat Tugas (dengan pegawai pelaksana), Kode Klasifikasi arsip, alur disposisi dan pemeriksaan internal. Setiap surat dapat diklik untuk melihat isinya. |
+| **Realisasi Anggaran** | Tahun Anggaran (draft → aktif → ditutup), Satker, Akun (MAK), Pagu DIPA dan Revisi DIPA, input transaksi dengan bukti, laporan bulanan, ekspor Excel/CSV. |
+| **Data Arsip** | Semua dokumen di satu tempat: unggahan manual, impor massal, serta salinan otomatis dokumen dari Surat Menyurat dan bukti Realisasi Anggaran. Filter bertingkat (modul → jenis/akun → tahun). |
+| **KIRANA** | Asisten AI yang berjalan **di server kantor** (model Qwen 2.5 3B). Dapat membaca data sesuai hak akses pengguna; tidak dapat mengubah data. |
+| **Administrasi** | Kelola pengguna, laporan bug, cadangan sistem (backup ZIP). |
 
-1. **Jalankan Layanan MySQL di PC Kantor**:
-   - Jika menggunakan **XAMPP / Laragon**: Cukup klik tombol **Start** pada modul MySQL.
-   - Jika menggunakan **Native MySQL Server**: Pastikan service `MySQL80` berjalan.
-   - Jika menggunakan **Docker**: Jalankan `docker-compose up -d mysql-db`.
+**Hak akses.** Admin mengelola semua modul. Bagian Umum/Logistik mengelola persuratan;
+Keuangan dan RENDATIN mengelola anggaran. Pegawai lain melihat data dalam mode baca saja
+(misalnya hanya surat tugas yang menugaskan dirinya).
 
-2. **Inisialisasi & Seeder Data Master Otomatis**:
-   Buka terminal di folder `backend/`:
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   python setup_local_database.py
+**Pengaman yang sengaja dikunci:**
+- **Penomoran surat resmi** terkunci ("Mode Uji Coba") sampai format nomor dan kewenangan
+  penandatangan divalidasi kantor (`OFFICIAL_ISSUANCE_ENABLED`, `AUTHORITY_GRANTS`).
+- **Hapus permanen arsip** harus diajukan pengguna dan disetujui admin. Dokumen yang berasal
+  dari Surat Menyurat/Realisasi tidak dapat dihapus permanen.
+- **Hanya satu tahun anggaran aktif.** Mengaktifkan tahun baru menutup tahun sebelumnya
+  setelah verifikasi dua langkah (penutupan bersifat permanen).
+
+---
+
+## 2. Cara kerja aplikasi
+
+```
+ PC pegawai (browser)                 Acer AIO (server kantor) — Docker
+ ┌──────────────┐     HTTPS     ┌──────────────────────────────────────────────────┐
+ │  Chrome/Edge │ ────────────▶ │ reverse proxy (Caddy) ──▶ frontend  (nginx)       │
+ └──────────────┘               │                             │  /api               │
+                                │                             ▼                     │
+                                │                     backend (FastAPI + KIRANA AI) │
+                                │                             │                     │
+                                │                             ▼                     │
+                                │                     mysql-db (MySQL 8.0)          │
+                                │  Volume: mysql_data · uploads · backups · models  │
+                                └──────────────────────────────────────────────────┘
+```
+
+| Komponen | Isi | Catatan |
+|---|---|---|
+| `frontend` | React 19 + Vite, disajikan nginx | Kompresi gzip, cache aset 1 tahun, setiap halaman dimuat saat dibuka |
+| `backend` | FastAPI (Python 3.12) | API `/api/v1`, login JWT, unggah berkas, backup, KIRANA |
+| `mysql-db` | MySQL 8.0 | Disetel hemat RAM untuk AIO 8 GB |
+| KIRANA | `backend/kirana-llm` (llama.cpp) | Dimuat saat pertanyaan pertama, **dilepas otomatis setelah 15 menit tidak dipakai** |
+
+**Data tersimpan di volume Docker** (`mysql_data`, `uploads`, `backups`, `kirana_models`), bukan
+di dalam container. Restart, rebuild, maupun update aplikasi tidak menghapus data.
+Data hanya hilang bila volume dihapus (`docker compose down -v` — **jangan lakukan**).
+
+**Sinkronisasi arsip.** Saat surat atau transaksi bersama bukti disimpan, salinannya otomatis
+dicatat di Data Arsip. Saat backend menyala, sinkronisasi penuh berjalan di latar belakang untuk
+melengkapi data lama (admin juga dapat menekan **Sinkronkan** di Data Arsip).
+
+**Umpan balik.** Setiap aksi simpan/hapus menampilkan notifikasi berhasil/gagal dengan alasan
+dari server; ekspor berkas menampilkan konfirmasi atau "tidak ada data untuk diekspor".
+
+---
+
+## 3. Kebutuhan server (Acer AIO)
+
+Target: Acer AIO kelas menengah (Intel Core i3/i5 generasi 10–12, **RAM 8 GB**, SSD),
+Windows 10/11 64-bit dengan **Docker Desktop** (WSL 2).
+
+### Penggunaan sumber daya (hasil pengukuran)
+
+| Keadaan | RAM | Keterangan |
+|---|---|---|
+| Aplikasi menyala, KIRANA tidak dipakai | ~0,5 GB | MySQL ~330 MB, backend ~100 MB, nginx ~10 MB |
+| KIRANA sedang/baru dipakai | +~1,7 GB kerja (+2 GB cache berkas model) | Dilepas otomatis setelah 15 menit menganggur |
+| Batas memori per container | MySQL 768 MB · backend 2,5 GB · frontend 128 MB | Diatur di `docker-compose.production.yml` |
+
+Kecepatan (diuji dengan 2–4 CPU): halaman API rata-rata **< 50 ms** dengan data beberapa tahun
+(ribuan surat, arsip, dan transaksi), dan tetap cepat saat KIRANA sedang menjawab.
+KIRANA menjawab pertanyaan data dalam **5–20 detik**. **Pertanyaan pertama setelah model dimuat
+butuh sekitar 1 menit** (model membaca instruksinya sekali); hal ini terulang setelah model dilepas
+karena menganggur. Bila terasa mengganggu, naikkan `KIRANA_IDLE_UNLOAD_MINUTES` (misalnya `120`).
+KIRANA melayani 2 pertanyaan bergiliran; pertanyaan ketiga pada saat yang sama diminta mencoba lagi.
+
+**Waktu server** diatur ke WITA (`TZ=Asia/Makassar`) agar tanggal "hari ini" sesuai jam kantor.
+**Log container** dirotasi otomatis (maksimal 5 × 10 MB per layanan) agar tidak memenuhi disk.
+
+### Pengaturan Docker Desktop untuk RAM 8 GB
+
+Buat berkas `C:\Users\<nama-user>\.wslconfig`:
+
+```ini
+[wsl2]
+memory=4GB
+swap=2GB
+
+[experimental]
+autoMemoryReclaim=gradual
+```
+
+`autoMemoryReclaim` mengembalikan RAM ke Windows setelah KIRANA dilepas. Terapkan dengan
+`wsl --shutdown`, lalu buka kembali Docker Desktop.
+
+Agar aplikasi menyala sendiri setelah AIO dihidupkan: di Docker Desktop aktifkan
+**Settings → General → Start Docker Desktop when you sign in** (container sudah diatur
+`restart: unless-stopped`).
+
+---
+
+## 4. Instalasi pertama
+
+Langkah ini untuk **database baru yang kosong**. Untuk server yang sudah berisi data, ikuti
+[Cara update](#6-cara-update).
+
+### 4.1 Siapkan berkas
+Pasang **Git** dan **Docker Desktop**, lalu:
+
+```powershell
+git clone https://github.com/Hikari-Jones/PTP-KPU.git
+cd PTP-KPU
+copy .env.example .env
+```
+
+### 4.2 Isi `.env` (folder utama)
+
+| Variabel | Isi |
+|---|---|
+| `SECRET_KEY` | Acak, minimal 32 karakter: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD` | Kata sandi database acak (gunakan huruf/angka saja) |
+| `BOOTSTRAP_ADMIN_NIP`, `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_PASSWORD` | Akun administrator pertama (sandi minimal 12 karakter) |
+| `OFFICIAL_ISSUANCE_ENABLED` | Biarkan `false` sampai penomoran resmi disetujui kantor |
+| `KIRANA_IDLE_UNLOAD_MINUTES` | Opsional, bawaan `15` (0 = model tidak pernah dilepas) |
+| `KIRANA_N_THREADS` | Opsional, bawaan `0` (otomatis) |
+
+Jangan pernah mengunggah `.env` ke Git.
+
+### 4.3 Bangun dan jalankan
+
+```powershell
+docker compose -f docker-compose.production.yml build
+docker compose -f docker-compose.production.yml up -d
+```
+
+Saat pertama menyala, backend membuat tabel, **satu akun admin** dari `.env`, serta data rujukan
+resmi (kode klasifikasi, jenis surat). Tidak ada data contoh yang dibuat.
+
+### 4.4 Unduh model KIRANA (sekali, ~2,1 GB, perlu internet)
+
+```powershell
+docker compose -f docker-compose.production.yml exec backend python -m kirana_llm --download
+```
+
+Setelah itu KIRANA berjalan tanpa internet.
+
+### 4.5 Buka aplikasi
+- Di AIO: <http://localhost:8080>, login dengan akun admin dari `.env`.
+- Dari PC lain di jaringan kantor: aplikasi sengaja hanya mendengarkan di `127.0.0.1`.
+  Pasang reverse proxy HTTPS (misalnya Caddy) di AIO yang meneruskan ke `localhost:8080`;
+  lihat [RUNBOOK.md](RUNBOOK.md). Reverse proxy ini juga **wajib** agar batas permintaan
+  (30 per detik per PC) dihitung per komputer; tanpa proxy, semua PC kantor terlihat sebagai satu
+  alamat dan berbagi satu batas.
+
+Tambahkan pegawai melalui menu **Kelola User**, lalu satker, tahun anggaran, akun, dan pagu
+melalui menu Realisasi Anggaran.
+
+---
+
+## 5. Menjalankan sehari-hari
+
+Jalankan dari folder `PTP-KPU`. **Selalu sertakan `-f docker-compose.production.yml`**
+(berkas `docker-compose.yml` adalah untuk pengembangan).
+
+| Tujuan | Perintah |
+|---|---|
+| Menyalakan | `docker compose -f docker-compose.production.yml up -d` |
+| Mematikan (data aman) | `docker compose -f docker-compose.production.yml stop` |
+| Restart backend | `docker compose -f docker-compose.production.yml restart backend` |
+| Status | `docker compose -f docker-compose.production.yml ps` |
+| Log backend | `docker compose -f docker-compose.production.yml logs -f backend` |
+| Pemakaian RAM/CPU | `docker stats` |
+
+**Backup:** menu **Cadangan Sistem** (admin) membuat ZIP berisi database, berkas unggahan, dan
+checksum. Unduh dan simpan salinannya di media terpisah secara berkala. Pemulihan dijelaskan di
+[RUNBOOK.md](RUNBOOK.md#backup-and-restore).
+
+---
+
+## 6. Cara update
+
+Lakukan di luar jam kerja. Database dan berkas **tidak dihapus** oleh update.
+
+1. **Backup dulu** melalui menu **Cadangan Sistem**, lalu unduh ZIP-nya.
+2. **Ambil versi terbaru:**
+   ```powershell
+   cd PTP-KPU
+   git pull
    ```
-   *Skrip ini secara otomatis membuat basis data `kpu_db`, mengompilasi seluruh tabel (InnoDB dengan Foreign Key relasional), dan mengisi data master resmi KPU Sulut (Subbagian, Pegawai, Kode Klasifikasi Arsip, Format Penomoran Surat, DIPA 2025/2026, dan 16 Satker wilayah).*
+3. **Bangun ulang dan jalankan:**
+   ```powershell
+   docker compose -f docker-compose.production.yml up -d --build
+   ```
+4. **Perbarui struktur database** (aman dijalankan berulang kali; tidak mengisi data contoh):
+   ```powershell
+   docker compose -f docker-compose.production.yml exec backend python upgrade_operations.py
+   ```
+   Harus berakhir dengan `Operations schema upgrade completed without reseeding demo data`.
+5. **Restart backend** agar perubahan struktur dan sinkronisasi arsip diterapkan:
+   ```powershell
+   docker compose -f docker-compose.production.yml restart backend
+   ```
+6. **Periksa:** buka aplikasi (tekan Ctrl+F5 sekali bila tampilan lama masih muncul), login, lalu
+   buka Surat Menyurat, Realisasi Anggaran, dan Data Arsip. Bila ada galat, lihat log backend.
+
+Bila `.env.example` memiliki variabel baru, salin variabel tersebut ke `.env` sebelum langkah 3.
+Jangan menjalankan `setup_local_database.py` atau `bootstrap.py` pada server yang sudah berisi data.
 
 ---
 
-## 🤖 2. Persiapan Model AI Lokal KIRANA
+## 7. Mode pengembangan (untuk developer)
 
-KIRANA menjalankan Qwen 2.5 di proses backend melalui `kirana-llm`; Ollama tidak diperlukan.
-Gunakan Python 3.11 untuk lingkungan Docker yang disediakan. Jalankan dari `backend/`:
-
-```bash
-pip install -r requirements.txt
-python -m kirana_llm --download
+```powershell
+docker compose up -d          # MySQL, backend (auto-reload), frontend Vite di http://localhost:5173
 ```
 
-Bobot model sekitar 2,1 GB. Instalasi mencoba mengunduh bobot; perintah kedua memastikan
-model tersedia sebelum penggunaan offline. Untuk instalasi tanpa unduhan otomatis,
-set `KIRANA_SKIP_MODEL_DOWNLOAD=1`. Untuk bobot GGUF yang sudah tersedia,
-set `KIRANA_MODEL_PATH` ke path absolutnya. Konfigurasi lain ada di `.env.example`.
+Atau tanpa Docker (memerlukan MySQL lokal sesuai `DATABASE_URL` di `.env`):
 
-Setelah login, status tersedia di `/api/v1/ai/status`. Chatbot mendukung streaming,
-riwayat per pengguna, stop/regenerate, Markdown, dan pembacaan database sesuai hak akses.
-Jika model tidak tersedia, chatbot menyampaikan keterbatasan tersebut tanpa membuat data transaksi.
-Draf AI tetap perlu pemeriksaan manusia.
-
----
-
-## 🚀 3. Menjalankan Aplikasi
-
-### Menjalankan Backend (FastAPI):
-```bash
+```powershell
 cd backend
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-- Dokumentasi Interaktif Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Status Health Check: [http://localhost:8000/health](http://localhost:8000/health)
+python -m venv ..\venv; ..\venv\Scripts\activate
+pip install -r requirements.txt
+python setup_local_database.py        # database contoh berisi akun & data demo (khusus pengembangan)
+python -m uvicorn app.main:app --reload --port 8000
 
-### Menjalankan Frontend (Vite + React):
-```bash
-cd frontend
-npm install
+cd ..\frontend
+npm ci
 npm run dev
 ```
-- Buka antarmuka aplikasi di browser: [http://localhost:5173](http://localhost:5173)
 
-### Kredensial Login Bawaan Sistem:
+`setup_local_database.py` membuat akun demo dengan sandi bawaan; **jangan dipakai di server kantor**.
 
-#### Akun Super Administrator (Utama):
-* **NIP**: `198507182020031001`
-* **Password**: `    `
-* **Role**: Admin (Akses penuh seluruh modul, konfigurasi & kontrol user)
+Struktur folder:
 
----
-
-#### Struktur Akun per Subbagian (1 Kabag, 1 Kasubbag, 2 Pegawai):
-> **Catatan**: Password default untuk seluruh akun staf di bawah ini adalah: **`123456`**
-
-##### Kepala Bagian
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kabag (Perencanaan, Data, Informasi, Partisipasi Hubungan Masyarakat & SDM)** | Ir. Ronny Lumempow, MT | `197604122002121001` | Admin | `123456` |
-| **Kabag (Teknis Penyelenggaraan Pemilu & Hukum)** | Drs. Franky Mokodompit, M.Si | `197709282005011001` | Admin | `123456` |
-| **Kabag (Keuangan, Umum & Logistik)** | Dra. Jenny Walangitan, MM | `197508052001121001` | Admin | `123456` |
-
-##### 1. Subbagian Partisipasi, Hubungan Masyarakat dan Sumber Daya Manusia
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kasubbag** | Meyke Tumengkol, S.Sos | `198203102008011002` | Operator | `123456` |
-| **Pegawai 1** | Farly Pontoh, S.Kom | `199106142015031004` | Operator | `123456` |
-| **Pegawai 2** | Priscilia Rompas, S.Pd | `199508192020122005` | Operator | `123456` |
-
-##### 2. Subbagian Perencanaan, Data dan Informasi
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kasubbag** | Christian Runtu, ST | `198307192009021002` | Operator | `123456` |
-| **Pegawai 1** | Michael Poluan, S.Kom | `199302172017011004` | Operator | `123456` |
-| **Pegawai 2** | Natasya Pangemanan, S.Stat | `199609252022032005` | Operator | `123456` |
-
-##### 3. Subbagian Teknis Penyelenggaraan Pemilu 
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kasubbag** | Hendrik Sumendap, SH | `198112042006041002` | Operator | `123456` |
-| **Pegawai 1** | Ahmad Kurniawan | `199208052021011002` | Operator | `123456` |
-| **Pegawai 2** | Ingrid Sondakh, S.Sos | `199410112019022004` | Operator | `123456` |
-
-##### 4. Subbagian Hukum
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kasubbag** | Richard Senduk, SH | `198309142009121002` | Operator | `123456` |
-| **Pegawai 1** | Siti Rahmawati | `199403152021022003` | Operator | `123456` |
-| **Pegawai 2** | Aldo Maramis, SH | `199512302020121005` | Operator | `123456` |
-
-##### 5. Subbagian Umum, Logistik 
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kasubbag** | Nova Lasut, SE | `198404182009022003` | Operator | `123456` |
-| **Pegawai 1** | Budi Santoso | `198811202019031004` | Operator | `123456` |
-| **Pegawai 2** | Rizky Rumagit, S.Kom | `199211152018021006` | Operator | `123456` |
-
-##### 6. Subbagian Keuangan
-| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
-| :--- | :--- | :--- | :--- | :--- |
-| **Kasubbag** | Albert Wenas, SE, Ak | `198010202007011002` | Operator | `123456` |
-| **Pegawai 1** | Jessica Pandeirot, SE | `199305142018012005` | Operator | `123456` |
-| **Pegawai 2** | Stevani Waworuntu, SE | `199507202020122007` | Operator | `123456` |
-
----
-
-## 🛠️ Ringkasan Perbaikan yang Telah Dilakukan
-
-1. **Konsolidasi Monorepo**:
-   - Menggabungkan frontend dan backend yang sebelumnya terpisah menjadi satu repositori terpadu di folder `PTP-KPU`.
-   - Mengganti folder `backend-backupfe` yang sebelumnya keliru berisi frontend cadangan dengan backend riil (`PTP-KPU-backend-filteringGabunganRev1-alsa`).
-
-2. **Perbaikan Build & TypeScript Frontend**:
-   - Menghapus konfigurasi usang `"ignoreDeprecations": "6.0"` di `tsconfig.app.json` yang memicu kegagalan build `tsc -b`.
-   - Memperbaiki deklarasi versi TypeScript ke `^5.7.3` dan menambahkan dependensi `axios` di `package.json`.
-   - Membersihkan karakter BOM UTF-8 yang memicu error PostCSS. Hasil build frontend kini **100% sukses**.
-
-3. **Pembuatan Endpoint Persuratan di Backend**:
-   - Membuat modul [`app/api/v1/endpoints/surat.py`](backend/app/api/v1/endpoints/surat.py) yang mengimplementasikan API Kode Klasifikasi, Jenis Surat, Surat Keluar, dan penomoran resmi atomik (`PenomoranSequence`).
-
-4. **Integrasi AI Lokal (KIRANA)**:
-   - Membuat modul [`app/api/v1/endpoints/ai.py`](backend/app/api/v1/endpoints/ai.py) yang menghubungkan chatbot KIRANA ke model lokal di proses backend, dengan streaming dan query database hanya baca.
-
-5. **Penyempurnaan Modul Satker**:
-   - Mengubah halaman [`SatkerView.tsx`](frontend/src/app/components/RealisasiAnggaran/SatkerView.tsx) dari yang sebelumnya berstatus *"Fitur dalam Pengembangan"* menjadi panel pemantauan lengkap untuk KPU Provinsi dan 15 KPU Kabupaten/Kota se-Sulawesi Utara lengkap dengan fitur filter dan ekspor CSV.
-
-6. **Revival Modul Alur Disposisi & TTE**:
-   - Mengintegrasikan kembali komponen persuratan canggih ([`SuratMenyuratModule.tsx`](frontend/src/app/components/SuratMenyurat/SuratMenyuratModule.tsx)) ke menu navigasi sidebar (`surat-alur`) agar staf dapat melakukan alur verifikasi draf, simulasi TTE, dan audit trail log.
-
-7. **Fitur Pengelolaan User, Bug Report, & Backup**:
-   - Menambahkan modal interaktif untuk pendaftaran operator baru di `KelolaUserView.tsx`.
-   - Menambahkan form pengiriman kendala teknis di `BugReportView.tsx`.
-   - Mengaktifkan aksi pembuatan cadangan database dan unduhan manifes di `ArsipAdminView.tsx`.
-
-## Security configuration and current release limitations
-
-Before starting the backend, set `SECRET_KEY` in `backend/.env` to a unique
-random value of at least 32 characters. Generate one with:
-
-```bash
-python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+backend/    API FastAPI (app/api, app/models, app/services), kirana-llm/, tests/, upgrade_operations.py
+frontend/   React + TypeScript (src/app/components, src/services), nginx.conf
+docker-compose.production.yml   Server kantor (AIO)
+docker-compose.yml              Pengembangan
 ```
 
-For Docker Compose, also set `SECRET_KEY`, `MYSQL_ROOT_PASSWORD`, and
-`MYSQL_PASSWORD` in the root `.env`. Use a URL-safe database password because
-Compose embeds it in the database connection URL. Existing MySQL volumes do
-not automatically create the new `kpu_app` account: provision that account with
-permissions on `kpu_db` before switching an existing installation. Do not delete
-the existing database volume to resolve account errors.
+---
 
-README seed credentials are retained for actual seeded database accounts.
-Login no longer creates demo identities or accepts universal testing passwords.
-Existing plaintext, SHA-256, and `hash_` passwords are upgraded to salted PBKDF2
-on successful login. Newly seeded/created accounts use PBKDF2 immediately.
-Change documented default passwords before office deployment.
+## 8. Pengujian
 
-The backup screen now creates real MySQL/upload ZIP archives. See RUNBOOK.md for
-requirements and isolated restore commands. Old simulated entries are not backups.
+Semua uji integrasi memakai **database kosong khusus uji** (nama berakhiran `_test`) dan menolak
+berjalan pada database operasional.
 
-Integration scripts require an explicit DATABASE_URL whose database name ends
-in `_test`. These scripts may delete data; use only a disposable test database.
-Some legacy tests still use old authentication headers and require updates.
+```powershell
+cd backend
+python -m unittest discover -s tests -p "test_*unit.py"   # uji unit
+python tests/e2e_new_features.py      # alur fitur utama (arsip, surat tugas, tahun anggaran, satker, impor)
+python tests/e2e_checklist.py         # daftar periksa rilis: hak akses, surat, anggaran, laporan, arsip, keamanan KIRANA
+python tests/ai_live_check.py         # KIRANA dengan model asli (jalankan setelah e2e_checklist.py pada database yang sama)
+python tests/smoke_all_routes.py      # seluruh rute API
+python tests/perf_endpoints.py        # kecepatan dengan data beberapa tahun
+cd ..\frontend
+npm test
+npm run build
+```
 
-The surat-alur, archive, user-management, and bug-report screens now use persistent
-APIs. Production serving is provided by docker-compose.production.yml. See
-[RUNBOOK.md](RUNBOOK.md) for upgrades, deployment, backups, test commands, and the
-remaining unverified runtime checks. These notes supersede older completion claims.
+Variabel yang dibutuhkan uji integrasi: `DATABASE_URL` (ke database `..._test` yang kosong),
+`SECRET_KEY`, dan `UPLOAD_DIR` (folder sementara). Detail ada di [RUNBOOK.md](RUNBOOK.md#verification).
+
+---
+
+## 9. Masalah umum
+
+| Gejala | Penyebab / solusi |
+|---|---|
+| Galat `Unknown column ...` di log, halaman 503 | Struktur database belum diperbarui: jalankan langkah 4 di [Cara update](#6-cara-update). |
+| Data Arsip kosong padahal ada surat | Admin menekan **Sinkronkan** di Data Arsip; pastikan `upgrade_operations.py` sudah dijalankan. |
+| KIRANA: "model belum terunduh" | Jalankan perintah unduh model di [4.4](#44-unduh-model-kirana-sekali-21-gb-perlu-internet). |
+| AIO terasa lambat saat KIRANA dipakai | Wajar selama menjawab; turunkan `KIRANA_N_THREADS` (misalnya `2`) agar CPU tersisa untuk tugas lain. |
+| KIRANA: status "error" | Berkas model rusak: hapus dari volume `kirana_models`, lalu unduh ulang (langkah 4.4). |
+| "Terlalu banyak permintaan" | Batas 30 permintaan/detik per PC terlampaui; tunggu sebentar. Bila semua PC sering mengalaminya, pastikan akses melalui reverse proxy. |
+| "Isi berkas tidak sesuai dengan format" saat unggah | Berkas rusak atau ekstensinya diganti (mis. berkas lain diberi nama `.pdf`). Simpan ulang dari aplikasi aslinya. |
+| "Terbitkan Nomor" terkunci | Disengaja (Mode Uji Coba); lihat `OFFICIAL_ISSUANCE_ENABLED` dan [KPU_REGULATORY_REVIEW.md](KPU_REGULATORY_REVIEW.md). |
+| Tampilan tidak berubah setelah update | Muat ulang paksa browser (Ctrl+F5). |
+| `No 'script_location' key` saat menjalankan alembic | Image produksi tidak memuat alembic; gunakan `upgrade_operations.py`. |
+
+Dokumen lain: [RUNBOOK.md](RUNBOOK.md) (deployment, backup/restore, keamanan),
+[KPU_REGULATORY_REVIEW.md](KPU_REGULATORY_REVIEW.md).

@@ -126,7 +126,7 @@ export interface KlasifikasiCreatePayload {
 }
 
 export const createKlasifikasi = async (payload: KlasifikasiCreatePayload): Promise<KodeKlasifikasiArsip> => {
-  const res = await fetch(`${API_BASE_URL}/surat/klasifikasi`, {
+  const res = await fetch(`${API_BASE_URL}/klasifikasi`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
@@ -430,10 +430,12 @@ export const realisasiAnggaranApi = {
     search?: string;
     tanggal_mulai?: string;
     tanggal_selesai?: string;
+    has_bukti?: boolean;
     skip?: number;
     limit?: number;
   }): Promise<RealisasiAnggaranListResponse> => {
     const query = new URLSearchParams();
+    if (params?.has_bukti !== undefined) query.append('has_bukti', String(params.has_bukti));
     if (params?.id_pagu !== undefined) query.append('id_pagu', String(params.id_pagu));
     if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
     if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));

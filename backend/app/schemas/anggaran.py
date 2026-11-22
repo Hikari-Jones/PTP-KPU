@@ -24,10 +24,18 @@ class TahunAnggaranBase(BaseModel):
 
 class TahunAnggaranCreate(TahunAnggaranBase):
     id_pegawai_pembuat: Optional[int] = None
+    konfirmasi_tutup_tahun: Optional[int] = Field(
+        None,
+        description="Second confirmation: the number of the currently active year, required to close it automatically",
+    )
 
 
 class TahunAnggaranUpdate(BaseModel):
     tahun: Optional[int] = Field(None, ge=2000, le=2100)
+    konfirmasi_tutup_tahun: Optional[int] = Field(
+        None,
+        description="Second confirmation: the number of the currently active year, required to close it automatically",
+    )
     status: Optional[str] = Field(None, pattern="^(draft|active|closed)$")
     tanggal_mulai: Optional[date] = None
     tanggal_selesai: Optional[date] = None

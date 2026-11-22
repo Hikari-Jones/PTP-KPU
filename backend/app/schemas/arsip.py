@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Optional, Literal
+from typing import Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
 
 class DokumenArsipBase(BaseModel):
@@ -43,6 +43,20 @@ class DokumenArsipResponse(DokumenArsipBase):
     nama_penghapus: Optional[str] = None
     nama_bagian: Optional[str] = None
 
+    # Asal dokumen (arsip/surat/realisasi) dan sub-kategorinya
+    sumber_modul: str = "arsip"
+    sub_kategori: Optional[str] = None
+    ref_tipe: Optional[str] = None
+    ref_id: Optional[int] = None
+
+    # Permintaan hapus permanen (diajukan pengguna, diputuskan administrator)
+    hapus_status: Optional[str] = None
+    hapus_diajukan_oleh: Optional[int] = None
+    hapus_diajukan_pada: Optional[datetime] = None
+    hapus_alasan: Optional[str] = None
+    hapus_catatan_admin: Optional[str] = None
+    nama_pengaju_hapus: Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -53,6 +67,15 @@ class FilterOptionsResponse(BaseModel):
     kategori: List[str] = []
     hak_akses: List[str] = []
     sub_bagian: List[str] = []
+    # Modul asal yang memiliki dokumen, dan sub-kategori per modul
+    sumber_modul: List[str] = []
+    sub_kategori: Dict[str, List[str]] = {}
+
+class PermintaanHapusRequest(BaseModel):
+    alasan: str = Field(..., min_length=5, max_length=255)
+
+class TolakHapusRequest(BaseModel):
+    catatan: str = Field(..., min_length=3, max_length=255)
 
 class DokumenArsipListResponse(BaseModel):
     total: int

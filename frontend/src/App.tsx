@@ -1,33 +1,36 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, lazy, Suspense } from "react"
 import { Menu, Sun, Moon, CheckCircle2, X } from "lucide-react"
 import { AuthProvider, useAuth } from "./app/context/AuthContext"
 import { LoginForm } from "./app/components/auth/LoginForm"
 import { Sidebar } from "./app/components/layout/Sidebar"
 import { KiranaChatbot } from "./app/components/chatbot/KiranaChatbot"
 
-// Views
-import { DashboardView } from "./app/components/views/DashboardView"
-import { RealisasiAnggaranView } from "./app/components/RealisasiAnggaran/RealisasiAnggaranView"
-import { TahunAnggaranView } from "./app/components/RealisasiAnggaran/TahunAnggaranView"
-import { SatkerView } from "./app/components/RealisasiAnggaran/SatkerView"
-import { AkunAnggaranView } from "./app/components/RealisasiAnggaran/AkunAnggaranView"
-import { PaguAnggaranView } from "./app/components/RealisasiAnggaran/PaguAnggaranView"
-import { InputRealisasiView } from "./app/components/RealisasiAnggaran/InputRealisasiView"
-import { LaporanBulananView } from "./app/components/RealisasiAnggaran/LaporanBulananView"
-import { SuratView } from "./app/components/views/SuratView"
-import { SuratMenyuratModule } from "./app/components/SuratMenyurat/SuratMenyuratModule"
-import { ArsipView } from "./app/components/views/ArsipView"
-import { PengaturanView } from "./app/components/views/PengaturanView"
-import { FAQView } from "./app/components/views/FAQView"
-import { ProfilView } from "./app/components/views/ProfilView"
-import { AdminDashboardView } from "./app/components/views/AdminDashboardView"
-import { KelolaUserView } from "./app/components/views/KelolaUserView"
-import { BugReportView } from "./app/components/views/BugReportView"
-import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
+// Views are loaded lazily (see below)
 import { ReadOnlyBanner } from "./app/components/ui/read-only"
 import { LoadingScreen } from "./app/components/ui/LoadingScreen"
 import { GlobalActivity } from "./app/components/ui/GlobalActivity"
 import { showToast } from "./services/activity"
+
+// Each screen is downloaded the first time it is opened, keeping the first page load small.
+const DashboardView = lazy(() => import("./app/components/views/DashboardView").then((m) => ({ default: m.DashboardView })))
+const RealisasiAnggaranView = lazy(() => import("./app/components/RealisasiAnggaran/RealisasiAnggaranView").then((m) => ({ default: m.RealisasiAnggaranView })))
+const TahunAnggaranView = lazy(() => import("./app/components/RealisasiAnggaran/TahunAnggaranView").then((m) => ({ default: m.TahunAnggaranView })))
+import { SATKER_MENU_ENABLED } from "./config/features"
+const SatkerView = lazy(() => import("./app/components/RealisasiAnggaran/SatkerView").then((m) => ({ default: m.SatkerView })))
+const AkunAnggaranView = lazy(() => import("./app/components/RealisasiAnggaran/AkunAnggaranView").then((m) => ({ default: m.AkunAnggaranView })))
+const PaguAnggaranView = lazy(() => import("./app/components/RealisasiAnggaran/PaguAnggaranView").then((m) => ({ default: m.PaguAnggaranView })))
+const InputRealisasiView = lazy(() => import("./app/components/RealisasiAnggaran/InputRealisasiView").then((m) => ({ default: m.InputRealisasiView })))
+const LaporanBulananView = lazy(() => import("./app/components/RealisasiAnggaran/LaporanBulananView").then((m) => ({ default: m.LaporanBulananView })))
+const SuratView = lazy(() => import("./app/components/views/SuratView").then((m) => ({ default: m.SuratView })))
+const SuratMenyuratModule = lazy(() => import("./app/components/SuratMenyurat/SuratMenyuratModule").then((m) => ({ default: m.SuratMenyuratModule })))
+const ArsipView = lazy(() => import("./app/components/views/ArsipView").then((m) => ({ default: m.ArsipView })))
+const PengaturanView = lazy(() => import("./app/components/views/PengaturanView").then((m) => ({ default: m.PengaturanView })))
+const FAQView = lazy(() => import("./app/components/views/FAQView").then((m) => ({ default: m.FAQView })))
+const ProfilView = lazy(() => import("./app/components/views/ProfilView").then((m) => ({ default: m.ProfilView })))
+const AdminDashboardView = lazy(() => import("./app/components/views/AdminDashboardView").then((m) => ({ default: m.AdminDashboardView })))
+const KelolaUserView = lazy(() => import("./app/components/views/KelolaUserView").then((m) => ({ default: m.KelolaUserView })))
+const BugReportView = lazy(() => import("./app/components/views/BugReportView").then((m) => ({ default: m.BugReportView })))
+const ArsipAdminView = lazy(() => import("./app/components/views/ArsipAdminView").then((m) => ({ default: m.ArsipAdminView })))
 
 function MainLayout() {
   const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser } = useAuth()
@@ -121,6 +124,7 @@ function MainLayout() {
       case "realization-ta":
         return <TahunAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-satker":
+        if (!SATKER_MENU_ENABLED) return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         return <SatkerView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-akun":
         return <AkunAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
@@ -135,8 +139,9 @@ function MainLayout() {
         return <SuratView key="surat-overview" theme={theme} subTab="overview" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-keluar":
         return <SuratView key="surat-keluar" theme={theme} subTab="surat-keluar" onNavigate={(tab) => setActiveMenu(tab)} />
-      case "surat-tugas":
       case "surat-masuk":
+        return <SuratMenyuratModule key="surat-masuk" theme={theme} subTab="masuk" />
+      case "surat-tugas":
         return <SuratView key="surat-tugas" theme={theme} subTab="surat-tugas" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-klasifikasi":
         return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" onNavigate={(tab) => setActiveMenu(tab)} />
@@ -227,7 +232,16 @@ function MainLayout() {
                 <ReadOnlyBanner theme={theme} modul="realisasi anggaran" pengelola="Sub Bagian Keuangan dan Sub Bagian Perencanaan, Data dan Informasi (RENDATIN)" />
               </div>
             )}
-            {renderContent()}
+            <Suspense
+              fallback={
+                <div role="status" className="flex items-center justify-center gap-2 py-24 text-xs font-semibold text-slate-500">
+                  <span className="h-4 w-4 rounded-full border-2 border-red-600 border-t-transparent animate-spin" />
+                  Memuat halaman…
+                </div>
+              }
+            >
+              {renderContent()}
+            </Suspense>
           </div>
         </main>
       </div>

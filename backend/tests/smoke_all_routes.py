@@ -143,7 +143,8 @@ async def main():
         await step('arsip list', 'GET', '/arsip/?limit=50&skip=0&search=', {200}, headers=op)
         await step('arsip search', 'GET', '/arsip/?search=ARS', {200}, headers=op)
         await step('arsip filter options', 'GET', '/arsip/filter-options', {200}, headers=admin)
-        await step('arsip filter options by operator', 'GET', '/arsip/filter-options', {403}, headers=op)
+        # Filter labels are needed by every archive user; documents themselves stay access-controlled.
+        await step('arsip filter options by operator', 'GET', '/arsip/filter-options', {200}, headers=op)
         await step('arsip get', 'GET', f'/arsip/{aid}', {200}, headers=op)
         await step('arsip update', 'PUT', f'/arsip/{aid}', {200}, headers=op, json={'event': 'Rapat'})
         await step('arsip update by other user', 'PUT', f'/arsip/{aid}', {403}, headers=other, json={'event': 'x'})
@@ -161,8 +162,11 @@ async def main():
         await step('arsip permanent while active', 'DELETE', f'/arsip/{aid}/permanent', {409}, headers=admin)
         await step('arsip soft delete again', 'PATCH', f'/arsip/{aid}/delete', {200}, headers=op)
         await step('arsip permanent by operator', 'DELETE', f'/arsip/{aid}/permanent', {403}, headers=op)
-        # Destruction needs a documented JRA approval process, so it is blocked by policy.
-        await step('arsip permanent (blocked by policy)', 'DELETE', f'/arsip/{aid}/permanent', {409}, headers=admin)
+        # Destruction is requested by the user and approved (executed) by an administrator.
+        await step('arsip request permanent delete', 'POST', f'/arsip/{aid}/ajukan-hapus', {200}, headers=op, json={'alasan': 'Dokumen duplikat smoke'})
+        await step('arsip request again while pending', 'POST', f'/arsip/{aid}/ajukan-hapus', {409}, headers=op, json={'alasan': 'Dokumen duplikat smoke'})
+        await step('arsip reject request by operator', 'POST', f'/arsip/{aid}/tolak-hapus', {403}, headers=op, json={'catatan': 'tidak'})
+        await step('arsip permanent approved by admin', 'DELETE', f'/arsip/{aid}/permanent', {200}, headers=admin)
 
         # --- Legacy persuratan --------------------------------------------
         await step('klasifikasi list', 'GET', '/klasifikasi', {200}, headers=op)

@@ -1,3 +1,4 @@
+import { saveFile } from "../../../services/csv"
 import { useEffect, useState } from 'react'
 import { request, message } from '../../../services/operations'
 import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
@@ -62,14 +63,7 @@ export function BugReportView({ theme }: { theme: 'light' | 'dark' }) {
     logContent += `\n-- END OF LOG FILE --\n`
 
     const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `kpu-bug-reports-log-${timestampStr}.log`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    saveFile(`kpu-bug-reports-log-${timestampStr}.log`, blob)
   }
 
   return (

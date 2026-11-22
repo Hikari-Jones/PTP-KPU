@@ -6,8 +6,10 @@ actually called. After the first call the model stays loaded, so later calls
 skip the load and reuse the already-evaluated part of the prompt.
 """
 
+import gc
 import os
 import threading
+import time
 from typing import Dict, Iterator, List, Optional, Sequence
 
 from . import config, download
@@ -18,6 +20,42 @@ _llm = None
 # One lock for loading and inference: llama.cpp contexts are not thread-safe,
 # so concurrent requests are answered one after another.
 _lock = threading.Lock()
+# Monotonic time of the last load or answer; the idle watcher frees the model
+# after config.IDLE_UNLOAD_MINUTES without use so the server's RAM is returned.
+_last_used = 0.0
+_watcher: Optional[threading.Thread] = None
+
+
+def _touch() -> None:
+    global _last_used
+    _last_used = time.monotonic()
+
+
+def _idle_watcher() -> None:
+    global _llm, _watcher
+    limit = config.IDLE_UNLOAD_MINUTES * 60
+    while True:
+        time.sleep(min(60, max(5, limit / 4)))
+        if _llm is None:
+            break
+        if time.monotonic() - _last_used < limit:
+            continue
+        # Never wait for (or interrupt) an answer in progress: skip this round instead.
+        if _lock.acquire(blocking=False):
+            try:
+                if _llm is not None and time.monotonic() - _last_used >= limit:
+                    _llm = None
+                    gc.collect()
+            finally:
+                _lock.release()
+    _watcher = None
+
+
+def _start_watcher() -> None:
+    global _watcher
+    if config.IDLE_UNLOAD_MINUTES > 0 and _watcher is None:
+        _watcher = threading.Thread(target=_idle_watcher, name="kirana-idle-unload", daemon=True)
+        _watcher.start()
 
 
 def downloaded_path() -> Optional[str]:
@@ -52,6 +90,9 @@ def get_llm():
                     n_threads_batch=config.N_THREADS_BATCH,
                     verbose=False,
                 )
+                _touch()
+                _start_watcher()
+    _touch()
     return _llm
 
 
@@ -60,6 +101,7 @@ def unload() -> None:
     global _llm
     with _lock:
         _llm = None
+        gc.collect()
 
 
 def _count_tokens(llm, message: Message) -> int:
@@ -126,6 +168,7 @@ def stream_chat(
             close = getattr(stream, "close", None)
             if close:
                 close()
+            _touch()
 
 
 def chat(messages: Sequence[Message], **options) -> str:

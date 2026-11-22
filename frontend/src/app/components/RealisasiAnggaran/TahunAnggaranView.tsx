@@ -1,3 +1,4 @@
+import { saveCsv } from "../../../services/csv"
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
   CheckCircle2,
@@ -62,6 +63,11 @@ export function TahunAnggaranView({ theme }: Props) {
   const [formMulai, setFormMulai] = useState<string>(`${new Date().getFullYear() + 1}-01-01`)
   const [formSelesai, setFormSelesai] = useState<string>(`${new Date().getFullYear() + 1}-12-31`)
   const [formDeskripsi, setFormDeskripsi] = useState<string>("")
+
+  // Two-step confirmation for closing the current active year when another is activated.
+  const [closeConfirm, setCloseConfirm] = useState<{ step: 1 | 2; previous: TahunAnggaranResponse } | null>(null)
+  const [closeConfirmInput, setCloseConfirmInput] = useState("")
+  const [closeConfirmError, setCloseConfirmError] = useState<string | null>(null)
 
   const requestIdRef = useRef(0)
 
@@ -169,10 +175,17 @@ export function TahunAnggaranView({ theme }: Props) {
     setError(null)
   }
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  /** The active year that activating this form would close, if any. */
+  const yearToClose =
+    formStatus === "active" && activeYear && activeYear.id_tahun_anggaran !== selectedItem?.id_tahun_anggaran
+      ? activeYear
+      : null
+
+  const saveTahun = async (closing?: TahunAnggaranResponse): Promise<boolean> => {
     setSubmitting(true)
     setError(null)
+    setCloseConfirmError(null)
+    const targetYear = selectedItem && selectedItem.status !== "draft" ? selectedItem.tahun : formTahun
     try {
       if (selectedItem) {
         // Update Tahun Anggaran
@@ -186,8 +199,8 @@ export function TahunAnggaranView({ theme }: Props) {
         if (selectedItem.status === "draft") {
           payload.tahun = formTahun
         }
+        if (closing) payload.konfirmasi_tutup_tahun = closing.tahun
         await tahunAnggaranApi.update(selectedItem.id_tahun_anggaran, payload)
-        setSuccessMessage(`Tahun Anggaran ${selectedItem.tahun} berhasil diperbarui!`)
       } else {
         // Create Tahun Anggaran (Auto-Pagu akan otomatis dibuat oleh backend jika status active)
         const payload: TahunAnggaranCreatePayload = {
@@ -197,17 +210,74 @@ export function TahunAnggaranView({ theme }: Props) {
           tanggal_selesai: formSelesai,
           deskripsi: formDeskripsi.trim() || undefined,
         }
+        if (closing) payload.konfirmasi_tutup_tahun = closing.tahun
         await tahunAnggaranApi.create(payload)
-        setSuccessMessage(`Tahun Anggaran ${formTahun} berhasil dibuat!`)
       }
-      setTimeout(() => setSuccessMessage(null), 4000)
+      const text = closing
+        ? `TA ${targetYear} kini aktif. TA ${closing.tahun} telah ditutup permanen.`
+        : selectedItem
+          ? `Tahun Anggaran ${targetYear} berhasil diperbarui!`
+          : `Tahun Anggaran ${targetYear} berhasil dibuat!`
+      setSuccessMessage(text)
+      setTimeout(() => setSuccessMessage(null), 6000)
       setIsModalOpen(false)
       setSelectedItem(null)
       await fetchTahunAnggaran()
+      return true
     } catch (e: any) {
-      setError(e.message || "Gagal menyimpan tahun anggaran")
+      const msg = e.message || "Gagal menyimpan tahun anggaran"
+      if (closing) setCloseConfirmError(msg)
+      else setError(msg)
+      return false
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (yearToClose) {
+      // Only one year may be active: guard locally, then require two confirmations.
+      const targetYear = selectedItem && selectedItem.status !== "draft" ? selectedItem.tahun : formTahun
+      if (targetYear <= yearToClose.tahun) {
+        const msg = `Tahun yang diaktifkan harus lebih baru dari TA ${yearToClose.tahun} yang sedang aktif.`
+        setError(msg)
+        notify("error", msg)
+        return
+      }
+      setCloseConfirmInput("")
+      setCloseConfirmError(null)
+      setCloseConfirm({ step: 1, previous: yearToClose })
+      return
+    }
+    await saveTahun()
+  }
+
+  const cancelCloseConfirm = () => {
+    setCloseConfirm(null)
+    setCloseConfirmInput("")
+    setCloseConfirmError(null)
+    notify("info", "Aktivasi dibatalkan. Tidak ada tahun anggaran yang diubah.")
+  }
+
+  const proceedCloseConfirm = () => {
+    if (!closeConfirm) return
+    setCloseConfirm({ ...closeConfirm, step: 2 })
+    notify("info", `Langkah 2 dari 2: ketik ${closeConfirm.previous.tahun} untuk mengonfirmasi penutupan.`)
+  }
+
+  const executeCloseConfirm = async () => {
+    if (!closeConfirm) return
+    if (closeConfirmInput.trim() !== String(closeConfirm.previous.tahun)) {
+      const msg = `Konfirmasi tidak cocok. Ketik ${closeConfirm.previous.tahun} persis.`
+      setCloseConfirmError(msg)
+      notify("error", msg)
+      return
+    }
+    const ok = await saveTahun(closeConfirm.previous)
+    if (ok) {
+      setCloseConfirm(null)
+      setCloseConfirmInput("")
     }
   }
 
@@ -232,19 +302,14 @@ export function TahunAnggaranView({ theme }: Props) {
   }
 
   const handleExportExcel = () => {
-    let csv = "ID,Tahun,Status,Tanggal Mulai,Tanggal Selesai,Total Pagu,Total Realisasi,Sisa,Serapan (%),Deskripsi\n"
-    filteredData.forEach((row) => {
-      csv += `"${row.id_tahun_anggaran}","${row.tahun}","${row.status}","${row.tanggal_mulai}","${row.tanggal_selesai}",${row.total_pagu},${row.total_realisasi_verified},${row.sisa_anggaran},${row.persentase_serapan}%,"${row.deskripsi || ""}"\n`
-    })
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `Tahun_Anggaran_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    saveCsv(`Tahun_Anggaran_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`, [
+      ["ID", "Tahun", "Status", "Tanggal Mulai", "Tanggal Selesai", "Total Pagu", "Total Realisasi", "Sisa", "Serapan (%)", "Deskripsi"],
+      ...filteredData.map((row) => [
+        row.id_tahun_anggaran, row.tahun, row.status, row.tanggal_mulai, row.tanggal_selesai,
+        Number(row.total_pagu) || 0, Number(row.total_realisasi_verified) || 0, Number(row.sisa_anggaran) || 0,
+        Number(row.persentase_serapan) || 0, row.deskripsi || "",
+      ]),
+    ])
   }
 
   return (
@@ -758,6 +823,12 @@ export function TahunAnggaranView({ theme }: Props) {
                   {formStatus === "active" && "Mengaktifkan tahun akan memicu pembuatan pagu otomatis untuk seluruh akun aktif."}
                   {formStatus === "closed" && "Tahun yang ditutup akan dikunci secara permanen dan tidak dapat dibuka kembali."}
                 </p>
+                {yearToClose && (
+                  <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    TA {yearToClose.tahun} yang sedang aktif akan ditutup permanen. Anda akan diminta konfirmasi 2 langkah sebelum disimpan.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -818,10 +889,132 @@ export function TahunAnggaranView({ theme }: Props) {
                   className="btn-kpu-red px-5 py-2 text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow-md hover:opacity-95"
                 >
                   {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {submitting ? "Menyimpan..." : "Simpan"}
+                  {submitting ? "Menyimpan..." : yearToClose ? "Lanjut ke Konfirmasi" : "Simpan"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Konfirmasi 2 langkah: tutup TA aktif saat mengaktifkan TA baru */}
+      {closeConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={`Konfirmasi penutupan TA ${closeConfirm.previous.tahun}`}
+        >
+          <div className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-black"}`}>
+            <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-white/10 bg-[#0a0f1d]" : "border-slate-200 bg-slate-50"}`}>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  Verifikasi {closeConfirm.step} dari 2
+                </p>
+                <h3 className="text-sm font-bold">Tutup TA {closeConfirm.previous.tahun} secara permanen?</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Batalkan"
+                onClick={cancelCloseConfirm}
+                disabled={submitting}
+                className="p-1 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="flex gap-2">
+                {[1, 2].map((n) => (
+                  <div key={n} className={`h-1.5 flex-1 rounded-full ${n <= closeConfirm.step ? "bg-red-600" : isDark ? "bg-white/10" : "bg-slate-200"}`} />
+                ))}
+              </div>
+
+              {closeConfirmError && (
+                <div role="alert" className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{closeConfirmError}</span>
+                </div>
+              )}
+
+              {closeConfirm.step === 1 ? (
+                <>
+                  <p className="leading-relaxed">
+                    Hanya satu tahun anggaran yang boleh aktif. Mengaktifkan{" "}
+                    <strong>TA {selectedItem && selectedItem.status !== "draft" ? selectedItem.tahun : formTahun}</strong> akan{" "}
+                    <strong className="text-red-600 dark:text-red-400">menutup TA {closeConfirm.previous.tahun}</strong>. Tahun yang ditutup
+                    tidak dapat dibuka kembali, dan pagunya tidak dapat direvisi lagi.
+                  </p>
+                  <div className={`grid grid-cols-2 gap-2 rounded-xl border p-3 ${isDark ? "border-white/10 bg-[#131b2e]" : "border-slate-200 bg-slate-50"}`}>
+                    <span className="text-slate-500">Total Pagu</span>
+                    <span className="text-right font-bold">{formatRupiah(Number(closeConfirm.previous.total_pagu) || 0)}</span>
+                    <span className="text-slate-500">Realisasi Terverifikasi</span>
+                    <span className="text-right font-bold">{formatRupiah(Number(closeConfirm.previous.total_realisasi_verified) || 0)}</span>
+                    <span className="text-slate-500">Sisa Anggaran</span>
+                    <span className="text-right font-bold">{formatRupiah(Number(closeConfirm.previous.sisa_anggaran) || 0)}</span>
+                    <span className="text-slate-500">Serapan</span>
+                    <span className="text-right font-bold">{Number(closeConfirm.previous.persentase_serapan) || 0}%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">Pastikan seluruh transaksi TA {closeConfirm.previous.tahun} sudah selesai dicatat sebelum melanjutkan.</p>
+                </>
+              ) : (
+                <label className="block space-y-1.5 font-semibold">
+                  <span>
+                    Ketik <span className="font-mono text-red-600 dark:text-red-400">{closeConfirm.previous.tahun}</span> untuk mengonfirmasi penutupan
+                  </span>
+                  <input
+                    autoFocus
+                    inputMode="numeric"
+                    value={closeConfirmInput}
+                    onChange={(e) => {
+                      setCloseConfirmInput(e.target.value)
+                      setCloseConfirmError(null)
+                    }}
+                    placeholder={String(closeConfirm.previous.tahun)}
+                    className={`w-full px-3 py-2 rounded-xl border outline-none font-mono ${isDark ? "bg-[#131b2e] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-black focus:border-red-500"}`}
+                  />
+                  {closeConfirmInput && closeConfirmInput.trim() !== String(closeConfirm.previous.tahun) && (
+                    <span className="block text-[11px] text-rose-500">Belum cocok dengan {closeConfirm.previous.tahun}.</span>
+                  )}
+                  {closeConfirmInput.trim() === String(closeConfirm.previous.tahun) && (
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Konfirmasi cocok. Server akan memverifikasi ulang sebelum menutup.
+                    </span>
+                  )}
+                </label>
+              )}
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeConfirm.step === 1 ? cancelCloseConfirm : () => { setCloseConfirm({ ...closeConfirm, step: 1 }); setCloseConfirmError(null) }}
+                  disabled={submitting}
+                  className={`px-4 py-2 rounded-xl border font-bold cursor-pointer ${isDark ? "border-white/10 text-gray-300 hover:bg-white/5" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+                >
+                  {closeConfirm.step === 1 ? "Batal" : "Kembali"}
+                </button>
+                {closeConfirm.step === 1 ? (
+                  <button
+                    type="button"
+                    onClick={proceedCloseConfirm}
+                    className="btn-kpu-red px-5 py-2 text-white font-bold rounded-xl cursor-pointer shadow-md hover:opacity-95"
+                  >
+                    Saya Mengerti, Lanjutkan
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void executeCloseConfirm()}
+                    disabled={submitting || closeConfirmInput.trim() !== String(closeConfirm.previous.tahun)}
+                    className="btn-kpu-red px-5 py-2 text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow-md hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {submitting ? "Memproses..." : `Tutup TA ${closeConfirm.previous.tahun} & Aktifkan`}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

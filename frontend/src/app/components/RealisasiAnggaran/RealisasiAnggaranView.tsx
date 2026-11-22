@@ -1,3 +1,4 @@
+import { showToast } from "../../../services/activity"
 import { useState, useEffect, useRef } from "react"
 import {
   TrendingUp,
@@ -84,6 +85,8 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
   const [selectedBagianId, setSelectedBagianId] = useState<number | null>(null)
   const [selectedAkunId, setSelectedAkunId] = useState<number | null>(null)
   const [selectedBulan, setSelectedBulan] = useState<number | null>(null)
+  // Transactions list: filter by whether an evidence document (bukti) is attached
+  const [selectedBukti, setSelectedBukti] = useState<"" | "ada" | "tanpa">("")
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [page, setPage] = useState(0)
@@ -117,7 +120,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
         const [taRes, bagRes, akunRes, caps] = await Promise.all([
           tahunAnggaranApi.getAll({ limit: 100 }),
           bagianApi.getAll({ limit: 100 }),
-          akunAnggaranApi.getAll({ status: "active", limit: 200 }),
+          akunAnggaranApi.getAll({ status: "active", limit: 500 }),
           request<{user_id: number; can_review: boolean}>("/realisasi-anggaran/capabilities"),
         ])
 
@@ -164,6 +167,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
           id_akun_anggaran: selectedAkunId ?? undefined,
           bulan: selectedBulan ?? undefined,
           search: debouncedSearch || undefined,
+          has_bukti: selectedBukti === "" ? undefined : selectedBukti === "ada",
           skip: page * 50, limit: 50,
         }) : Promise.resolve(null),
         subTab === "laporan" ? dashboardAnggaranApi.getMonthlyReport({
@@ -191,7 +195,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
   useEffect(() => {
     refetchData()
     return () => { reqIdRef.current++ }
-  }, [selectedTahunId, selectedBagianId, selectedAkunId, selectedBulan, debouncedSearch, page, subTab])
+  }, [selectedTahunId, selectedBagianId, selectedAkunId, selectedBulan, selectedBukti, debouncedSearch, page, subTab])
 
   // Formatting helpers
   const formatMiliar = (val: number | string) => {
@@ -264,7 +268,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
         transactions: allTransactions,
       })
     } catch (err: any) {
-      alert("Gagal mengunduh laporan Excel: " + (err.message || "Terjadi kesalahan sistem"))
+      showToast("error", "Gagal mengunduh laporan Excel: " + (err.message || "Terjadi kesalahan sistem"))
     } finally {
       setIsExportingExcel(false)
     }
@@ -280,8 +284,8 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
     try {
       await realisasiAnggaranApi.delete(item.id_realisasi)
       await refetchData()
-    } catch (err: any) {
-      alert("Gagal menghapus transaksi: " + (err.message || "Terjadi kesalahan sistem"))
+    } catch {
+      // The global notification already shows the server's reason for the failed delete.
     } finally {
       setIsDeleting(null)
     }
@@ -450,6 +454,20 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               </option>
             ))}
           </select>
+
+          {/* Bukti dokumen (transaction lists only) */}
+          {["transaksi", "verifikasi"].includes(subTab) && (
+            <select
+              value={selectedBukti}
+              onChange={(e) => { setPage(0); setSelectedBukti(e.target.value as "" | "ada" | "tanpa") }}
+              className={selectClass}
+              aria-label="Filter Bukti Dokumen"
+            >
+              <option value="">Semua Bukti Dokumen</option>
+              <option value="ada">Ada Bukti Dokumen</option>
+              <option value="tanpa">Belum Ada Bukti</option>
+            </select>
+          )}
         </div>
 
         {/* Search Input */}

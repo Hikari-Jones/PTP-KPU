@@ -174,8 +174,10 @@ Official issuance is disabled by default. OFFICIAL_ISSUANCE_ENABLED is a deploym
 gate, NOT a compliance certificate. Do not enable it until the unresolved items in
 KPU_REGULATORY_REVIEW.md are implemented and verified. AUTHORITY_GRANTS provides
 an additional documented, expiring numbering-assignment check, not the complete
-signing-authority model. Permanent archive deletion is blocked; soft deletion is
-reversible and must never be treated as lawful archive destruction.
+signing-authority model. Permanent archive deletion must be requested by the
+document owner (with a reason) and approved by an administrator; documents mirrored
+from the letter/budget modules cannot be permanently deleted. Soft deletion is
+reversible. Neither replaces a documented JRA retention/destruction decision.
 
 Docker execution was blocked by socket permissions in this environment. Full build
 and integration tests remain pending; do not interpret unit-test success as release
@@ -183,7 +185,6 @@ approval.
 
 ## Budget review update — 16 November 2026
 
-See QA_RELEASE_CHECKLIST.md for the current audit, fixes, test matrix and blockers.
 Creation now saves a draft; draft/rejected/submitted records do not count as verified
 realization. A separate reviewer with an active `verify_budget` authority grant must
 review submitted transactions. This is internal monitoring, not SAKTI payment approval.

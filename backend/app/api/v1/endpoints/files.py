@@ -17,6 +17,44 @@ STORAGE_ROOT = (BASE_DIR / settings.UPLOAD_DIR).resolve()
 ALLOWED_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png"
 }
+# The server decides the content type from the extension; the browser-supplied type
+# is never stored or replayed on download.
+MIME_BY_EXTENSION = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".csv": "text/csv",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+# Leading bytes each format must start with, so a renamed executable or HTML page
+# cannot be stored as a "document".
+_OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_ZIP = b"PK\x03\x04"
+SIGNATURES = {
+    ".pdf": (b"%PDF-",),
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".docx": (_ZIP,),
+    ".xlsx": (_ZIP,),
+    ".doc": (_OLE,),
+    ".xls": (_OLE,),
+}
+
+
+def _content_matches(extension: str, head: bytes) -> bool:
+    if extension == ".csv":
+        # Plain text: no NUL bytes and not an executable/archive in disguise.
+        return b"\x00" not in head and not head.startswith((b"MZ", _ZIP, _OLE, b"%PDF-"))
+    return head.startswith(SIGNATURES.get(extension, (b"",)))
+
+
+def media_type_for(name: str) -> str:
+    return MIME_BY_EXTENSION.get(Path(name).suffix.lower(), "application/octet-stream")
 
 
 def _safe_category(category: str) -> str:
@@ -47,6 +85,11 @@ async def upload_file(
     try:
         with destination.open("wb") as output:
             while chunk := await file.read(1024 * 1024):
+                if file_size == 0 and not _content_matches(extension, chunk[:4096]):
+                    raise HTTPException(
+                        status_code=415,
+                        detail=f"Isi berkas tidak sesuai dengan format {extension} (berkas rusak atau bukan dokumen asli)",
+                    )
                 file_size += len(chunk)
                 if file_size > max_size:
                     raise HTTPException(
@@ -57,6 +100,8 @@ async def upload_file(
                         ),
                     )
                 output.write(chunk)
+        if file_size == 0:
+            raise HTTPException(status_code=422, detail="Berkas kosong tidak dapat diunggah")
     except HTTPException:
         destination.unlink(missing_ok=True)
         raise
@@ -70,7 +115,7 @@ async def upload_file(
         original_name=original_name,
         stored_name=stored_name,
         relative_path=relative_path.as_posix(),
-        mime_type=file.content_type,
+        mime_type=MIME_BY_EXTENSION[extension],
         file_size=file_size,
         category=category_name,
         uploaded_by=current_user.id_pegawai,
@@ -126,7 +171,7 @@ async def download_file(
         raise HTTPException(status_code=404, detail="Berkas fisik tidak ditemukan")
     return FileResponse(
         path,
-        media_type=record.mime_type or "application/octet-stream",
+        media_type=media_type_for(record.original_name),
         filename=record.original_name,
     )
 

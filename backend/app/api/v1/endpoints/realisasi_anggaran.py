@@ -19,6 +19,7 @@ from app.services.anggaran import realisasi_anggaran
 from app.core.authority import has_authority
 from app.core.config import settings
 
+from app.services.arsip_sync import safe_sync
 router = APIRouter()
 
 async def require_budget_operator(user: Pegawai = Depends(get_current_user)):
@@ -57,6 +58,7 @@ async def read_realisasi_anggaran(
     search: Optional[str] = Query(None, description="Search nomor dokumen, uraian, kode akun, atau nama akun"),
     tanggal_mulai: Optional[date] = Query(None, description="Filter tanggal transaksi mulai"),
     tanggal_selesai: Optional[date] = Query(None, description="Filter tanggal transaksi selesai"),
+    has_bukti: Optional[bool] = Query(None, description="true = memiliki bukti dokumen, false = belum ada bukti"),
     skip: int = Query(0, ge=0, description="Offset data"),
     limit: int = Query(50, ge=1, le=500, description="Limit data per halaman"),
 ) -> Any:
@@ -71,6 +73,7 @@ async def read_realisasi_anggaran(
         search=search,
         tanggal_mulai=tanggal_mulai,
         tanggal_selesai=tanggal_selesai,
+        has_bukti=has_bukti,
         skip=skip,
         limit=limit,
     )
@@ -114,6 +117,10 @@ async def create_realisasi(
         obj_in=realisasi_in,
         id_pegawai=current_user.id_pegawai,
     )
+    tx_id = db_obj.id_realisasi
+    await safe_sync(db, "realisasi", tx_id)
+    # Reload with relationships: the response needs pagu/akun/bagian loaded eagerly.
+    db_obj = await realisasi_anggaran.get_detail(db, tx_id)
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
 
@@ -164,6 +171,10 @@ async def update_realisasi_rendatin_endpoint(
         obj_in=realisasi_in,
         user=current_user,
     )
+    tx_id = db_obj.id_realisasi
+    await safe_sync(db, "realisasi", tx_id)
+    # Reload with relationships: the response needs pagu/akun/bagian loaded eagerly.
+    db_obj = await realisasi_anggaran.get_detail(db, tx_id)
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
 

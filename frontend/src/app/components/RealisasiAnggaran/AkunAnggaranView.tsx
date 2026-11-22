@@ -1,3 +1,4 @@
+import { saveCsv } from "../../../services/csv"
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Search,
@@ -105,7 +106,7 @@ export function AkunAnggaranView({ theme }: Props) {
       const res = await akunAnggaranApi.getAll({
         id_bagian: selectedBagianId !== "Semua" ? Number(selectedBagianId) : undefined,
         status: selectedStatus !== "Semua Status" ? (selectedStatus as "active" | "inactive") : undefined,
-        limit: 300,
+        limit: 500,
       })
       if (currentReq === requestIdRef.current) {
         setAkunList(res.items || [])
@@ -232,19 +233,13 @@ export function AkunAnggaranView({ theme }: Props) {
   }
 
   const handleExport = () => {
-    let csv = "ID,Kode MAK,Nama Akun,Bagian,Jenis Belanja,Program,Sub Program,Status\n"
-    filteredData.forEach((row) => {
-      csv += `"${row.id_akun_anggaran}","${row.kode_akun}","${row.nama_akun}","${row.nama_bagian || ""}","${row.jenis_belanja || ""}","${row.program || ""}","${row.sub_program || ""}","${row.status}"\n`
-    })
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `Master_Akun_Anggaran_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    saveCsv(`Master_Akun_Anggaran_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`, [
+      ["ID", "Kode MAK", "Nama Akun", "Bagian", "Jenis Belanja", "Program", "Sub Program", "Status"],
+      ...filteredData.map((row) => [
+        row.id_akun_anggaran, row.kode_akun, row.nama_akun, row.nama_bagian || "",
+        row.jenis_belanja || "", row.program || "", row.sub_program || "", row.status,
+      ]),
+    ])
   }
 
   return (

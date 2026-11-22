@@ -42,6 +42,21 @@ export function showToast(kind: ToastKind, text: string, ms = kind === 'error' ?
   window.setTimeout(() => dismissToast(id), ms)
 }
 
+let quietDepth = 0
+
+/**
+ * Run a batch of requests (e.g. a bulk import) without one toast per request.
+ * The caller reports progress and a single summary itself. The loading bar still shows.
+ */
+export async function withQuietFeedback<T>(work: () => Promise<T>): Promise<T> {
+  quietDepth++
+  try {
+    return await work()
+  } finally {
+    quietDepth--
+  }
+}
+
 export function dismissToast(id: number) {
   emit({ toasts: state.toasts.filter((toast) => toast.id !== id) })
 }
@@ -72,6 +87,17 @@ function successText(method: string, path: string): string {
   if (/\/(verify)\/?$/.test(path)) return 'Berhasil diverifikasi'
   if (/\/(reject)\/?$/.test(path)) return 'Berhasil dikembalikan untuk perbaikan'
   if (/\/restore\/?$/.test(path)) return 'Data berhasil dipulihkan'
+  if (/\/finalisasi\/?$/.test(path)) return 'Nomor surat resmi berhasil diterbitkan'
+  if (/\/surat-keluar\/draft\/?$/.test(path)) return 'Draft surat keluar berhasil disimpan'
+  if (method === 'POST' && /\/surat-tugas\/?$/.test(path)) return 'Surat tugas tersimpan sebagai draft (nomor resmi menunggu penerbitan)'
+  if (method === 'POST' && /\/klasifikasi\/?$/.test(path)) return 'Kode klasifikasi berhasil ditambahkan'
+  if (method === 'POST' && /\/satker\/?$/.test(path)) return 'Satker berhasil ditambahkan'
+  if (/\/arsip\/\d+\/ajukan-hapus\/?$/.test(path)) return 'Permintaan hapus permanen dikirim ke administrator'
+  if (/\/arsip\/\d+\/tolak-hapus\/?$/.test(path)) return 'Permintaan hapus permanen ditolak'
+  if (method === 'DELETE' && /\/arsip\/\d+\/permanent\/?$/.test(path)) return 'Dokumen dihapus permanen'
+  if (method === 'POST' && /\/revisi-anggaran\/?$/.test(path)) return 'Revisi anggaran berhasil dicatat di jejak audit'
+  if (method === 'POST' && /\/tahun-anggaran\/?$/.test(path)) return 'Tahun anggaran berhasil dibuat'
+  if (method === 'PUT' && /\/tahun-anggaran\/\d+\/?$/.test(path)) return 'Tahun anggaran berhasil diperbarui'
   if (method === 'DELETE' || /\/delete\/?$/.test(path)) return 'Data berhasil dihapus'
   if (method === 'POST') return 'Data berhasil disimpan'
   return 'Perubahan berhasil disimpan'
@@ -127,7 +153,9 @@ export function installActivityTracking(apiBase: string) {
     const request = (async () => {
       try {
         const response = await originalFetch(input, init)
-        if (isWrite && mode !== 'quiet') {
+        if (quietDepth > 0) {
+          // A batch operation reports its own per-item results and summary.
+        } else if (isWrite && mode !== 'quiet') {
           if (!response.ok) showToast('error', await errorText(response))
           else if (mode === 'all') showToast('success', successText(method, path))
         } else if (!isWrite && response.status >= 500 && response.status !== 503) {

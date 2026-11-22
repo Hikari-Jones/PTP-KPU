@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, or_
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field, ConfigDict
 from docx import Document
 from reportlab.lib.pagesizes import A4
@@ -32,6 +33,7 @@ from app.models.schema import (
     Bagian
 )
 
+from app.services.arsip_sync import safe_sync
 router = APIRouter()
 BASE_DIR = Path(__file__).resolve().parents[4]
 
@@ -248,6 +250,7 @@ async def create_draft_surat_keluar(
     )
     db.add(surat)
     await db.commit()
+    await safe_sync(db, "surat_keluar", surat.id_surat_keluar)
     await db.refresh(surat)
 
     return {
@@ -268,6 +271,16 @@ async def create_draft_surat_keluar(
         "tanggal_surat": str(surat.tanggal_surat),
         "created_at": str(surat.created_at),
     }
+
+@router.get("/surat-keluar/penerbitan-status")
+async def penerbitan_status(current_user: Pegawai = Depends(get_current_user)):
+    """Whether official numbering is switched on, and whether this user holds a numbering grant."""
+    from app.core.authority import has_authority
+    return {
+        "official_issuance_enabled": settings.OFFICIAL_ISSUANCE_ENABLED,
+        "has_numbering_authority": has_authority(settings.AUTHORITY_GRANTS, current_user.id_pegawai, "number_official_letter"),
+    }
+
 
 @router.post("/surat-keluar/{id_surat_keluar}/finalisasi")
 async def finalisasi_surat_atomic(
@@ -349,6 +362,7 @@ async def finalisasi_surat_atomic(
     db.add(riwayat)
 
     await db.commit()
+    await safe_sync(db, "surat_keluar", surat.id_surat_keluar)
     await db.refresh(surat)
 
     return {
@@ -551,21 +565,119 @@ async def export_surat(
     SimpleDocTemplate(str(target), pagesize=A4).build(story)
     return FileResponse(target, media_type="application/pdf", filename=target.name)
 
+class SuratTugasCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    maksud_tugas: str = Field(min_length=3)
+    tempat_tugas: str = Field(min_length=1, max_length=255)
+    tanggal_mulai: date
+    tanggal_selesai: date
+    beban_anggaran: str = Field("DIPA KPU Provinsi Sulawesi Utara", max_length=255)
+    id_klasifikasi: int
+    id_bagian: Optional[int] = None
+    pelaksana: List[int] = Field(min_length=1)
+
+
+def _is_letter_manager(user: Pegawai) -> bool:
+    """Admins and staff of the Umum/Logistik section administer correspondence."""
+    if is_admin(user):
+        return True
+    nama = (user.bagian.nama_bagian if user.bagian else "").lower()
+    return any(key in nama for key in ("umum", "umlog"))
+
+
+def _surat_tugas_out(t: SuratTugas) -> dict:
+    return {
+        "id_surat_tugas": t.id_surat_tugas,
+        "id_surat_keluar": t.id_surat_keluar,
+        "nomor_tugas": t.nomor_tugas,
+        "maksud_tugas": t.maksud_tugas,
+        "tempat_tugas": t.tempat_tugas,
+        "tanggal_mulai": str(t.tanggal_mulai),
+        "tanggal_selesai": str(t.tanggal_selesai),
+        "beban_anggaran": t.beban_anggaran,
+        "pelaksana": [
+            {"id_pegawai": p.id_pegawai, "nama": p.pegawai.nama if p.pegawai else None, "peran_tugas": p.peran_tugas}
+            for p in t.pelaksana
+        ],
+    }
+
+
 @router.get("/surat-tugas")
-async def list_surat_tugas(db: AsyncSession = Depends(get_db), user: Pegawai = Depends(require_admin),
+async def list_surat_tugas(db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user),
                            skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100)):
-    res = await db.execute(select(SuratTugas).order_by(SuratTugas.id_surat_tugas.desc()).offset(skip).limit(limit))
-    items = res.scalars().all()
-    output = []
-    for t in items:
-        output.append({
-            "id_surat_tugas": t.id_surat_tugas,
-            "id_surat_keluar": t.id_surat_keluar,
-            "nomor_tugas": t.nomor_tugas,
-            "maksud_tugas": t.maksud_tugas,
-            "tempat_tugas": t.tempat_tugas,
-            "tanggal_mulai": str(t.tanggal_mulai),
-            "tanggal_selesai": str(t.tanggal_selesai),
-            "beban_anggaran": t.beban_anggaran
-        })
-    return output
+    query = (
+        select(SuratTugas)
+        .options(selectinload(SuratTugas.pelaksana).selectinload(SuratTugasPelaksana.pegawai))
+        .order_by(SuratTugas.id_surat_tugas.desc())
+    )
+    # Letter managers see every assignment; other staff only those they take part in.
+    if not _is_letter_manager(user):
+        mine = select(SuratTugasPelaksana.id_surat_tugas).where(SuratTugasPelaksana.id_pegawai == user.id_pegawai)
+        query = query.where(SuratTugas.id_surat_tugas.in_(mine))
+    res = await db.execute(query.offset(skip).limit(limit))
+    return [_surat_tugas_out(t) for t in res.scalars().all()]
+
+
+@router.post("/surat-tugas", status_code=status.HTTP_201_CREATED)
+async def create_surat_tugas(
+    payload: SuratTugasCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    if not _is_letter_manager(current_user):
+        raise HTTPException(403, "Penerbitan surat tugas hanya untuk administrator atau bagian Umum/Logistik")
+    if payload.tanggal_selesai < payload.tanggal_mulai:
+        raise HTTPException(422, "Tanggal selesai tidak boleh sebelum tanggal mulai")
+    id_bagian = payload.id_bagian if is_admin(current_user) and payload.id_bagian else current_user.id_bagian
+    if not id_bagian or not await db.get(Bagian, id_bagian):
+        raise HTTPException(422, "Bagian penerbit surat tugas tidak ditemukan")
+    if not await db.get(KodeKlasifikasiArsip, payload.id_klasifikasi):
+        raise HTTPException(422, "Kode klasifikasi tidak ditemukan")
+    jenis = await db.scalar(select(JenisSurat).where(JenisSurat.kode_jenis == "ST"))
+    if not jenis:
+        raise HTTPException(422, "Jenis surat 'ST' (Surat Tugas) belum tersedia di data master")
+    pelaksana_ids = list(dict.fromkeys(payload.pelaksana))
+    found = (await db.execute(
+        select(Pegawai.id_pegawai).where(Pegawai.id_pegawai.in_(pelaksana_ids), Pegawai.is_active == True)
+    )).scalars().all()
+    if len(found) != len(pelaksana_ids):
+        raise HTTPException(422, "Sebagian pegawai pelaksana tidak ditemukan atau tidak aktif")
+
+    tgl = date.today()
+    roman = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")[tgl.month - 1]
+    surat = SuratKeluar(
+        id_pegawai=current_user.id_pegawai,
+        id_bagian=id_bagian,
+        id_klasifikasi=payload.id_klasifikasi,
+        id_jenis_surat=jenis.id_jenis_surat,
+        tahun=tgl.year,
+        bulan_romawi=roman,
+        sifat_surat="Biasa",
+        perihal=f"Surat Tugas: {payload.maksud_tugas[:240]}",
+        tujuan_surat="Pegawai Pelaksana Tugas",
+        isi_surat=payload.maksud_tugas,
+        status="draft",
+        tanggal_surat=tgl,
+    )
+    db.add(surat)
+    await db.flush()
+    # Official numbering stays disabled; the register number is internal and marked as draft.
+    tugas = SuratTugas(
+        id_surat_keluar=surat.id_surat_keluar,
+        nomor_tugas=f"DRAFT/ST/{surat.id_surat_keluar}/{tgl.year}",
+        maksud_tugas=payload.maksud_tugas,
+        tempat_tugas=payload.tempat_tugas,
+        tanggal_mulai=payload.tanggal_mulai,
+        tanggal_selesai=payload.tanggal_selesai,
+        beban_anggaran=payload.beban_anggaran,
+        pelaksana=[SuratTugasPelaksana(id_pegawai=i) for i in pelaksana_ids],
+    )
+    db.add(tugas)
+    await db.commit()
+    await safe_sync(db, "surat_keluar", surat.id_surat_keluar)
+    res = await db.execute(
+        select(SuratTugas)
+        .options(selectinload(SuratTugas.pelaksana).selectinload(SuratTugasPelaksana.pegawai))
+        .where(SuratTugas.id_surat_tugas == tugas.id_surat_tugas)
+    )
+    return _surat_tugas_out(res.scalar_one())

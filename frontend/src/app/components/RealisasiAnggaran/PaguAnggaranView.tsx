@@ -1,3 +1,4 @@
+import { saveCsv } from "../../../services/csv"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { BarChart3, Download, Plus, RefreshCw, Search, X, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
@@ -53,7 +54,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   const requestIdRef = useRef(0)
 
-  const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").format(value)}`
+  const formatRupiah = (value: number | string | null | undefined) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(value) || 0)}`
 
   // 1. Initial Load: Fetch Tahun Anggaran
   useEffect(() => {
@@ -87,14 +88,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
       const [paguRes, revisiRes] = await Promise.all([
         paguAnggaranApi.getAll({
           id_tahun_anggaran: selectedTAId,
-          limit: 300,
+          limit: 500,
         }).catch((e) => {
           console.warn("Gagal memuat pagu", e)
           return { total: 0, items: [] }
         }),
         revisiAnggaranApi.getAll({
           id_tahun_anggaran: selectedTAId,
-          limit: 300,
+          limit: 500,
         }).catch((e) => {
           console.warn("Gagal memuat riwayat revisi", e)
           return { total: 0, items: [] }
@@ -141,7 +142,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     )
   })
 
-  const totalPaguAktif = filteredPagu.reduce((total, item) => total + (item.pagu_aktif || 0), 0)
+  const totalPaguAktif = filteredPagu.reduce((total, item) => total + (Number(item.pagu_aktif) || 0), 0)
 
   const closeModal = () => {
     setModalType(null)
@@ -161,8 +162,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setFormNomorRevisi(`REV-${String(revisiList.length + 1).padStart(3, "0")}/${selectedTAYear}`)
     if (firstPagu) {
       setFormPaguId(firstPagu.id_pagu)
-      setFormPaguSebelum(firstPagu.pagu_aktif || 0)
-      setFormPaguBaru(firstPagu.pagu_aktif || 0)
+      setFormPaguSebelum(Number(firstPagu.pagu_aktif) || 0)
+      setFormPaguBaru(Number(firstPagu.pagu_aktif) || 0)
     } else {
       setFormPaguId("")
       setFormPaguSebelum(0)
@@ -176,8 +177,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setFormPaguId(idPagu)
     const selected = paguList.find((p) => p.id_pagu === idPagu)
     if (selected) {
-      setFormPaguSebelum(selected.pagu_aktif || 0)
-      setFormPaguBaru(selected.pagu_aktif || 0)
+      setFormPaguSebelum(Number(selected.pagu_aktif) || 0)
+      setFormPaguBaru(Number(selected.pagu_aktif) || 0)
     }
   }
 
@@ -190,6 +191,12 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     }
     if (formPaguBaru < 0) {
       setError("Pagu baru tidak boleh bernilai negatif.")
+      return
+    }
+    const revisedPagu = paguList.find((p) => p.id_pagu === Number(formPaguId))
+    const realisasiVerified = Number(revisedPagu?.total_realisasi_verified) || 0
+    if (formPaguBaru < realisasiVerified) {
+      setError(`Pagu baru tidak boleh lebih kecil dari realisasi terverifikasi (${formatRupiah(realisasiVerified)}).`)
       return
     }
     if (!formNomorRevisi.trim()) {
@@ -224,15 +231,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   }
 
   const handleExport = () => {
-    const rows = activeTab === "pagu"
-      ? ["Tahun,Kode,Nama Akun,Bagian,Pagu Awal,Pagu Aktif,Realisasi,Sisa", ...filteredPagu.map((item) => `${item.tahun || selectedTAYear},${item.kode_akun},"${item.nama_akun}","${item.nama_bagian || ""}",${item.pagu_awal},${item.pagu_aktif},${item.total_realisasi_verified},${item.sisa_anggaran}`)]
-      : ["No Revisi,Tanggal,Pagu Sebelum,Pagu Sesudah,Perubahan Netto,Alasan,Dibuat Oleh", ...filteredRevisi.map((item) => `${item.nomor_revisi},${item.tanggal_revisi},${item.pagu_sebelum},${item.pagu_sesudah},${item.perubahan_netto},"${item.alasan_revisi}","${item.nama_pegawai || ""}"`)]
-    const url = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }))
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `${activeTab === "pagu" ? "Pagu" : "Revisi"}_Anggaran_TA_${selectedTAYear}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
+    const rows: unknown[][] = activeTab === "pagu"
+      ? [["Tahun", "Kode", "Nama Akun", "Bagian", "Pagu Awal", "Pagu Aktif", "Realisasi", "Sisa"],
+         ...filteredPagu.map((item) => [item.tahun || selectedTAYear, item.kode_akun, item.nama_akun, item.nama_bagian || "",
+           Number(item.pagu_awal) || 0, Number(item.pagu_aktif) || 0, Number(item.total_realisasi_verified) || 0, Number(item.sisa_anggaran) || 0])]
+      : [["No Revisi", "Tanggal", "Pagu Sebelum", "Pagu Sesudah", "Perubahan Netto", "Alasan", "Dibuat Oleh"],
+         ...filteredRevisi.map((item) => [item.nomor_revisi, item.tanggal_revisi, Number(item.pagu_sebelum) || 0,
+           Number(item.pagu_sesudah) || 0, Number(item.perubahan_netto) || 0, item.alasan_revisi, item.nama_pegawai || ""])]
+    saveCsv(`${activeTab === "pagu" ? "Pagu" : "Revisi"}_Anggaran_TA_${selectedTAYear}.csv`, rows)
   }
 
   const inputClass = `w-full rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition-colors ${isDark ? "bg-[#131b2e] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`
@@ -389,7 +395,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                         <TableCell className={`whitespace-nowrap text-xs font-semibold ${isDark ? "text-gray-400" : "text-slate-500"}`}>{formatRupiah(item.pagu_awal)}</TableCell>
                         <TableCell className={`whitespace-nowrap text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{formatRupiah(item.pagu_aktif)}</TableCell>
                         <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.total_realisasi_verified)}</TableCell>
-                        <TableCell className={`whitespace-nowrap text-xs font-bold ${item.sisa_anggaran < 0 ? "text-rose-500" : isDark ? "text-red-400" : "text-red-600"}`}>{formatRupiah(item.sisa_anggaran)}</TableCell>
+                        <TableCell className={`whitespace-nowrap text-xs font-bold ${Number(item.sisa_anggaran) < 0 ? "text-rose-500" : isDark ? "text-red-400" : "text-red-600"}`}>{formatRupiah(item.sisa_anggaran)}</TableCell>
                         <TableCell><div className="flex min-w-[105px] items-center justify-center gap-2"><div className={`h-2 flex-1 overflow-hidden rounded-full ${isDark ? "bg-slate-800" : "bg-slate-200"}`}><div className="h-full rounded-full bg-red-600" style={{ width: `${Math.min(percentage, 100)}%` }} /></div><span className="text-[11px] font-bold text-red-600 dark:text-red-400">{percentage}%</span></div></TableCell>
                       </TableRow>
                     )
@@ -419,7 +425,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 {filteredRevisi.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="py-10 text-center text-xs text-slate-500">Belum ada riwayat revisi anggaran pada tahun ini.</TableCell></TableRow>
                 ) : filteredRevisi.map((item) => {
-                  const difference = item.perubahan_netto
+                  const difference = Number(item.perubahan_netto) || 0
                   return (
                     <TableRow key={item.id_revisi}>
                       <TableCell className="whitespace-nowrap font-mono text-xs font-bold text-red-600 dark:text-red-400">{item.nomor_revisi}</TableCell>
@@ -518,6 +524,9 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                     onChange={(e) => setFormPaguBaru(Number(e.target.value))}
                     className={inputClass}
                   />
+                  <span className="block text-[11px] font-medium text-slate-500">
+                    Minimal: {formatRupiah(paguList.find((p) => p.id_pagu === Number(formPaguId))?.total_realisasi_verified)} (realisasi terverifikasi)
+                  </span>
                 </label>
               </div>
 

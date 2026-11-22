@@ -162,7 +162,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
         const akunRes = await akunAnggaranApi.getAll({
           id_bagian: selectedBagianId !== null ? selectedBagianId : undefined,
           status: "active",
-          limit: 200,
+          limit: 500,
         })
         if (!isMounted) return
         setAkunList(akunRes.items)

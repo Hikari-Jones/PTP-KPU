@@ -58,7 +58,7 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
         if (activeYear) {
           const paguRes = await paguAnggaranApi.getAll({
             id_tahun_anggaran: activeYear.id_tahun_anggaran,
-            limit: 200,
+            limit: 500,
           })
           if (isMounted) setPaguList(paguRes.items)
         }

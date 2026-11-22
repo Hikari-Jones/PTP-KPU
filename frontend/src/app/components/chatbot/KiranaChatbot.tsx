@@ -1,3 +1,5 @@
+import { showToast } from "../../../services/activity"
+import { saveFile } from "../../../services/csv"
 import { useState, useRef, useEffect, useCallback } from "react"
 import {
   MessageSquare,
@@ -326,20 +328,13 @@ export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | 
       setCopiedId(msg.id)
       window.setTimeout(() => setCopiedId((current) => (current === msg.id ? null : current)), 1500)
     } catch {
-      // clipboard blocked
+      showToast("error", "Gagal menyalin: browser memblokir akses clipboard. Salin teks secara manual.")
     }
   }
 
   const downloadMessage = (msg: ChatMessage) => {
     const blob = new Blob([msg.text], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `KIRANA_${new Date().toISOString().slice(0, 10)}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    saveFile(`KIRANA_${new Date().toISOString().slice(0, 10)}.txt`, blob)
   }
 
   const lastMessage = messages[messages.length - 1]

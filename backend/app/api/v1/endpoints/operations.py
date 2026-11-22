@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.schema import Pegawai, FileRecord
 from app.models.operations import WorkflowLetter, BugReport
 
+from app.services.arsip_sync import safe_sync
 router = APIRouter(prefix='/operations', tags=['Operations'])
 
 class LetterInput(BaseModel):
@@ -45,11 +46,20 @@ def output(row):
 @router.get('/letters')
 async def letters(response: Response, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
                   kind: Literal['masuk', 'keluar'] | None = None,
+                  search: str | None = Query(None, max_length=100),
+                  status: str | None = Query(None, max_length=30),
+                  year: int | None = Query(None, ge=1900, le=2100),
                   db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user)):
     q = select(WorkflowLetter).order_by(WorkflowLetter.id.desc())
     if not is_admin(user):
         q = q.where(or_(WorkflowLetter.owner_id == user.id_pegawai, WorkflowLetter.assignee_id == user.id_pegawai))
     if kind: q = q.where(WorkflowLetter.kind == kind)
+    if status: q = q.where(WorkflowLetter.status == status)
+    if year: q = q.where(func.extract('year', WorkflowLetter.date) == year)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        q = q.where(or_(WorkflowLetter.subject.ilike(term), WorkflowLetter.sender.ilike(term),
+                        WorkflowLetter.recipient.ilike(term), WorkflowLetter.number.ilike(term)))
     response.headers['X-Total-Count'] = str(await db.scalar(select(func.count()).select_from(q.order_by(None).subquery())))
     return [output(x) for x in (await db.scalars(q.offset(skip).limit(limit))).all()]
 
@@ -68,6 +78,7 @@ async def create_letter(payload: LetterInput, db: AsyncSession = Depends(get_db)
         item.number = None
     db.add(item)
     await db.commit()
+    await safe_sync(db, 'workflow_letter', item.id)
     await db.refresh(item)
     return output(item)
 

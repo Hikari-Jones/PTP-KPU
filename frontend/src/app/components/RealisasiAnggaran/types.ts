@@ -59,6 +59,8 @@ export interface TahunAnggaranCreatePayload {
   tanggal_mulai: string
   tanggal_selesai: string
   deskripsi?: string | null
+  /** Number of the currently active year, re-typed to confirm closing it. */
+  konfirmasi_tutup_tahun?: number
 }
 
 export interface TahunAnggaranUpdatePayload {
@@ -67,6 +69,8 @@ export interface TahunAnggaranUpdatePayload {
   tanggal_mulai?: string
   tanggal_selesai?: string
   deskripsi?: string | null
+  /** Number of the currently active year, re-typed to confirm closing it. */
+  konfirmasi_tutup_tahun?: number
 }
 
 export interface TahunAnggaranResponse {

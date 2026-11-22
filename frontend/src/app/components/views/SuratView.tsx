@@ -13,6 +13,9 @@ import {
   Download,
   AlertCircle,
   MapPin,
+  Lock,
+  Inbox,
+  Users,
 } from "lucide-react"
 import type { SuratKeluar, KodeKlasifikasiArsip, JenisSurat } from "../../../types"
 import { request, download, message } from "../../../services/operations"
@@ -41,6 +44,37 @@ interface SuratTugas {
   tanggal_mulai: string
   tanggal_selesai: string
   beban_anggaran: string | null
+  pelaksana?: { id_pegawai: number; nama: string | null; peran_tugas: string }[]
+}
+
+interface PegawaiOption {
+  id_pegawai: number
+  nama: string
+  is_active?: boolean
+}
+
+interface PenerbitanStatus {
+  official_issuance_enabled: boolean
+  has_numbering_authority: boolean
+}
+
+const BEBAN_ANGGARAN = ["DIPA KPU Provinsi Sulawesi Utara", "Non-DIPA"]
+
+const TABS: { id: Tab | "surat-masuk"; label: string }[] = [
+  { id: "overview", label: "Dashboard" },
+  { id: "surat-masuk", label: "Surat Masuk" },
+  { id: "surat-keluar", label: "Surat Keluar" },
+  { id: "surat-tugas", label: "Surat Tugas" },
+  { id: "klasifikasi", label: "Kode Klasifikasi" },
+]
+
+/** Menu ids used by App.tsx for each tab. */
+const TAB_ROUTE: Record<Tab | "surat-masuk", string> = {
+  overview: "surat-summary",
+  "surat-masuk": "surat-masuk",
+  "surat-keluar": "surat-keluar",
+  "surat-tugas": "surat-tugas",
+  klasifikasi: "surat-klasifikasi",
 }
 
 interface Department {
@@ -66,7 +100,7 @@ const formatDate = (value?: string | null) =>
 
 const getInitialTab = (tab: string): Tab => {
   if (tab === "keluar" || tab === "surat-keluar") return "surat-keluar"
-  if (tab === "surat-tugas" || tab === "masuk") return "surat-tugas"
+  if (tab === "surat-tugas") return "surat-tugas"
   if (tab === "klasifikasi" || tab === "surat-klasifikasi") return "klasifikasi"
   return "overview"
 }
@@ -77,6 +111,15 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   const isAdmin = currentUser?.role === "Admin"
   const readOnly = !canEdit("surat")
   const [activeTab, setActiveTab] = useState<Tab>(() => getInitialTab(subTab))
+  // Keep the local tab in step when the sidebar/router changes subTab.
+  useEffect(() => {
+    setActiveTab(getInitialTab(subTab))
+  }, [subTab])
+
+  const goToTab = (tab: Tab | "surat-masuk") => {
+    if (tab !== "surat-masuk") setActiveTab(tab)
+    onNavigate?.(TAB_ROUTE[tab])
+  }
 
   // Data from the backend
   const [suratList, setSuratList] = useState<SuratKeluar[]>([])
@@ -85,6 +128,35 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   const [suratTugas, setSuratTugas] = useState<SuratTugas[] | null>(null)
   const [suratTugasError, setSuratTugasError] = useState<string | null>(null)
   const [departments, setDepartments] = useState<Department[]>([])
+  const [pegawaiList, setPegawaiList] = useState<PegawaiOption[]>([])
+  const [penerbitan, setPenerbitan] = useState<PenerbitanStatus | null>(null)
+  const [statusFilter, setStatusFilter] = useState("")
+  const [tahunFilter, setTahunFilter] = useState("")
+  const [kategoriFilter, setKategoriFilter] = useState("")
+  const [showTugasModal, setShowTugasModal] = useState(false)
+  const blankTugas = {
+    maksud_tugas: "",
+    tempat_tugas: "",
+    tanggal_mulai: new Date().toLocaleDateString("en-CA"),
+    tanggal_selesai: new Date().toLocaleDateString("en-CA"),
+    beban_anggaran: BEBAN_ANGGARAN[0],
+    id_klasifikasi: "",
+    id_bagian: "",
+    pelaksana: [] as number[],
+  }
+  const [tugasForm, setTugasForm] = useState(blankTugas)
+  const [pelaksanaSearch, setPelaksanaSearch] = useState("")
+  // Document detail views (open to every account; read-only accounts get no edit actions)
+  const [detailSurat, setDetailSurat] = useState<SuratKeluar | null>(null)
+  const [detailTugas, setDetailTugas] = useState<SuratTugas | null>(null)
+  // Surat Tugas filters
+  const [tugasSearch, setTugasSearch] = useState("")
+  const [tugasBeban, setTugasBeban] = useState("")
+  const [tugasTahun, setTugasTahun] = useState("")
+  // Kode Klasifikasi filters
+  const [klasSearch, setKlasSearch] = useState("")
+  const [klasKategori, setKlasKategori] = useState("")
+  const [klasAkses, setKlasAkses] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -115,6 +187,47 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   }
   const [form, setForm] = useState(blankForm)
 
+  // Lists are fetched 100 at a time; "Muat 100 berikutnya" appends older records.
+  const [hasMoreSurat, setHasMoreSurat] = useState(false)
+  const [hasMoreTugas, setHasMoreTugas] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  const loadMoreSurat = async () => {
+    setLoadingMore(true)
+    try {
+      const batch = await request<SuratKeluar[]>(`/surat-keluar?limit=${PAGE_LIMIT}&skip=${suratList.length}`)
+      setSuratList((list) => {
+        const seen = new Set(list.map((s) => s.id_surat_keluar))
+        return [...list, ...batch.filter((s) => !seen.has(s.id_surat_keluar))]
+      })
+      setHasMoreSurat(batch.length === PAGE_LIMIT)
+      notify("info", batch.length ? `${batch.length} surat keluar lama dimuat` : "Semua surat keluar sudah dimuat")
+    } catch (e) {
+      notify("error", message(e))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const loadMoreTugas = async () => {
+    setLoadingMore(true)
+    try {
+      const current = suratTugas ?? []
+      const batch = await request<SuratTugas[]>(`/surat-tugas?limit=${PAGE_LIMIT}&skip=${current.length}`)
+      setSuratTugas((list) => {
+        const existing = list ?? []
+        const seen = new Set(existing.map((t) => t.id_surat_tugas))
+        return [...existing, ...batch.filter((t) => !seen.has(t.id_surat_tugas))]
+      })
+      setHasMoreTugas(batch.length === PAGE_LIMIT)
+      notify("info", batch.length ? `${batch.length} surat tugas lama dimuat` : "Semua surat tugas sudah dimuat")
+    } catch (e) {
+      notify("error", message(e))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   const load = async () => {
     setLoading(true)
     setError(null)
@@ -125,6 +238,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
         request<JenisSurat[]>("/jenis-surat"),
       ])
       setSuratList(letters)
+      setHasMoreSurat(letters.length === PAGE_LIMIT)
       setKlasifikasiList(klasifikasi)
       setJenisList(jenis)
     } catch (e) {
@@ -132,15 +246,19 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     } finally {
       setLoading(false)
     }
-    // Assignment letters are visible to administrators only (enforced by the backend).
-    if (isAdmin) {
-      try {
-        setSuratTugas(await request<SuratTugas[]>(`/surat-tugas?limit=${PAGE_LIMIT}`))
-        setSuratTugasError(null)
-      } catch (e) {
-        setSuratTugasError(message(e))
-      }
-      request<Department[]>("/bagian/?limit=1000").then(setDepartments).catch(() => setDepartments([]))
+    // Managers see every assignment; other staff see the ones they take part in (backend-enforced).
+    try {
+      const tugas = await request<SuratTugas[]>(`/surat-tugas?limit=${PAGE_LIMIT}`)
+      setSuratTugas(tugas)
+      setHasMoreTugas(tugas.length === PAGE_LIMIT)
+      setSuratTugasError(null)
+    } catch (e) {
+      setSuratTugasError(message(e))
+    }
+    request<Department[]>("/bagian/?limit=1000").then(setDepartments).catch(() => setDepartments([]))
+    request<PenerbitanStatus>("/surat-keluar/penerbitan-status").then(setPenerbitan).catch(() => setPenerbitan(null))
+    if (!readOnly) {
+      request<PegawaiOption[]>("/pegawai/?limit=1000").then(setPegawaiList).catch(() => setPegawaiList([]))
     }
   }
 
@@ -154,7 +272,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   )
   const jenisById = useMemo(() => new Map(jenisList.map((j) => [j.id_jenis_surat, j])), [jenisList])
 
-  const countLabel = (n: number) => (suratList.length >= PAGE_LIMIT ? `${n}+` : String(n))
+  const countLabel = (n: number) => (hasMoreSurat ? `${n}+` : String(n))
   const draftCount = suratList.filter((s) => s.status === "draft").length
   const terbitCount = suratList.filter((s) => s.status === "terbit").length
 
@@ -171,23 +289,148 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
       .sort((a, b) => b.count - a.count)
   }, [suratList, klasifikasiById])
 
+  const tahunOptions = useMemo(
+    () => [...new Set(suratList.map((s) => s.tahun).filter(Boolean))].sort((a, b) => b - a),
+    [suratList]
+  )
+  const kategoriOptions = useMemo(
+    () => [...new Set(klasifikasiList.map((k) => k.kategori_utama))].sort(),
+    [klasifikasiList]
+  )
+  const filtersActive = Boolean(searchQuery || statusFilter || tahunFilter || kategoriFilter)
+
   const filteredSurat = suratList.filter((s) => {
     const q = searchQuery.toLowerCase()
-    return (
+    const matchesText =
       s.perihal.toLowerCase().includes(q) ||
       (s.nomor_surat ?? "").toLowerCase().includes(q) ||
       s.tujuan_surat.toLowerCase().includes(q)
+    return (
+      matchesText &&
+      (!statusFilter || s.status === statusFilter) &&
+      (!tahunFilter || String(s.tahun) === tahunFilter) &&
+      (!kategoriFilter || klasifikasiById.get(s.id_klasifikasi)?.kategori_utama === kategoriFilter)
     )
   })
+
+  const tugasList = suratTugas ?? []
+  const tugasTahunOptions = [...new Set(tugasList.map((t) => t.tanggal_mulai.slice(0, 4)))].sort().reverse()
+  const tugasBebanOptions = [...new Set(tugasList.map((t) => t.beban_anggaran).filter((b): b is string => Boolean(b)))].sort()
+  const tugasFiltersActive = Boolean(tugasSearch || tugasBeban || tugasTahun)
+  const filteredTugas = tugasList.filter((t) => {
+    const q = tugasSearch.toLowerCase()
+    const text = [t.nomor_tugas, t.maksud_tugas, t.tempat_tugas, ...(t.pelaksana ?? []).map((p) => p.nama)]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+    return (
+      (!q || text.includes(q)) &&
+      (!tugasBeban || t.beban_anggaran === tugasBeban) &&
+      (!tugasTahun || t.tanggal_mulai.startsWith(tugasTahun))
+    )
+  })
+
+  const klasAksesOptions = [...new Set(klasifikasiList.map((k) => k.hak_akses))].sort()
+  const klasFiltersActive = Boolean(klasSearch || klasKategori || klasAkses)
+  const filteredKlasifikasi = klasifikasiList.filter((k) => {
+    const q = klasSearch.toLowerCase()
+    return (
+      (!q || `${k.kode_klasifikasi} ${k.nama_klasifikasi} ${k.deskripsi ?? ""}`.toLowerCase().includes(q)) &&
+      (!klasKategori || k.kategori_utama === klasKategori) &&
+      (!klasAkses || k.hak_akses === klasAkses)
+    )
+  })
+
+  const openSuratDetail = (s: SuratKeluar) => setDetailSurat(s)
+  const openTugasDetail = (t: SuratTugas) => setDetailTugas(t)
+  const rowKeys = (open: () => void) => ({
+    role: "button" as const,
+    tabIndex: 0,
+    onClick: open,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        open()
+      }
+    },
+  })
+
+  // Issuing an official number needs the server flag and a deployment authority grant.
+  const issuanceLocked = !penerbitan?.official_issuance_enabled || !penerbitan?.has_numbering_authority
+  const issuanceLockReason = !penerbitan
+    ? "Status penerbitan resmi belum dapat dimuat dari server."
+    : !penerbitan.official_issuance_enabled
+      ? "Penerbitan nomor resmi sedang terkunci (mode uji coba). Aktifkan OFFICIAL_ISSUANCE_ENABLED di server setelah format nomor dan kewenangan penandatangan divalidasi."
+      : "Akun Anda belum memiliki penugasan penomoran resmi (AUTHORITY_GRANTS) yang berlaku."
+
+  // Non-admins send from their own section; fall back to matching the profile's section name.
+  const ownBagianId =
+    currentUser?.id_bagian ??
+    departments.find((d) => d.nama_bagian.toLowerCase() === (currentUser?.subbagian ?? "").toLowerCase())?.id_bagian ??
+    null
 
   const openDraftModal = () => {
     setForm({
       ...blankForm,
       id_klasifikasi: klasifikasiList[0] ? String(klasifikasiList[0].id_klasifikasi) : "",
       id_jenis_surat: jenisList[0] ? String(jenisList[0].id_jenis_surat) : "",
-      id_bagian: currentUser?.id_bagian ? String(currentUser.id_bagian) : "",
+      id_bagian: ownBagianId ? String(ownBagianId) : "",
     })
     setShowDraftModal(true)
+  }
+
+  const openTugasModal = () => {
+    setTugasForm({
+      ...blankTugas,
+      id_klasifikasi: klasifikasiList[0] ? String(klasifikasiList[0].id_klasifikasi) : "",
+    })
+    setPelaksanaSearch("")
+    setShowTugasModal(true)
+  }
+
+  const togglePelaksana = (id: number) =>
+    setTugasForm((f) => ({
+      ...f,
+      pelaksana: f.pelaksana.includes(id) ? f.pelaksana.filter((x) => x !== id) : [...f.pelaksana, id],
+    }))
+
+  const handleCreateTugas = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!tugasForm.maksud_tugas.trim() || !tugasForm.tempat_tugas.trim()) {
+      notify("error", "Mohon isi maksud penugasan dan tempat tugas.")
+      return
+    }
+    if (tugasForm.tanggal_selesai < tugasForm.tanggal_mulai) {
+      notify("error", "Tanggal selesai tidak boleh sebelum tanggal mulai.")
+      return
+    }
+    if (!tugasForm.id_klasifikasi) {
+      notify("error", "Pilih kode klasifikasi surat tugas.")
+      return
+    }
+    if (tugasForm.pelaksana.length === 0) {
+      notify("error", "Pilih minimal satu pegawai pelaksana tugas.")
+      return
+    }
+    setBusy(true)
+    try {
+      const created = await request<SuratTugas>("/surat-tugas", "POST", {
+        maksud_tugas: tugasForm.maksud_tugas.trim(),
+        tempat_tugas: tugasForm.tempat_tugas.trim(),
+        tanggal_mulai: tugasForm.tanggal_mulai,
+        tanggal_selesai: tugasForm.tanggal_selesai,
+        beban_anggaran: tugasForm.beban_anggaran,
+        id_klasifikasi: Number(tugasForm.id_klasifikasi),
+        id_bagian: tugasForm.id_bagian ? Number(tugasForm.id_bagian) : null,
+        pelaksana: tugasForm.pelaksana,
+      })
+      setSuratTugas((list) => [created, ...(list ?? [])])
+      setShowTugasModal(false)
+    } catch {
+      // The global notification already shows the server's message.
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleCreateDraft = async (e: React.FormEvent) => {
@@ -283,7 +526,12 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     const status = STATUS_LABEL[s.status] ?? { label: s.status, variant: "secondary" as const }
     const klas = klasifikasiById.get(s.id_klasifikasi)
     return (
-      <TableRow key={s.id_surat_keluar} className={isDark ? "border-b border-white/20" : "border-b border-slate-100"}>
+      <TableRow
+        key={s.id_surat_keluar}
+        {...rowKeys(() => openSuratDetail(s))}
+        title="Klik untuk melihat isi surat"
+        className={`cursor-pointer transition-colors ${isDark ? "border-b border-white/20 hover:bg-white/5" : "border-b border-slate-100 hover:bg-red-50/60"}`}
+      >
         <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400 whitespace-nowrap">
           {s.nomor_surat || "(belum bernomor)"}
         </TableCell>
@@ -297,15 +545,16 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
         <TableCell className={`text-xs whitespace-nowrap ${isDark ? "text-gray-300" : "text-slate-800"}`}>{formatDate(s.tanggal_surat)}</TableCell>
         <TableCell><Badge variant={status.variant}>{status.label}</Badge></TableCell>
         {withActions && (
-          <TableCell className="whitespace-nowrap">
+          <TableCell className="whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             {s.status === "draft" && isAdmin && !readOnly && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || issuanceLocked}
+                title={issuanceLocked ? issuanceLockReason : "Terbitkan nomor surat resmi"}
                 onClick={() => handleFinalize(s.id_surat_keluar)}
-                className="btn-kpu-red px-3 py-1.5 text-white text-[11px] font-bold rounded-lg inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                className="btn-kpu-red px-3 py-1.5 text-white text-[11px] font-bold rounded-lg inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" /> Terbitkan Nomor
+                {issuanceLocked ? <Lock className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />} Terbitkan Nomor
               </button>
             )}
             {s.status === "terbit" && (
@@ -368,8 +617,43 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               <Plus className="w-4 h-4" /> Buat Draft Surat
             </button>
           )}
+          {activeTab === "surat-tugas" && !readOnly && (
+            <button
+              type="button"
+              onClick={openTugasModal}
+              disabled={loading || klasifikasiList.length === 0}
+              title={klasifikasiList.length === 0 ? "Data master klasifikasi belum tersedia" : undefined}
+              className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-40"
+            >
+              <Plus className="w-4 h-4" /> Terbitkan Surat Tugas
+            </button>
+          )}
         </div>
       </div>
+
+      <nav aria-label="Sub-menu persuratan" className="flex gap-2 overflow-x-auto pb-1">
+        {TABS.map((t) => {
+          const active = t.id === activeTab
+          return (
+            <button
+              key={t.id}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => goToTab(t.id)}
+              className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                active
+                  ? "bg-red-600 border-red-600 text-white shadow-md"
+                  : isDark
+                    ? "border-white/10 bg-[#0f172a] text-gray-300 hover:border-red-500/50"
+                    : "border-slate-300 bg-white text-slate-700 hover:border-red-400"
+              }`}
+            >
+              {t.id === "surat-masuk" && <Inbox className="w-3.5 h-3.5" />}
+              {t.label}
+            </button>
+          )
+        })}
+      </nav>
 
       {readOnly && (
         <ReadOnlyBanner theme={theme} modul="persuratan" pengelola="Sub Bagian Umum dan Logistik" />
@@ -397,7 +681,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 <CardTitle className={`text-sm font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>Surat Keluar Terbaru</CardTitle>
                 <button
                   type="button"
-                  onClick={() => { setActiveTab("surat-keluar"); onNavigate?.("surat-keluar") }}
+                  onClick={() => goToTab("surat-keluar")}
                   className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer"
                 >
                   Lihat semua
@@ -436,60 +720,112 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             </Card>
           </div>
 
-          {isAdmin && (
-            <Card className={cardClass}>
-              <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-                <CardTitle className={`text-sm font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>Surat Tugas Terbaru</CardTitle>
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab("surat-tugas"); onNavigate?.("surat-tugas") }}
-                  className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+          <Card className={cardClass}>
+            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <CardTitle className={`text-sm font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>{readOnly ? "Surat Tugas Anda" : "Surat Tugas Terbaru"}</CardTitle>
+              <button
+                type="button"
+                onClick={() => goToTab("surat-tugas")}
+                className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+              >
+                Lihat semua
+              </button>
+            </CardHeader>
+            <CardContent className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              {suratTugasError && <p className="text-xs text-red-500 md:col-span-3">{suratTugasError}</p>}
+              {suratTugas && suratTugas.length === 0 && <p className="text-xs text-slate-500 md:col-span-3">Belum ada surat tugas.</p>}
+              {(suratTugas ?? []).slice(0, 3).map((st) => (
+                <div
+                  key={st.id_surat_tugas}
+                  {...rowKeys(() => openTugasDetail(st))}
+                  title="Klik untuk melihat isi surat tugas"
+                  className={`rounded-xl border p-3 text-xs cursor-pointer transition-colors ${isDark ? "border-white/10 bg-[#111827]/60 hover:border-red-500/40" : "border-slate-200 bg-slate-50 hover:border-red-400"}`}
                 >
-                  Lihat semua
-                </button>
-              </CardHeader>
-              <CardContent className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                {suratTugasError && <p className="text-xs text-red-500 md:col-span-3">{suratTugasError}</p>}
-                {suratTugas && suratTugas.length === 0 && <p className="text-xs text-slate-500 md:col-span-3">Belum ada surat tugas.</p>}
-                {(suratTugas ?? []).slice(0, 3).map((st) => (
-                  <div key={st.id_surat_tugas} className={`rounded-xl border p-3 text-xs ${isDark ? "border-white/10 bg-[#111827]/60" : "border-slate-200 bg-slate-50"}`}>
-                    <p className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{st.maksud_tugas}</p>
-                    <p className="mt-1 text-slate-500">{formatDate(st.tanggal_mulai)} – {formatDate(st.tanggal_selesai)}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                  <p className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{st.maksud_tugas}</p>
+                  <p className="mt-1 text-slate-500">{formatDate(st.tanggal_mulai)} – {formatDate(st.tanggal_selesai)}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* 2. SURAT KELUAR */}
       {activeTab === "surat-keluar" && (
         <Card className={cardClass}>
-          <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                aria-label="Cari surat keluar"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari perihal, nomor, atau tujuan…"
-                className={`${field} pl-9`}
-              />
+          {isAdmin && !readOnly && issuanceLocked && (
+            <div className={`flex items-start gap-2 px-4 py-3 border-b text-xs font-semibold ${isDark ? "border-amber-500/20 bg-amber-500/10 text-amber-300" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+              <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                <Badge variant="outline" className="mr-2">Mode Uji Coba</Badge>
+                {issuanceLockReason} Draft tetap dapat dibuat dan disimpan.
+              </span>
             </div>
-            <span className="text-xs font-semibold text-slate-500">
-              {filteredSurat.length} dari {countLabel(suratList.length)} surat
-            </span>
+          )}
+          <CardHeader className="flex flex-col gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+              <div className="relative w-full lg:max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  aria-label="Cari surat keluar"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari perihal, nomor, atau tujuan…"
+                  className={`${field} pl-9`}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto lg:flex-1">
+                <select aria-label="Filter status" className={field} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">Semua Status</option>
+                  {Object.entries(STATUS_LABEL).map(([value, { label }]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <select aria-label="Filter tahun" className={field} value={tahunFilter} onChange={(e) => setTahunFilter(e.target.value)}>
+                  <option value="">Semua Tahun</option>
+                  {tahunOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <select aria-label="Filter kategori klasifikasi" className={field} value={kategoriFilter} onChange={(e) => setKategoriFilter(e.target.value)}>
+                  <option value="">Semua Kategori Klasifikasi</option>
+                  {kategoriOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+              <span>{filteredSurat.length} dari {countLabel(suratList.length)} surat</span>
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(""); setStatusFilter(""); setTahunFilter(""); setKategoriFilter("") }}
+                  className="text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+                >
+                  Reset filter
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               {suratHead(true)}
               <TableBody>
                 {filteredSurat.length === 0
-                  ? emptyRow(6, searchQuery ? "Tidak ada surat yang cocok." : "Belum ada surat keluar.")
+                  ? emptyRow(6, filtersActive ? "Tidak ada surat yang cocok dengan filter." : "Belum ada surat keluar.")
                   : filteredSurat.map((s) => suratRow(s, true))}
               </TableBody>
             </Table>
+          {hasMoreSurat && (
+            <div className={`flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 border-t text-xs ${isDark ? "border-white/10 text-gray-300" : "border-slate-200 text-slate-600"}`}>
+              <span>{suratList.length} surat keluar terbaru dimuat. Pencarian dan filter berlaku untuk data yang sudah dimuat.</span>
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={() => void loadMoreSurat()}
+                className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer disabled:opacity-50 ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+              >
+                {loadingMore ? "Memuat…" : "Muat 100 berikutnya"}
+              </button>
+            </div>
+          )}
           </CardContent>
         </Card>
       )}
@@ -498,9 +834,44 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
       {activeTab === "surat-tugas" && (
         <Card className={cardClass}>
           <CardContent className="p-0">
-            {!isAdmin ? (
-              <p className="p-8 text-center text-xs text-slate-500">Daftar surat tugas hanya dapat dilihat oleh administrator.</p>
-            ) : suratTugasError ? (
+            {readOnly && (
+              <p className={`px-4 py-3 border-b text-xs font-semibold ${isDark ? "border-white/10 text-gray-300" : "border-slate-200 text-slate-600"}`}>
+                Menampilkan surat tugas yang menugaskan Anda (hanya baca).
+              </p>
+            )}
+            <div className={`flex flex-col lg:flex-row lg:items-center gap-2 p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
+              <div className="relative w-full lg:max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  aria-label="Cari surat tugas"
+                  value={tugasSearch}
+                  onChange={(e) => setTugasSearch(e.target.value)}
+                  placeholder="Cari nomor, maksud, tempat, atau pelaksana…"
+                  className={`${field} pl-9`}
+                />
+              </div>
+              <select aria-label="Filter beban anggaran" className={`${field} lg:w-auto`} value={tugasBeban} onChange={(e) => setTugasBeban(e.target.value)}>
+                <option value="">Semua Beban Anggaran</option>
+                {tugasBebanOptions.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <select aria-label="Filter tahun penugasan" className={`${field} lg:w-auto`} value={tugasTahun} onChange={(e) => setTugasTahun(e.target.value)}>
+                <option value="">Semua Tahun</option>
+                {tugasTahunOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <span className="text-xs font-semibold text-slate-500 whitespace-nowrap lg:ml-auto">
+                {filteredTugas.length} dari {tugasList.length} surat tugas
+              </span>
+              {tugasFiltersActive && (
+                <button
+                  type="button"
+                  onClick={() => { setTugasSearch(""); setTugasBeban(""); setTugasTahun("") }}
+                  className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer whitespace-nowrap"
+                >
+                  Reset filter
+                </button>
+              )}
+            </div>
+            {suratTugasError ? (
               <p className="p-8 text-center text-xs text-red-500">{suratTugasError}</p>
             ) : (
               <Table>
@@ -510,14 +881,25 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                     <TableHead className={headCell}>Maksud Tugas</TableHead>
                     <TableHead className={headCell}>Tempat</TableHead>
                     <TableHead className={headCell}>Periode</TableHead>
+                    <TableHead className={headCell}>Pelaksana</TableHead>
                     <TableHead className={headCell}>Beban Anggaran</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suratTugas === null || suratTugas.length === 0
-                    ? emptyRow(5, "Belum ada surat tugas.")
-                    : suratTugas.map((st) => (
-                        <TableRow key={st.id_surat_tugas} className={isDark ? "border-b border-white/20" : "border-b border-slate-100"}>
+                  {filteredTugas.length === 0
+                    ? emptyRow(
+                        6,
+                        tugasFiltersActive
+                          ? "Tidak ada surat tugas yang cocok dengan filter."
+                          : readOnly ? "Belum ada surat tugas yang menugaskan Anda." : "Belum ada surat tugas."
+                      )
+                    : filteredTugas.map((st) => (
+                        <TableRow
+                          key={st.id_surat_tugas}
+                          {...rowKeys(() => openTugasDetail(st))}
+                          title="Klik untuk melihat isi surat tugas"
+                          className={`cursor-pointer transition-colors ${isDark ? "border-b border-white/20 hover:bg-white/5" : "border-b border-slate-100 hover:bg-red-50/60"}`}
+                        >
                           <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{st.nomor_tugas || "-"}</TableCell>
                           <TableCell className={`text-xs font-semibold ${isDark ? "text-white" : "text-black"}`}>
                             <Briefcase className="w-3.5 h-3.5 inline mr-1.5 text-slate-400" />{st.maksud_tugas}
@@ -526,12 +908,33 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                             {st.tempat_tugas ? <><MapPin className="w-3.5 h-3.5 inline mr-1 text-slate-400" />{st.tempat_tugas}</> : "-"}
                           </TableCell>
                           <TableCell className="text-xs whitespace-nowrap">{formatDate(st.tanggal_mulai)} – {formatDate(st.tanggal_selesai)}</TableCell>
+                          <TableCell className="text-xs">
+                            {st.pelaksana && st.pelaksana.length > 0 ? (
+                              <span className="inline-flex items-start gap-1">
+                                <Users className="w-3.5 h-3.5 mt-0.5 text-slate-400 shrink-0" />
+                                {st.pelaksana.map((p) => p.nama ?? `#${p.id_pegawai}`).join(", ")}
+                              </span>
+                            ) : "-"}
+                          </TableCell>
                           <TableCell className="text-xs">{st.beban_anggaran || "-"}</TableCell>
                         </TableRow>
                       ))}
                 </TableBody>
               </Table>
             )}
+          {hasMoreTugas && (
+            <div className={`flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 border-t text-xs ${isDark ? "border-white/10 text-gray-300" : "border-slate-200 text-slate-600"}`}>
+              <span>{tugasList.length} surat tugas terbaru dimuat. Pencarian dan filter berlaku untuk data yang sudah dimuat.</span>
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={() => void loadMoreTugas()}
+                className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer disabled:opacity-50 ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+              >
+                {loadingMore ? "Memuat…" : "Muat 100 berikutnya"}
+              </button>
+            </div>
+          )}
           </CardContent>
         </Card>
       )}
@@ -554,6 +957,38 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </button>
             </div>
           )}
+          <div className={`flex flex-col lg:flex-row lg:items-center gap-2 p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
+            <div className="relative w-full lg:max-w-sm">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                aria-label="Cari kode klasifikasi"
+                value={klasSearch}
+                onChange={(e) => setKlasSearch(e.target.value)}
+                placeholder="Cari kode, nama, atau deskripsi…"
+                className={`${field} pl-9`}
+              />
+            </div>
+            <select aria-label="Filter kategori klasifikasi" className={`${field} lg:w-auto`} value={klasKategori} onChange={(e) => setKlasKategori(e.target.value)}>
+              <option value="">Semua Kategori</option>
+              {kategoriOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <select aria-label="Filter hak akses" className={`${field} lg:w-auto`} value={klasAkses} onChange={(e) => setKlasAkses(e.target.value)}>
+              <option value="">Semua Hak Akses</option>
+              {klasAksesOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap lg:ml-auto">
+              {filteredKlasifikasi.length} dari {klasifikasiList.length} kode
+            </span>
+            {klasFiltersActive && (
+              <button
+                type="button"
+                onClick={() => { setKlasSearch(""); setKlasKategori(""); setKlasAkses("") }}
+                className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline cursor-pointer whitespace-nowrap"
+              >
+                Reset filter
+              </button>
+            )}
+          </div>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -566,9 +1001,9 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {klasifikasiList.length === 0
-                  ? emptyRow(5, "Data master klasifikasi belum tersedia di server.")
-                  : klasifikasiList.map((k) => (
+                {filteredKlasifikasi.length === 0
+                  ? emptyRow(5, klasFiltersActive ? "Tidak ada kode yang cocok dengan filter." : "Data master klasifikasi belum tersedia di server.")
+                  : filteredKlasifikasi.map((k) => (
                       <TableRow key={k.id_klasifikasi} className={isDark ? "border-b border-white/20" : "border-b border-slate-100"}>
                         <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{k.kode_klasifikasi}</TableCell>
                         <TableCell className={`text-xs font-semibold ${isDark ? "text-white" : "text-black"}`}>{k.nama_klasifikasi}</TableCell>
@@ -581,6 +1016,178 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {/* DETAIL SURAT KELUAR (semua akun; akun baca-saja tanpa tombol ubah) */}
+      {detailSurat && (() => {
+        const s = suratList.find((x) => x.id_surat_keluar === detailSurat.id_surat_keluar) ?? detailSurat
+        const status = STATUS_LABEL[s.status] ?? { label: s.status, variant: "secondary" as const }
+        const klas = klasifikasiById.get(s.id_klasifikasi)
+        const row = (label: string, value?: string | null) => (
+          <div className="grid grid-cols-3 gap-2 py-1.5">
+            <dt className="text-slate-500 font-semibold">{label}</dt>
+            <dd className={`col-span-2 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>{value || "-"}</dd>
+          </div>
+        )
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Detail surat ${s.perihal}`}
+            onClick={() => setDetailSurat(null)}
+            onKeyDown={(e) => e.key === "Escape" && setDetailSurat(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-2xl border p-6 space-y-4 shadow-2xl ${isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">Surat Keluar</p>
+                  <h2 className="text-base font-bold break-words">{s.perihal}</h2>
+                  <p className="font-mono text-xs text-slate-500 mt-0.5">{s.nomor_surat || "(belum bernomor resmi)"}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge variant={status.variant}>{status.label}</Badge>
+                  <button type="button" aria-label="Tutup" autoFocus onClick={() => setDetailSurat(null)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {readOnly && (
+                <p className={`text-[11px] font-semibold rounded-lg px-3 py-2 ${isDark ? "bg-white/5 text-gray-300" : "bg-slate-100 text-slate-600"}`}>
+                  Mode baca saja: Anda dapat melihat dan mengunduh surat, tetapi tidak dapat mengubahnya.
+                </p>
+              )}
+
+              <dl className={`text-xs divide-y ${isDark ? "divide-white/10" : "divide-slate-100"}`}>
+                {row("Tujuan", s.tujuan_surat)}
+                {row("Tanggal Surat", formatDate(s.tanggal_surat))}
+                {row("Tanggal Terbit", s.tanggal_terbit ? formatDate(s.tanggal_terbit) : null)}
+                {row("Sifat Surat", s.sifat_surat)}
+                {row("Jenis Surat", jenisById.get(s.id_jenis_surat)?.nama_jenis)}
+                {row("Klasifikasi", klas ? `${klas.kode_klasifikasi} — ${klas.nama_klasifikasi}` : null)}
+                {row("Bagian Pengirim", departments.find((d) => d.id_bagian === s.id_bagian)?.nama_bagian)}
+                {row("Lampiran", s.lampiran)}
+              </dl>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold">Isi Surat</p>
+                <div className={`rounded-xl border p-4 text-xs leading-relaxed whitespace-pre-wrap min-h-[80px] ${isDark ? "border-white/10 bg-[#0f172a] text-gray-200" : "border-slate-200 bg-slate-50 text-slate-800"}`}>
+                  {s.isi_surat?.trim() || <span className="italic text-slate-500">Isi surat belum diisi.</span>}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                {s.status === "terbit" && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleExport(s)}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl border inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                  >
+                    <Download className="w-3.5 h-3.5" /> Unduh PDF
+                  </button>
+                )}
+                {s.status === "draft" && isAdmin && !readOnly && (
+                  <button
+                    type="button"
+                    disabled={busy || issuanceLocked}
+                    title={issuanceLocked ? issuanceLockReason : "Terbitkan nomor surat resmi"}
+                    onClick={() => handleFinalize(s.id_surat_keluar)}
+                    className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {issuanceLocked ? <Lock className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />} Terbitkan Nomor
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDetailSurat(null)}
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${isDark ? "border-white/10" : "border-slate-300"}`}
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* DETAIL SURAT TUGAS (semua akun; akun baca-saja tanpa tombol ubah) */}
+      {detailTugas && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Detail surat tugas ${detailTugas.maksud_tugas}`}
+          onClick={() => setDetailTugas(null)}
+          onKeyDown={(e) => e.key === "Escape" && setDetailTugas(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-2xl border p-6 space-y-4 shadow-2xl ${isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">Surat Tugas</p>
+                <h2 className="text-base font-bold break-words">{detailTugas.maksud_tugas}</h2>
+                <p className="font-mono text-xs text-slate-500 mt-0.5">{detailTugas.nomor_tugas || "-"}</p>
+              </div>
+              <button type="button" aria-label="Tutup" autoFocus onClick={() => setDetailTugas(null)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {readOnly && (
+              <p className={`text-[11px] font-semibold rounded-lg px-3 py-2 ${isDark ? "bg-white/5 text-gray-300" : "bg-slate-100 text-slate-600"}`}>
+                Mode baca saja: surat tugas ini ditampilkan karena Anda termasuk pegawai pelaksana.
+              </p>
+            )}
+
+            <dl className={`text-xs divide-y ${isDark ? "divide-white/10" : "divide-slate-100"}`}>
+              {([
+                ["Tempat / Lokasi", detailTugas.tempat_tugas],
+                ["Periode", `${formatDate(detailTugas.tanggal_mulai)} – ${formatDate(detailTugas.tanggal_selesai)}`],
+                ["Beban Anggaran", detailTugas.beban_anggaran],
+              ] as const).map(([label, value]) => (
+                <div key={label} className="grid grid-cols-3 gap-2 py-1.5">
+                  <dt className="text-slate-500 font-semibold">{label}</dt>
+                  <dd className={`col-span-2 font-medium ${isDark ? "text-white" : "text-slate-900"}`}>{value || "-"}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-bold flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-slate-400" /> Pegawai Pelaksana ({detailTugas.pelaksana?.length ?? 0})
+              </p>
+              {detailTugas.pelaksana && detailTugas.pelaksana.length > 0 ? (
+                <ul className={`rounded-xl border divide-y text-xs ${isDark ? "border-white/10 divide-white/5" : "border-slate-200 divide-slate-100"}`}>
+                  {detailTugas.pelaksana.map((p) => (
+                    <li key={p.id_pegawai} className="flex items-center justify-between px-3 py-2">
+                      <span className="font-medium">{p.nama ?? `Pegawai #${p.id_pegawai}`}</span>
+                      <span className="text-slate-500">{p.peran_tugas}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs italic text-slate-500">Belum ada pegawai pelaksana tercatat.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setDetailTugas(null)}
+                className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${isDark ? "border-white/10" : "border-slate-300"}`}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* DRAFT MODAL */}
@@ -623,7 +1230,18 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                     ))}
                   </select>
                 ) : (
-                  <input readOnly className={field} value={currentUser?.subbagian || "Akun belum memiliki bagian"} />
+                  <>
+                    <input
+                      readOnly
+                      className={field}
+                      value={departments.find((d) => String(d.id_bagian) === form.id_bagian)?.nama_bagian || currentUser?.subbagian || "Akun belum memiliki bagian"}
+                    />
+                    {!form.id_bagian && (
+                      <span className="block text-[11px] font-semibold text-red-500">
+                        Akun Anda belum terhubung ke bagian di database. Minta administrator mengisi bagian pada profil pegawai Anda.
+                      </span>
+                    )}
+                  </>
                 )}
               </label>
               <label className="space-y-1.5">
@@ -657,8 +1275,100 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               <button type="button" onClick={() => setShowDraftModal(false)} className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${isDark ? "border-white/10" : "border-slate-300"}`}>
                 Batal
               </button>
-              <button type="submit" disabled={busy} className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer">
+              <button type="submit" disabled={busy || !form.id_bagian} className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer">
                 {busy ? "Menyimpan…" : "Simpan Draft"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL TERBITKAN SURAT TUGAS */}
+      {showTugasModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Terbitkan surat tugas">
+          <form
+            onSubmit={handleCreateTugas}
+            className={`w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-2xl border p-6 space-y-4 shadow-2xl ${isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-red-600" /> Terbitkan Surat Tugas
+              </h2>
+              <button type="button" aria-label="Tutup" onClick={() => setShowTugasModal(false)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className={`text-[11px] font-semibold rounded-lg px-3 py-2 ${isDark ? "bg-amber-500/10 text-amber-300" : "bg-amber-50 text-amber-800"}`}>
+              Surat tugas disimpan sebagai draft dengan nomor register internal. Nomor resmi diterbitkan setelah penomoran resmi diaktifkan.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold">
+              <label className="space-y-1.5 md:col-span-2">
+                <span>Maksud Penugasan *</span>
+                <textarea required rows={3} className={field} value={tugasForm.maksud_tugas} onChange={(e) => setTugasForm({ ...tugasForm, maksud_tugas: e.target.value })} placeholder="Contoh: Melaksanakan supervisi pemutakhiran data pemilih" />
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span>Tempat / Lokasi Tugas *</span>
+                <input required className={field} value={tugasForm.tempat_tugas} onChange={(e) => setTugasForm({ ...tugasForm, tempat_tugas: e.target.value })} placeholder="Contoh: KPU Kota Manado" />
+              </label>
+              <label className="space-y-1.5">
+                <span>Tanggal Mulai *</span>
+                <input type="date" required className={field} value={tugasForm.tanggal_mulai} onChange={(e) => setTugasForm({ ...tugasForm, tanggal_mulai: e.target.value })} />
+              </label>
+              <label className="space-y-1.5">
+                <span>Tanggal Selesai *</span>
+                <input type="date" required min={tugasForm.tanggal_mulai} className={field} value={tugasForm.tanggal_selesai} onChange={(e) => setTugasForm({ ...tugasForm, tanggal_selesai: e.target.value })} />
+              </label>
+              <label className="space-y-1.5">
+                <span>Beban Anggaran *</span>
+                <select className={field} value={tugasForm.beban_anggaran} onChange={(e) => setTugasForm({ ...tugasForm, beban_anggaran: e.target.value })}>
+                  {BEBAN_ANGGARAN.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span>Kode Klasifikasi *</span>
+                <select required className={field} value={tugasForm.id_klasifikasi} onChange={(e) => setTugasForm({ ...tugasForm, id_klasifikasi: e.target.value })}>
+                  {klasifikasiList.map((k) => (
+                    <option key={k.id_klasifikasi} value={k.id_klasifikasi}>{k.kode_klasifikasi} — {k.nama_klasifikasi}</option>
+                  ))}
+                </select>
+              </label>
+              {isAdmin && (
+                <label className="space-y-1.5 md:col-span-2">
+                  <span>Bagian Penerbit</span>
+                  <select className={field} value={tugasForm.id_bagian} onChange={(e) => setTugasForm({ ...tugasForm, id_bagian: e.target.value })}>
+                    <option value="">Bagian akun saya</option>
+                    {departments.map((d) => <option key={d.id_bagian} value={d.id_bagian}>{d.nama_bagian}</option>)}
+                  </select>
+                </label>
+              )}
+              <div className="space-y-1.5 md:col-span-2">
+                <span>Pegawai Pelaksana Tugas * ({tugasForm.pelaksana.length} dipilih)</span>
+                <input
+                  aria-label="Cari pegawai"
+                  className={field}
+                  placeholder="Cari nama pegawai…"
+                  value={pelaksanaSearch}
+                  onChange={(e) => setPelaksanaSearch(e.target.value)}
+                />
+                <div className={`max-h-44 overflow-y-auto rounded-xl border divide-y ${isDark ? "border-white/10 divide-white/5" : "border-slate-200 divide-slate-100"}`}>
+                  {pegawaiList
+                    .filter((p) => p.is_active !== false && p.nama.toLowerCase().includes(pelaksanaSearch.toLowerCase()))
+                    .map((p) => (
+                      <label key={p.id_pegawai} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5">
+                        <input type="checkbox" checked={tugasForm.pelaksana.includes(p.id_pegawai)} onChange={() => togglePelaksana(p.id_pegawai)} />
+                        <span className="font-medium">{p.nama}</span>
+                      </label>
+                    ))}
+                  {pegawaiList.length === 0 && <p className="px-3 py-4 text-center text-slate-500">Data pegawai belum tersedia.</p>}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setShowTugasModal(false)} className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${isDark ? "border-white/10" : "border-slate-300"}`}>
+                Batal
+              </button>
+              <button type="submit" disabled={busy} className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer">
+                {busy ? "Menyimpan…" : "Simpan Surat Tugas"}
               </button>
             </div>
           </form>
@@ -678,7 +1388,6 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               try {
                 setIsSubmittingKlasifikasi(true)
                 await createKlasifikasi(klasifikasiForm)
-                notify("success", `Kode klasifikasi ${klasifikasiForm.kode_klasifikasi} berhasil didaftarkan`)
                 setShowKlasifikasiModal(false)
                 setKlasifikasiForm({
                   kode_klasifikasi: "",
@@ -690,8 +1399,8 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                   hak_akses: "Terbatas",
                 })
                 await load()
-              } catch (err: any) {
-                notify("error", err.message || "Gagal menambahkan kode klasifikasi")
+              } catch {
+                // The global notification already shows the server's message; keep the form open to fix it.
               } finally {
                 setIsSubmittingKlasifikasi(false)
               }

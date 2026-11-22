@@ -12,6 +12,8 @@ from app.schemas.arsip import (
     DokumenArsipUpdate,
     DokumenArsipResponse,
     FilterOptionsResponse,
+    PermintaanHapusRequest,
+    TolakHapusRequest,
 )
 from app.services.arsip import arsip
 
@@ -19,7 +21,7 @@ router = APIRouter()
 
 @router.get("/filter-options", response_model=FilterOptionsResponse)
 async def get_filter_options(
-    user: Pegawai = Depends(require_admin),
+    user: Pegawai = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
@@ -27,6 +29,16 @@ async def get_filter_options(
     Zero hardcoded values.
     """
     return await arsip.get_filter_options(db, status_hapus=False)
+
+@router.post("/sinkronkan")
+async def sinkronkan_arsip(
+    user: Pegawai = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Copy every letter and budget evidence file into the archive (idempotent)."""
+    from app.services.arsip_sync import sync_all
+    counts = await sync_all(db)
+    return {"status": "success", **counts}
 
 @router.get("/trash", response_model=List[DokumenArsipResponse])
 async def read_trash_arsip(
@@ -40,6 +52,9 @@ async def read_trash_arsip(
     kategori: Optional[str] = Query(None, description="Filter kategori"),
     hak_akses: Optional[str] = Query(None, description="Filter hak akses"),
     sub_bagian: Optional[str] = Query(None, description="Filter sub bagian"),
+    sumber_modul: Optional[str] = Query(None, pattern="^(arsip|surat|realisasi)$", description="Modul asal dokumen"),
+    sub_kategori: Optional[str] = Query(None, description="Sub-kategori dalam modul asal"),
+    hapus_status: Optional[str] = Query(None, pattern="^(diajukan|ditolak)$", description="Status permintaan hapus permanen"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> Any:
@@ -55,6 +70,9 @@ async def read_trash_arsip(
         kategori=kategori,
         hak_akses=hak_akses,
         sub_bagian=sub_bagian,
+        sumber_modul=sumber_modul,
+        sub_kategori=sub_kategori,
+        hapus_status=hapus_status,
         status_hapus=True,
         viewer=current_user,
         skip=skip,
@@ -75,6 +93,8 @@ async def read_arsip(
     kategori: Optional[str] = Query(None, description="Filter kategori"),
     hak_akses: Optional[str] = Query(None, description="Filter hak akses"),
     sub_bagian: Optional[str] = Query(None, description="Filter sub bagian"),
+    sumber_modul: Optional[str] = Query(None, pattern="^(arsip|surat|realisasi)$", description="Modul asal dokumen"),
+    sub_kategori: Optional[str] = Query(None, description="Sub-kategori dalam modul asal"),
     status_hapus: bool = Query(False, description="Status hapus (default false untuk arsip aktif)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -91,6 +111,8 @@ async def read_arsip(
         kategori=kategori,
         hak_akses=hak_akses,
         sub_bagian=sub_bagian,
+        sumber_modul=sumber_modul,
+        sub_kategori=sub_kategori,
         status_hapus=status_hapus,
         viewer=current_user,
         skip=skip,
@@ -116,7 +138,8 @@ async def create_arsip(
     if not arsip_in.id_klasifikasi:
         from app.models.schema import KodeKlasifikasiArsip
         first_klas = await db.scalar(select(KodeKlasifikasiArsip.id_klasifikasi).order_by(KodeKlasifikasiArsip.id_klasifikasi))
-        arsip_in.id_klasifikasi = first_klas or 1
+        # Classification is optional for general uploads; leave it empty when none exist yet.
+        arsip_in.id_klasifikasi = first_klas
 
     if arsip_in.file_path:
         from app.models.schema import FileRecord
@@ -265,6 +288,62 @@ async def permanent_delete_arsip(
     db_obj = await arsip.get_by_id(db, id_dokumen=id_dokumen)
     if not db_obj:
         raise HTTPException(status_code=404, detail="Dokumen arsip tidak ditemukan")
+    if not db_obj.status_hapus:
+        raise HTTPException(409, "Pindahkan dokumen ke tempat sampah sebelum menghapus permanen")
+    if not is_admin(current_user):
+        raise HTTPException(403, "Hapus permanen memerlukan persetujuan administrator. Gunakan \"Ajukan Hapus Permanen\".")
+    if db_obj.ref_tipe:
+        # Synced documents would be re-created by the next sync; they stay in the trash instead.
+        raise HTTPException(409, "Dokumen ini berasal dari modul Surat Menyurat/Realisasi Anggaran dan hanya dapat dipindahkan ke tempat sampah")
 
     deleted_obj = await arsip.permanent_delete(db, id_dokumen=id_dokumen)
     return {"status": "success", "message": f"Dokumen {id_dokumen} berhasil dihapus permanen"}
+
+
+@router.post("/{id_dokumen}/ajukan-hapus", response_model=DokumenArsipResponse)
+async def ajukan_hapus_permanen(
+    *,
+    db: AsyncSession = Depends(get_db),
+    id_dokumen: int,
+    payload: PermintaanHapusRequest,
+    current_user: Pegawai = Depends(get_current_user),
+) -> Any:
+    """Request permanent deletion of a trashed document; an administrator must approve it."""
+    db_obj = await arsip.get_by_id(db, id_dokumen=id_dokumen)
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Dokumen arsip tidak ditemukan")
+    if not db_obj.status_hapus:
+        raise HTTPException(409, "Pindahkan dokumen ke tempat sampah sebelum mengajukan hapus permanen")
+    if db_obj.ref_tipe:
+        raise HTTPException(409, "Dokumen ini berasal dari modul Surat Menyurat/Realisasi Anggaran dan tidak dapat dihapus permanen")
+    if not is_admin(current_user) and current_user.id_pegawai not in (db_obj.id_pegawai, db_obj.dihapus_oleh):
+        raise HTTPException(403, "Hanya pemilik dokumen atau yang memindahkannya ke tempat sampah yang dapat mengajukan")
+    if db_obj.hapus_status == "diajukan":
+        raise HTTPException(409, "Permintaan hapus permanen sudah diajukan dan menunggu persetujuan administrator")
+    db_obj.hapus_status = "diajukan"
+    db_obj.pengaju_hapus = current_user  # sets hapus_diajukan_oleh and the name shown to admins
+    db_obj.hapus_diajukan_pada = datetime.now()
+    db_obj.hapus_alasan = payload.alasan.strip()
+    db_obj.hapus_catatan_admin = None
+    await db.commit()
+    return await arsip.get_by_id(db, id_dokumen=id_dokumen)
+
+
+@router.post("/{id_dokumen}/tolak-hapus", response_model=DokumenArsipResponse)
+async def tolak_hapus_permanen(
+    *,
+    db: AsyncSession = Depends(get_db),
+    id_dokumen: int,
+    payload: TolakHapusRequest,
+    current_user: Pegawai = Depends(require_admin),
+) -> Any:
+    """Administrator rejects a permanent-deletion request; the document stays in the trash."""
+    db_obj = await arsip.get_by_id(db, id_dokumen=id_dokumen)
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Dokumen arsip tidak ditemukan")
+    if db_obj.hapus_status != "diajukan":
+        raise HTTPException(409, "Tidak ada permintaan hapus permanen yang menunggu untuk dokumen ini")
+    db_obj.hapus_status = "ditolak"
+    db_obj.hapus_catatan_admin = payload.catatan.strip()
+    await db.commit()
+    return await arsip.get_by_id(db, id_dokumen=id_dokumen)
