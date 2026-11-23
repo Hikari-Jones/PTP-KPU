@@ -2,7 +2,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import HTTPException, status
-from sqlalchemy import desc, func, or_, select, String
+from sqlalchemy import and_, desc, func, or_, select, String
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -127,10 +128,49 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             deskripsi=obj_in.deskripsi,
             id_pegawai_pembuat=current_user_id or obj_in.id_pegawai_pembuat,
         )
-        db.add(db_obj)
-        await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+        try:
+            db.add(db_obj)
+            await db.flush()  # Flush to generate id_tahun_anggaran within current transaction
+
+            # Auto-create Pagu Anggaran for all active AkunAnggaran atomically (PHASE 4)
+            active_accounts_stmt = (
+                select(AkunAnggaran)
+                .where(AkunAnggaran.status == "active")
+                .order_by(AkunAnggaran.id_akun_anggaran.asc())
+            )
+            acc_res = await db.execute(active_accounts_stmt)
+            active_accounts = list(acc_res.scalars().all())
+
+            if active_accounts:
+                # Query existing pagu for this year to guarantee idempotency against duplicates
+                existing_pagu_stmt = select(PaguAnggaran.id_akun_anggaran).where(
+                    PaguAnggaran.id_tahun_anggaran == db_obj.id_tahun_anggaran
+                )
+                existing_pagu_res = await db.execute(existing_pagu_stmt)
+                existing_akun_ids = set(existing_pagu_res.scalars().all())
+
+                for acc in active_accounts:
+                    if acc.id_akun_anggaran not in existing_akun_ids:
+                        pagu_item = PaguAnggaran(
+                            id_tahun_anggaran=db_obj.id_tahun_anggaran,
+                            id_akun_anggaran=acc.id_akun_anggaran,
+                            pagu_awal=Decimal("0.00"),
+                            pagu_aktif=Decimal("0.00"),
+                            nomor_sk=None,
+                            tanggal_sk=None,
+                            keterangan=f"Alokasi Pagu Awal TA {db_obj.tahun}",
+                        )
+                        db.add(pagu_item)
+
+            await db.commit()
+            await db.refresh(db_obj)
+            return db_obj
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tahun anggaran {obj_in.tahun} sudah terdaftar",
+            )
 
     async def update_tahun(self, db: AsyncSession, *, id_tahun: int, obj_in: TahunAnggaranUpdate) -> TahunAnggaran:
         db_obj = await self.get(db, id_tahun)
@@ -142,13 +182,33 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
 
         update_data = obj_in.model_dump(exclude_unset=True)
 
-        # If tahun is updated, ensure uniqueness
+        # If tahun is updated, ensure uniqueness and prevent modifying year if active/closed
         if "tahun" in update_data and update_data["tahun"] != db_obj.tahun:
+            if db_obj.status in ["active", "closed"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Nomor tahun anggaran tidak dapat diubah karena status tahun sudah '{db_obj.status}'",
+                )
             existing = await self.get_by_tahun(db, update_data["tahun"])
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Tahun anggaran {update_data['tahun']} sudah digunakan",
+                )
+
+        # Validate Lifecycle State Transitions (draft -> active -> closed)
+        if "status" in update_data and update_data["status"] != db_obj.status:
+            new_status = update_data["status"]
+            current_status = db_obj.status
+            allowed_transitions = {
+                "draft": ["active"],
+                "active": ["closed"],
+                "closed": [],  # Terminal state: cannot be reopened to draft or active
+            }
+            if new_status not in allowed_transitions.get(current_status, []):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Transisi status tahun anggaran dari '{current_status}' ke '{new_status}' tidak diizinkan",
                 )
 
         # Date check
@@ -264,6 +324,12 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
         sisa = total_pagu - total_verified
         persentase = float((total_verified / total_pagu) * 100) if total_pagu > 0 else 0.0
 
+        nama_pembuat = None
+        if t.id_pegawai_pembuat:
+            pegawai_obj = await db.get(Pegawai, t.id_pegawai_pembuat)
+            if pegawai_obj:
+                nama_pembuat = pegawai_obj.nama
+
         return {
             "id_tahun_anggaran": t.id_tahun_anggaran,
             "tahun": t.tahun,
@@ -272,7 +338,7 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             "tanggal_selesai": t.tanggal_selesai,
             "deskripsi": t.deskripsi,
             "id_pegawai_pembuat": t.id_pegawai_pembuat,
-            "nama_pembuat": t.pembuat.nama if t.pembuat else None,
+            "nama_pembuat": nama_pembuat,
             "total_pagu": total_pagu,
             "total_realisasi_verified": total_verified,
             "sisa_anggaran": sisa,
@@ -326,6 +392,41 @@ class CRUDAkunAnggaran(CRUDBase[AkunAnggaran, AkunAnggaranCreate, AkunAnggaranUp
             status=obj_in.status,
         )
         db.add(db_obj)
+        await db.flush()  # Flush to generate id_akun_anggaran within current transaction
+
+        # Auto-create Pagu Anggaran for all relevant fiscal years (status in 'draft', 'active') (PHASE 5)
+        # Note: 'closed' fiscal years are historical and must never receive new pagu allocations.
+        # Only create pagu if the newly created account has status == 'active'.
+        if db_obj.status == "active":
+            relevant_years_stmt = (
+                select(TahunAnggaran)
+                .where(TahunAnggaran.status.in_(["draft", "active"]))
+                .order_by(TahunAnggaran.tahun.asc())
+            )
+            years_res = await db.execute(relevant_years_stmt)
+            relevant_years = list(years_res.scalars().all())
+
+            if relevant_years:
+                # Query existing pagu for this account to guarantee idempotency against duplicates
+                existing_pagu_stmt = select(PaguAnggaran.id_tahun_anggaran).where(
+                    PaguAnggaran.id_akun_anggaran == db_obj.id_akun_anggaran
+                )
+                existing_pagu_res = await db.execute(existing_pagu_stmt)
+                existing_year_ids = set(existing_pagu_res.scalars().all())
+
+                for yr in relevant_years:
+                    if yr.id_tahun_anggaran not in existing_year_ids:
+                        pagu_item = PaguAnggaran(
+                            id_tahun_anggaran=yr.id_tahun_anggaran,
+                            id_akun_anggaran=db_obj.id_akun_anggaran,
+                            pagu_awal=Decimal("0.00"),
+                            pagu_aktif=Decimal("0.00"),
+                            nomor_sk=None,
+                            tanggal_sk=None,
+                            keterangan=f"Alokasi Pagu Awal TA {yr.tahun}",
+                        )
+                        db.add(pagu_item)
+
         await db.commit()
         await db.refresh(db_obj)
         return await self.get_detail(db, db_obj.id_akun_anggaran)
@@ -564,6 +665,14 @@ class CRUDPaguAnggaran(CRUDBase[PaguAnggaran, PaguAnggaranCreate, PaguAnggaranUp
                 detail="Pagu anggaran tidak ditemukan",
             )
 
+        # Check fiscal year status: cannot modify pagu on closed years
+        tahun = await db.get(TahunAnggaran, db_obj.id_tahun_anggaran)
+        if tahun and tahun.status == "closed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tidak dapat mengubah alokasi pagu pada tahun anggaran {tahun.tahun} yang sudah ditutup (closed)",
+            )
+
         update_data = obj_in.model_dump(exclude_unset=True)
         for field, val in update_data.items():
             setattr(db_obj, field, val)
@@ -579,6 +688,14 @@ class CRUDPaguAnggaran(CRUDBase[PaguAnggaran, PaguAnggaranCreate, PaguAnggaranUp
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Pagu anggaran tidak ditemukan",
+            )
+
+        # Check fiscal year status: cannot delete pagu on closed years
+        tahun = await db.get(TahunAnggaran, db_obj.id_tahun_anggaran)
+        if tahun and tahun.status == "closed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tidak dapat menghapus alokasi pagu pada tahun anggaran {tahun.tahun} yang sudah ditutup (closed)",
             )
 
         # Check references in realisasi_anggaran
@@ -931,7 +1048,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         res = await db.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def create_draft(
+    async def create_realisasi_direct(
         self,
         db: AsyncSession,
         *,
@@ -939,10 +1056,20 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         id_pegawai: int,
     ) -> RealisasiAnggaran:
         """
-        Creates a new draft transaction.
-        - id_pagu is mandatory for new transactions.
-        - id_akun_anggaran is automatically resolved from pagu_anggaran.
-        - status starts as 'draft' (not counted in budget realization).
+        DIRECT WORKFLOW (NEW REQUIREMENT):
+        Input -> Backend Validasi -> Langsung Approved/Verified.
+        - Memastikan id_pagu valid dan tersedia.
+        - Memvalidasi Tahun Anggaran:
+            * 'active': dizinkan
+            * 'draft': ditolak (Tahun anggaran belum aktif dan belum dapat menerima realisasi)
+            * 'closed': ditolak (Tahun anggaran sudah ditutup dan tidak dapat menerima transaksi baru)
+        - Menjalankan Database Row-Level Locking (with_for_update) pada PaguAnggaran
+        - Menghitung sisa anggaran aktif secara atomik:
+            * Sisa = pagu_aktif - total_realisasi_verified
+            * Jika jumlah_realisasi > sisa_anggaran -> ditolak (HTTP 400)
+        - Langsung menyimpan transaksi dengan status = 'verified'
+        - verified_at diisi timestamp sistem saat validasi berhasil
+        - id_verifier dibiarkan None (karena verifikasi otomatis oleh sistem, bukan manual Admin)
         """
         if obj_in.jumlah_realisasi <= 0:
             raise HTTPException(
@@ -950,7 +1077,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
                 detail="Jumlah realisasi transaksi harus lebih besar dari 0",
             )
 
-        # Validate Pegawai
+        # 1. Validate Pegawai / Operator
         pegawai = await db.get(Pegawai, id_pegawai)
         if not pegawai:
             raise HTTPException(
@@ -958,11 +1085,12 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
                 detail=f"Pegawai dengan ID {id_pegawai} tidak ditemukan",
             )
 
-        # Validate PaguAnggaran and fiscal year
+        # 2. Lock PaguAnggaran and validate existence & fiscal year with row-level lock
         pagu_stmt = (
             select(PaguAnggaran)
             .options(selectinload(PaguAnggaran.tahun_anggaran))
             .where(PaguAnggaran.id_pagu == obj_in.id_pagu)
+            .with_for_update()
         )
         pagu_res = await db.execute(pagu_stmt)
         pagu = pagu_res.scalar_one_or_none()
@@ -972,31 +1100,84 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
                 detail=f"Pagu anggaran dengan ID {obj_in.id_pagu} tidak ditemukan",
             )
 
-        if pagu.tahun_anggaran.status == "closed":
+        # 3. Validate Fiscal Year Status
+        tahun_obj = pagu.tahun_anggaran
+        if not tahun_obj:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Tahun anggaran sudah ditutup (closed), transaksi baru ditolak",
+                detail="Pagu anggaran tidak terhubung dengan tahun anggaran yang valid",
             )
 
+        if tahun_obj.status == "draft":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tahun anggaran {tahun_obj.tahun} belum aktif (draft) dan belum dapat menerima realisasi",
+            )
+        elif tahun_obj.status == "closed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tahun anggaran {tahun_obj.tahun} sudah ditutup (closed) dan tidak dapat menerima transaksi baru",
+            )
+        elif tahun_obj.status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Status tahun anggaran {tahun_obj.tahun} ({tahun_obj.status}) tidak mengizinkan transaksi baru",
+            )
+
+        # 4. Atomic calculation of verified realization under row lock (LOCK IN SHARE MODE guarantees fresh read)
+        sum_stmt = (
+            select(func.coalesce(func.sum(RealisasiAnggaran.jumlah_realisasi), Decimal("0.00")))
+            .where(
+                RealisasiAnggaran.id_pagu == obj_in.id_pagu,
+                RealisasiAnggaran.status == "verified",
+            )
+            .with_for_update(read=True)
+        )
+        sum_res = await db.execute(sum_stmt)
+        current_verified = Decimal(str(sum_res.scalar_one() or 0))
+
+        pagu_aktif = pagu.pagu_aktif or Decimal("0.00")
+        available_budget = pagu_aktif - current_verified
+
+        if obj_in.jumlah_realisasi > available_budget:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Jumlah realisasi ({obj_in.jumlah_realisasi:,.2f}) melebihi sisa anggaran yang tersedia ({available_budget:,.2f})",
+            )
+
+        # 5. Insert directly as verified (no manual admin verifier needed)
         db_obj = RealisasiAnggaran(
             id_pagu=obj_in.id_pagu,
             id_akun_anggaran=pagu.id_akun_anggaran,
             id_pegawai=id_pegawai,
+            id_verifier=None,  # Tidak ada klaim verifikasi admin palsu
             tanggal_transaksi=obj_in.tanggal_transaksi,
             nomor_dokumen=obj_in.nomor_dokumen.strip(),
             uraian_kegiatan=obj_in.uraian_kegiatan.strip(),
             jumlah_realisasi=obj_in.jumlah_realisasi,
-            status="draft",
+            status="verified",  # Langsung final & sah
             periode=obj_in.periode,
             bukti_file_path=obj_in.bukti_file_path,
             bukti_file_nama=obj_in.bukti_file_nama,
             bukti_file_ukuran=obj_in.bukti_file_ukuran,
             bukti_file_mime=obj_in.bukti_file_mime,
+            catatan_verifikasi="Validasi otomatis sistem (Direct Realisasi)",
+            verified_at=datetime.now(),
         )
         db.add(db_obj)
         await db.commit()
         await db.refresh(db_obj)
         return await self.get_detail(db, db_obj.id_realisasi)
+
+    # Alias / backward compatibility wrapper for legacy callers
+    async def create_draft(
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: RealisasiAnggaranCreateDraft,
+        id_pegawai: int,
+    ) -> RealisasiAnggaran:
+        return await self.create_realisasi_direct(db, obj_in=obj_in, id_pegawai=id_pegawai)
 
     async def update_draft(
         self,
@@ -1230,6 +1411,7 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
         id_tahun_anggaran: Optional[int] = None,
         id_akun_anggaran: Optional[int] = None,
         id_bagian: Optional[int] = None,
+        bulan: Optional[int] = None,
         tanggal_mulai: Optional[date] = None,
         tanggal_selesai: Optional[date] = None,
         skip: int = 0,
@@ -1242,6 +1424,8 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
             conditions.append(RealisasiAnggaran.id_pagu == id_pagu)
         if id_akun_anggaran:
             conditions.append(RealisasiAnggaran.id_akun_anggaran == id_akun_anggaran)
+        if bulan:
+            conditions.append(func.extract('month', RealisasiAnggaran.tanggal_transaksi) == bulan)
         if tanggal_mulai:
             conditions.append(RealisasiAnggaran.tanggal_transaksi >= tanggal_mulai)
         if tanggal_selesai:
@@ -1333,22 +1517,23 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
 # 6. DASHBOARD & AGGREGATE SUMMARY SERVICE
 # =========================================================
 
-async def get_dashboard_summary(db: AsyncSession, id_tahun_anggaran: Optional[int] = None) -> Dict[str, Any]:
+async def get_dashboard_summary(
+    db: AsyncSession,
+    id_tahun_anggaran: Optional[int] = None,
+    id_akun_anggaran: Optional[int] = None,
+    id_bagian: Optional[int] = None,
+    bulan: Optional[int] = None,
+) -> Dict[str, Any]:
     """
-    Calculates macro aggregate budget summary for active fiscal year or specified year.
-    Returns:
-    - total_pagu_aktif
-    - total_realisasi_verified
-    - total_sisa_anggaran
-    - persentase_serapan
-    - id_tahun_anggaran
-    - tahun
+    Calculates macro aggregate budget summary and 12-month recap for active fiscal year or specified year.
+    Optionally filters by specific account (id_akun_anggaran), bagian (id_bagian), and/or month (bulan 1-12).
     """
     if not id_tahun_anggaran:
         active_yr = await tahun_anggaran.get_active_year(db)
         if active_yr:
             id_tahun_anggaran = active_yr.id_tahun_anggaran
             tahun_val = active_yr.tahun
+            yr = active_yr
         else:
             # fallback to latest year
             latest_stmt = select(TahunAnggaran).order_by(desc(TahunAnggaran.tahun)).limit(1)
@@ -1357,34 +1542,59 @@ async def get_dashboard_summary(db: AsyncSession, id_tahun_anggaran: Optional[in
             if latest_yr:
                 id_tahun_anggaran = latest_yr.id_tahun_anggaran
                 tahun_val = latest_yr.tahun
+                yr = latest_yr
             else:
                 return {
                     "id_tahun_anggaran": None,
                     "tahun": None,
+                    "status_tahun": None,
+                    "id_akun_anggaran": id_akun_anggaran,
+                    "id_bagian": id_bagian,
+                    "bulan": bulan,
                     "total_pagu_aktif": Decimal("0.00"),
                     "total_realisasi_verified": Decimal("0.00"),
                     "total_sisa_anggaran": Decimal("0.00"),
                     "persentase_serapan": 0.0,
+                    "total_transaksi_draft": 0,
+                    "total_transaksi_submitted": 0,
+                    "total_transaksi_verified": 0,
+                    "total_transaksi_rejected": 0,
+                    "monthly_recap": [],
                 }
     else:
         yr = await db.get(TahunAnggaran, id_tahun_anggaran)
         tahun_val = yr.tahun if yr else None
 
-    # Total pagu aktif for this year
+    # 1. Total Pagu Aktif for this year (and optionally account / bagian)
+    pagu_conditions = [PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran]
+    if id_akun_anggaran:
+        pagu_conditions.append(PaguAnggaran.id_akun_anggaran == id_akun_anggaran)
+    if id_bagian:
+        pagu_conditions.append(PaguAnggaran.akun_anggaran.has(AkunAnggaran.id_bagian == id_bagian))
+
     pagu_sum_stmt = select(
         func.coalesce(func.sum(PaguAnggaran.pagu_aktif), Decimal("0.00"))
-    ).where(PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran)
+    ).where(and_(*pagu_conditions))
     pagu_res = await db.execute(pagu_sum_stmt)
     total_pagu = Decimal(str(pagu_res.scalar_one() or 0))
 
-    # Total verified realization for this year
+    # 2. Base Realisasi Filter Conditions
+    real_conditions = [
+        PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran,
+        RealisasiAnggaran.status == "verified",
+    ]
+    if id_akun_anggaran:
+        real_conditions.append(PaguAnggaran.id_akun_anggaran == id_akun_anggaran)
+    if id_bagian:
+        real_conditions.append(PaguAnggaran.akun_anggaran.has(AkunAnggaran.id_bagian == id_bagian))
+    if bulan:
+        real_conditions.append(func.extract("month", RealisasiAnggaran.tanggal_transaksi) == bulan)
+
+    # Total verified realization for this query
     real_sum_stmt = (
         select(func.coalesce(func.sum(RealisasiAnggaran.jumlah_realisasi), Decimal("0.00")))
         .join(PaguAnggaran, RealisasiAnggaran.id_pagu == PaguAnggaran.id_pagu)
-        .where(
-            PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran,
-            RealisasiAnggaran.status == "verified",
-        )
+        .where(and_(*real_conditions))
     )
     real_res = await db.execute(real_sum_stmt)
     total_verified = Decimal(str(real_res.scalar_one() or 0))
@@ -1392,15 +1602,23 @@ async def get_dashboard_summary(db: AsyncSession, id_tahun_anggaran: Optional[in
     sisa = total_pagu - total_verified
     persentase = float((total_verified / total_pagu) * 100) if total_pagu > 0 else 0.0
 
-    # Count transactions by status for this year
+    # 3. Count transactions by status for this filter scope
     async def get_tx_count(status_name: str) -> int:
+        c_conditions = [
+            PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran,
+            RealisasiAnggaran.status == status_name,
+        ]
+        if id_akun_anggaran:
+            c_conditions.append(PaguAnggaran.id_akun_anggaran == id_akun_anggaran)
+        if id_bagian:
+            c_conditions.append(PaguAnggaran.akun_anggaran.has(AkunAnggaran.id_bagian == id_bagian))
+        if bulan:
+            c_conditions.append(func.extract("month", RealisasiAnggaran.tanggal_transaksi) == bulan)
+
         c_stmt = (
             select(func.count(RealisasiAnggaran.id_realisasi))
             .join(PaguAnggaran, RealisasiAnggaran.id_pagu == PaguAnggaran.id_pagu)
-            .where(
-                PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran,
-                RealisasiAnggaran.status == status_name,
-            )
+            .where(and_(*c_conditions))
         )
         c_res = await db.execute(c_stmt)
         return int(c_res.scalar_one() or 0)
@@ -1410,12 +1628,56 @@ async def get_dashboard_summary(db: AsyncSession, id_tahun_anggaran: Optional[in
     verified_cnt = await get_tx_count("verified")
     rejected_cnt = await get_tx_count("rejected")
 
-    status_val = yr.status if 'yr' in locals() and yr else (active_yr.status if 'active_yr' in locals() and active_yr else None)
+    # 4. Rekap 12 Bulan (Januari - Desember) dari transaksi VERIFIED
+    monthly_conditions = [
+        PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran,
+        RealisasiAnggaran.status == "verified",
+    ]
+    if id_akun_anggaran:
+        monthly_conditions.append(PaguAnggaran.id_akun_anggaran == id_akun_anggaran)
+    if id_bagian:
+        monthly_conditions.append(PaguAnggaran.akun_anggaran.has(AkunAnggaran.id_bagian == id_bagian))
+
+    month_col = func.extract("month", RealisasiAnggaran.tanggal_transaksi).label("m_idx")
+    monthly_stmt = (
+        select(
+            month_col,
+            func.coalesce(func.sum(RealisasiAnggaran.jumlah_realisasi), Decimal("0.00")).label("m_total"),
+            func.count(RealisasiAnggaran.id_realisasi).label("m_count"),
+        )
+        .join(PaguAnggaran, RealisasiAnggaran.id_pagu == PaguAnggaran.id_pagu)
+        .where(and_(*monthly_conditions))
+        .group_by(month_col)
+    )
+    monthly_rows = (await db.execute(monthly_stmt)).all()
+    monthly_map = {int(r.m_idx): (Decimal(str(r.m_total or 0)), int(r.m_count or 0)) for r in monthly_rows}
+
+    bulan_names = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ]
+
+    monthly_recap = []
+    for m in range(1, 13):
+        m_real, m_cnt = monthly_map.get(m, (Decimal("0.00"), 0))
+        m_pct = round(float((m_real / total_pagu) * 100), 2) if total_pagu > 0 else 0.0
+        monthly_recap.append({
+            "bulan": m,
+            "nama_bulan": bulan_names[m - 1],
+            "total_realisasi_verified": m_real,
+            "persentase_serapan": m_pct,
+            "total_transaksi_verified": m_cnt,
+        })
+
+    status_val = yr.status if 'yr' in locals() and yr else None
 
     return {
         "id_tahun_anggaran": id_tahun_anggaran,
         "tahun": tahun_val,
         "status_tahun": status_val,
+        "id_akun_anggaran": id_akun_anggaran,
+        "id_bagian": id_bagian,
+        "bulan": bulan,
         "total_pagu_aktif": total_pagu,
         "total_realisasi_verified": total_verified,
         "total_sisa_anggaran": sisa,
@@ -1424,7 +1686,173 @@ async def get_dashboard_summary(db: AsyncSession, id_tahun_anggaran: Optional[in
         "total_transaksi_submitted": submitted_cnt,
         "total_transaksi_verified": verified_cnt,
         "total_transaksi_rejected": rejected_cnt,
+        "monthly_recap": monthly_recap,
     }
+
+
+async def get_monthly_report(
+    db: AsyncSession,
+    id_tahun_anggaran: Optional[int] = None,
+    id_akun_anggaran: Optional[int] = None,
+    id_bagian: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Generates a 12-month budget realization report aggregated by account for a specific fiscal year.
+    Matches the authoritative backend calculations:
+    - Annual Pagu per account (not divided by 12)
+    - Monthly realization Jan-Dec based on verified transactions' tanggal_transaksi
+    - Total realization, remaining budget, and percentage per account and overall total.
+    """
+    if not id_tahun_anggaran:
+        active_yr = await tahun_anggaran.get_active_year(db)
+        if active_yr:
+            id_tahun_anggaran = active_yr.id_tahun_anggaran
+            tahun_val = active_yr.tahun
+            status_val = active_yr.status
+        else:
+            latest_stmt = select(TahunAnggaran).order_by(desc(TahunAnggaran.tahun)).limit(1)
+            latest_res = await db.execute(latest_stmt)
+            latest_yr = latest_res.scalar_one_or_none()
+            if latest_yr:
+                id_tahun_anggaran = latest_yr.id_tahun_anggaran
+                tahun_val = latest_yr.tahun
+                status_val = latest_yr.status
+            else:
+                return {
+                    "id_tahun_anggaran": None,
+                    "tahun": None,
+                    "status_tahun": None,
+                    "rows": [],
+                    "total": {
+                        "pagu": Decimal("0.00"),
+                        "januari": Decimal("0.00"),
+                        "februari": Decimal("0.00"),
+                        "maret": Decimal("0.00"),
+                        "april": Decimal("0.00"),
+                        "mei": Decimal("0.00"),
+                        "juni": Decimal("0.00"),
+                        "juli": Decimal("0.00"),
+                        "agustus": Decimal("0.00"),
+                        "september": Decimal("0.00"),
+                        "oktober": Decimal("0.00"),
+                        "november": Decimal("0.00"),
+                        "desember": Decimal("0.00"),
+                        "total_realisasi": Decimal("0.00"),
+                        "sisa_anggaran": Decimal("0.00"),
+                        "persentase_realisasi": 0.0,
+                    },
+                }
+    else:
+        yr = await db.get(TahunAnggaran, id_tahun_anggaran)
+        tahun_val = yr.tahun if yr else None
+        status_val = yr.status if yr else None
+
+    # Query 1: Fetch all PaguAnggaran for the selected fiscal year with joined AkunAnggaran and Bagian
+    pagu_stmt = (
+        select(PaguAnggaran)
+        .options(
+            selectinload(PaguAnggaran.akun_anggaran).selectinload(AkunAnggaran.bagian)
+        )
+        .where(PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran)
+    )
+    if id_akun_anggaran:
+        pagu_stmt = pagu_stmt.where(PaguAnggaran.id_akun_anggaran == id_akun_anggaran)
+    if id_bagian:
+        pagu_stmt = pagu_stmt.where(PaguAnggaran.akun_anggaran.has(AkunAnggaran.id_bagian == id_bagian))
+
+    pagu_stmt = pagu_stmt.order_by(PaguAnggaran.id_pagu.asc())
+    pagu_results = (await db.execute(pagu_stmt)).scalars().all()
+
+    # Query 2: Aggregate verified realizations by (id_akun_anggaran, month) in a single query
+    real_stmt = (
+        select(
+            PaguAnggaran.id_akun_anggaran,
+            func.extract("month", RealisasiAnggaran.tanggal_transaksi).label("m_idx"),
+            func.coalesce(func.sum(RealisasiAnggaran.jumlah_realisasi), Decimal("0.00")).label("m_total"),
+        )
+        .join(PaguAnggaran, RealisasiAnggaran.id_pagu == PaguAnggaran.id_pagu)
+        .where(
+            PaguAnggaran.id_tahun_anggaran == id_tahun_anggaran,
+            RealisasiAnggaran.status == "verified",
+        )
+    )
+    if id_akun_anggaran:
+        real_stmt = real_stmt.where(PaguAnggaran.id_akun_anggaran == id_akun_anggaran)
+    if id_bagian:
+        real_stmt = real_stmt.where(PaguAnggaran.akun_anggaran.has(AkunAnggaran.id_bagian == id_bagian))
+
+    real_stmt = real_stmt.group_by(
+        PaguAnggaran.id_akun_anggaran,
+        func.extract("month", RealisasiAnggaran.tanggal_transaksi),
+    )
+    real_rows = (await db.execute(real_stmt)).all()
+
+    # Map: (id_akun_anggaran, month) -> total
+    account_month_map: Dict[Tuple[int, int], Decimal] = {}
+    for r in real_rows:
+        account_month_map[(int(r.id_akun_anggaran), int(r.m_idx))] = Decimal(str(r.m_total or 0))
+
+    # Build row items
+    month_keys = [
+        "januari", "februari", "maret", "april", "mei", "juni",
+        "juli", "agustus", "september", "oktober", "november", "desember"
+    ]
+
+    tot_pagu = Decimal("0.00")
+    tot_months = {k: Decimal("0.00") for k in month_keys}
+    tot_realisasi = Decimal("0.00")
+
+    rows = []
+    for p in pagu_results:
+        akun = p.akun_anggaran
+        acc_pagu = Decimal(str(p.pagu_aktif or 0))
+        tot_pagu += acc_pagu
+
+        row_months: Dict[str, Decimal] = {}
+        row_total_real = Decimal("0.00")
+
+        for m_idx in range(1, 13):
+            m_key = month_keys[m_idx - 1]
+            m_val = account_month_map.get((p.id_akun_anggaran, m_idx), Decimal("0.00"))
+            row_months[m_key] = m_val
+            row_total_real += m_val
+            tot_months[m_key] += m_val
+
+        tot_realisasi += row_total_real
+        row_sisa = acc_pagu - row_total_real
+        row_pct = round(float((row_total_real / acc_pagu) * 100), 2) if acc_pagu > 0 else 0.0
+
+        rows.append({
+            "id_akun_anggaran": p.id_akun_anggaran,
+            "kode_akun": akun.kode_akun if akun else "",
+            "nama_akun": akun.nama_akun if akun else "",
+            "nama_bagian": akun.bagian.nama_bagian if akun and akun.bagian else None,
+            "pagu": acc_pagu,
+            **row_months,
+            "total_realisasi": row_total_real,
+            "sisa_anggaran": row_sisa,
+            "persentase_realisasi": row_pct,
+        })
+
+    total_sisa = tot_pagu - tot_realisasi
+    total_pct = round(float((tot_realisasi / tot_pagu) * 100), 2) if tot_pagu > 0 else 0.0
+
+    total_obj = {
+        "pagu": tot_pagu,
+        **tot_months,
+        "total_realisasi": tot_realisasi,
+        "sisa_anggaran": total_sisa,
+        "persentase_realisasi": total_pct,
+    }
+
+    return {
+        "id_tahun_anggaran": id_tahun_anggaran,
+        "tahun": tahun_val,
+        "status_tahun": status_val,
+        "rows": rows,
+        "total": total_obj,
+    }
+
 
 
 # Singletons

@@ -90,14 +90,64 @@ npm run dev
 - Buka antarmuka aplikasi di browser: [http://localhost:5173](http://localhost:5173)
 
 ### Kredensial Login Bawaan Sistem:
-* **Administrator Sistem**:
-  * NIP: `198507182020031001`
-  * Password: `admin123`
-  * Hak Akses: Administrator (Akses penuh seluruh modul & kontrol user)
-* **Operator Teknis**:
-  * NIP: `199208052021011002`
-  * Password: `123456`
-  * Hak Akses: Operator (Persuratan & Input Realisasi Anggaran)
+
+#### Akun Super Administrator (Utama):
+* **NIP**: `198507182020031001`
+* **Password**: `admin123`
+* **Role**: Admin (Akses penuh seluruh modul, konfigurasi & kontrol user)
+
+---
+
+#### Struktur Akun per Subbagian (1 Kabag, 1 Kasubbag, 2 Pegawai):
+> **Catatan**: Password default untuk seluruh akun staf di bawah ini adalah: **`123456`**
+
+##### 1. Subbagian SDM dan Partisipasi Masyarakat
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Drs. Jerry Mandey, M.Si | `197801152003121001` | Admin | `123456` |
+| **Kasubbag** | Meyke Tumengkol, S.Sos | `198203102008011002` | Operator | `123456` |
+| **Pegawai 1** | Farly Pontoh, S.Kom | `199106142015031004` | Operator | `123456` |
+| **Pegawai 2** | Priscilia Rompas, S.Pd | `199508192020122005` | Operator | `123456` |
+
+##### 2. Subbagian RENDATIN (Perencanaan, Data dan Informasi)
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Ir. Ronny Lumempow, MT | `197604122002121001` | Admin | `123456` |
+| **Kasubbag** | Christian Runtu, ST | `198307192009021002` | Operator | `123456` |
+| **Pegawai 1** | Michael Poluan, S.Kom | `199302172017011004` | Operator | `123456` |
+| **Pegawai 2** | Natasya Pangemanan, S.Stat | `199609252022032005` | Operator | `123456` |
+
+##### 3. Subbagian Teknis Penyelenggaraan Pemilu
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Drs. Franky Mokodompit, M.Si | `197709282005011001` | Admin | `123456` |
+| **Kasubbag** | Hendrik Sumendap, SH | `198112042006041002` | Operator | `123456` |
+| **Pegawai 1** | Ahmad Kurniawan | `199208052021011002` | Operator | `123456` |
+| **Pegawai 2** | Ingrid Sondakh, S.Sos | `199410112019022004` | Operator | `123456` |
+
+##### 4. Subbagian Hukum dan Pengawasan
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Donald Kalalo, SH, MH | `197903212006041001` | Admin | `123456` |
+| **Kasubbag** | Richard Senduk, SH | `198309142009121002` | Operator | `123456` |
+| **Pegawai 1** | Siti Rahmawati | `199403152021022003` | Operator | `123456` |
+| **Pegawai 2** | Aldo Maramis, SH | `199512302020121005` | Operator | `123456` |
+
+##### 5. Subbagian Umum dan Logistik (UMLOG)
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Dra. Jenny Walangitan, MM | `197508052001121001` | Admin | `123456` |
+| **Kasubbag** | Nova Lasut, SE | `198404182009022003` | Operator | `123456` |
+| **Pegawai 1** | Budi Santoso | `198811202019031004` | Operator | `123456` |
+| **Pegawai 2** | Rizky Rumagit, S.Kom | `199211152018021006` | Operator | `123456` |
+
+##### 6. Subbagian Keuangan
+| Posisi | Nama Lengkap | NIP (Login) | Role | Password Default |
+| :--- | :--- | :--- | :--- | :--- |
+| **Kabag** | Drs. Maxie Rondonuwu, M.Si, Ak | `197406182000031001` | Admin | `123456` |
+| **Kasubbag** | Albert Wenas, SE, Ak | `198010202007011002` | Operator | `123456` |
+| **Pegawai 1** | Jessica Pandeirot, SE | `199305142018012005` | Operator | `123456` |
+| **Pegawai 2** | Stevani Waworuntu, SE | `199507202020122007` | Operator | `123456` |
 
 ---
 

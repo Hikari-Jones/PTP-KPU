@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { X, Download, Filter, FileSpreadsheet } from "lucide-react"
 import type { TransaksiRealisasi } from "./types"
 import { Card, CardContent } from "../ui/card"
@@ -17,6 +17,38 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
 
   const [selectedPeriode, setSelectedPeriode] = useState("Semua")
   const [selectedSubbagian, setSelectedSubbagian] = useState("Semua")
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = tableContainerRef.current
+    if (!el) return
+
+    const handleWheel = (e: WheelEvent) => {
+      // Jika user menahan Shift atau browser sudah scroll horizontal secara native, biarkan
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
+
+      // Periksa apakah tabel memiliki ruang untuk scroll horizontal
+      const maxScrollLeft = el.scrollWidth - el.clientWidth
+      if (maxScrollLeft > 0) {
+        // Cek apakah belum mentok ke arah scrolling
+        const isScrollingDown = e.deltaY > 0
+        const isScrollingUp = e.deltaY < 0
+
+        const canScrollRight = isScrollingDown && el.scrollLeft < maxScrollLeft - 1
+        const canScrollLeft = isScrollingUp && el.scrollLeft > 1
+
+        if (canScrollRight || canScrollLeft) {
+          e.preventDefault()
+          el.scrollLeft += e.deltaY
+        }
+      }
+    }
+
+    el.addEventListener("wheel", handleWheel, { passive: false })
+    return () => {
+      el.removeEventListener("wheel", handleWheel)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -135,10 +167,11 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
         </div>
 
         {/* Modal Table Body */}
-        <div className="p-4 overflow-y-auto flex-1">
+        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
           <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200"}>
             <CardContent className="p-0">
-              <Table>
+              <div ref={tableContainerRef} className="overflow-x-auto pb-2 custom-scrollbar">
+                <Table className="min-w-[880px]">
                 <TableHeader>
                   <TableRow className={isDark ? "border-b border-white/30 bg-[#0a0e1a]" : "border-b border-slate-200 bg-slate-100"}>
                     <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>No. Dokumen</TableHead>
@@ -165,18 +198,18 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
                           isDark ? "border-b border-white/20" : "border-b border-slate-100"
                         }
                       >
-                        <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{item.noDokumen}</TableCell>
+                        <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400 whitespace-nowrap">{item.noDokumen}</TableCell>
                         <TableCell className={`text-xs font-semibold whitespace-nowrap ${isDark ? "text-gray-300" : "text-black"}`}>{item.tanggal}</TableCell>
-                        <TableCell className="text-xs">
+                        <TableCell className="text-xs whitespace-nowrap">
                           <span className={`font-mono font-bold block ${isDark ? "text-white" : "text-black"}`}>{item.kodeAkun}</span>
                           <span className={`text-[11px] font-semibold ${isDark ? "text-gray-300" : "text-slate-800"}`}>{item.namaAkun}</span>
                         </TableCell>
-                        <TableCell className={`text-xs font-bold ${isDark ? "text-gray-200" : "text-black"}`}>{item.subbagian}</TableCell>
+                        <TableCell className={`text-xs font-bold whitespace-nowrap ${isDark ? "text-gray-200" : "text-black"}`}>{item.subbagian}</TableCell>
                         <TableCell className={`font-bold text-xs max-w-xs truncate ${isDark ? "text-white" : "text-black"}`}>{item.usulanKegiatan}</TableCell>
                         <TableCell className="text-xs font-black text-red-600 dark:text-red-400 whitespace-nowrap">
                           {formatRupiah(item.jumlah)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="whitespace-nowrap">
                           <Badge
                             variant={
                               item.status === "Disetujui"
@@ -196,6 +229,7 @@ export function LaporanBulananModal({ isOpen, onClose, transaksiList, theme }: P
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </div>

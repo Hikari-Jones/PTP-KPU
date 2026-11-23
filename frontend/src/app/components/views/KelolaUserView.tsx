@@ -1,4 +1,4 @@
-﻿import { useState } from "react"
+import { useState } from "react"
 import { UserPlus, X, CheckCircle2, Shield, Mail, Building, Key } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
@@ -7,9 +7,36 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
   const [users, setUsers] = useState([
     { id: 1, name: "Admin KPU Sulut", email: "admin@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
-    { id: 2, name: "Ahmad Kurniawan", email: "ahmad.kurniawan@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
-    { id: 3, name: "Siti Rahmawati", email: "siti.rahma@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Hukum" },
-    { id: 4, name: "Budi Santoso", email: "budi.santoso@kpu.go.id", role: "Operator", status: "Non-Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
+    // Bagian 1
+    { id: 2, name: "Drs. Jerry Mandey, M.Si", email: "jerry.mandey@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "SDM dan Partisipasi Masyarakat" },
+    { id: 3, name: "Meyke Tumengkol, S.Sos", email: "meyke.tumengkol@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "SDM dan Partisipasi Masyarakat" },
+    { id: 4, name: "Farly Pontoh, S.Kom", email: "farly.pontoh@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "SDM dan Partisipasi Masyarakat" },
+    { id: 5, name: "Priscilia Rompas, S.Pd", email: "priscilia.rompas@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "SDM dan Partisipasi Masyarakat" },
+    // Bagian 2
+    { id: 6, name: "Ir. Ronny Lumempow, MT", email: "ronny.lumempow@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
+    { id: 7, name: "Christian Runtu, ST", email: "christian.runtu@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
+    { id: 8, name: "Michael Poluan, S.Kom", email: "michael.poluan@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
+    { id: 9, name: "Natasya Pangemanan, S.Stat", email: "natasya.pangemanan@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
+    // Bagian 3
+    { id: 10, name: "Drs. Franky Mokodompit, M.Si", email: "franky.mokodompit@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
+    { id: 11, name: "Hendrik Sumendap, SH", email: "hendrik.sumendap@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
+    { id: 12, name: "Ahmad Kurniawan", email: "ahmad.kurniawan@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
+    { id: 13, name: "Ingrid Sondakh, S.Sos", email: "ingrid.sondakh@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
+    // Bagian 4
+    { id: 14, name: "Donald Kalalo, SH, MH", email: "donald.kalalo@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "Hukum dan Pengawasan" },
+    { id: 15, name: "Richard Senduk, SH", email: "richard.senduk@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Hukum dan Pengawasan" },
+    { id: 16, name: "Siti Rahmawati", email: "siti.rahma@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Hukum dan Pengawasan" },
+    { id: 17, name: "Aldo Maramis, SH", email: "aldo.maramis@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Hukum dan Pengawasan" },
+    // Bagian 5: UMLOG
+    { id: 18, name: "Dra. Jenny Walangitan, MM", email: "jenny.walangitan@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
+    { id: 19, name: "Nova Lasut, SE", email: "nova.lasut@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
+    { id: 20, name: "Budi Santoso", email: "budi.santoso@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
+    { id: 21, name: "Rizky Rumagit, S.Kom", email: "rizky.rumagit@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
+    // Bagian 6: Keuangan
+    { id: 22, name: "Drs. Maxie Rondonuwu, M.Si, Ak", email: "maxie.rondonuwu@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "Keuangan" },
+    { id: 23, name: "Albert Wenas, SE, Ak", email: "albert.wenas@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Keuangan" },
+    { id: 24, name: "Jessica Pandeirot, SE", email: "jessica.pandeirot@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Keuangan" },
+    { id: 25, name: "Stevani Waworuntu, SE", email: "stevani.waworuntu@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Keuangan" },
   ])
 
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -17,7 +44,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
   const [nip, setNip] = useState("")
   const [email, setEmail] = useState("")
   const [subbagian, setSubbagian] = useState("RENDATIN (Perencanaan, Data dan Informasi)")
-  const [role, setRole] = useState<"Admin" | "Operator">("Operator")
+  const [role, setRole] = useState<"Admin" | "Pegawai">("Pegawai")
   const [successToast, setSuccessToast] = useState<string | null>(null)
 
   const toggleStatus = (id: number) => {
@@ -58,7 +85,7 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
             Manajemen User & Hak Akses
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-            Kelola daftar operator instansi dan penetapan role Admin/Operator PTP-KPU
+            Kelola daftar pegawai instansi dan penetapan role Admin/Pegawai PTP-KPU
           </p>
         </div>
         <button
@@ -198,11 +225,11 @@ export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
                     <input
                       type="radio"
                       name="role"
-                      value="Operator"
-                      checked={role === "Operator"}
-                      onChange={() => setRole("Operator")}
+                      value="Pegawai"
+                      checked={role === "Pegawai"}
+                      onChange={() => setRole("Pegawai")}
                     />
-                    <span>Operator</span>
+                    <span>Pegawai</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

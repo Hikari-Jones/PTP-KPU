@@ -32,6 +32,7 @@ async def read_realisasi_anggaran(
     id_tahun_anggaran: Optional[int] = Query(None, description="Filter berdasarkan tahun anggaran"),
     id_bagian: Optional[int] = Query(None, description="Filter berdasarkan divisi / bagian KPU"),
     id_akun_anggaran: Optional[int] = Query(None, description="Filter berdasarkan akun MAK"),
+    bulan: Optional[int] = Query(None, ge=1, le=12, description="Filter berdasarkan bulan transaksi (1-12)"),
     status: Optional[str] = Query(None, pattern="^(draft|submitted|verified|rejected)$", description="Filter status transaksi"),
     search: Optional[str] = Query(None, description="Search nomor dokumen, uraian, kode akun, atau nama akun"),
     tanggal_mulai: Optional[date] = Query(None, description="Filter tanggal transaksi mulai"),
@@ -45,6 +46,7 @@ async def read_realisasi_anggaran(
         id_tahun_anggaran=id_tahun_anggaran,
         id_bagian=id_bagian,
         id_akun_anggaran=id_akun_anggaran,
+        bulan=bulan,
         status=status,
         search=search,
         tanggal_mulai=tanggal_mulai,
@@ -79,15 +81,15 @@ async def read_realisasi_anggaran_by_id(
     "/",
     response_model=RealisasiAnggaranResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Buat Transaksi Draft",
-    description="Membuat transaksi realisasi anggaran baru dengan status awal 'draft'. Operator pencatat diambil otomatis dari user yang terautentikasi.",
+    summary="Input Realisasi Anggaran (Direct Validasi & Auto Verified)",
+    description="Membuat transaksi realisasi anggaran baru. Backend memvalidasi ketersediaan pagu, status tahun anggaran (harus active), dan sisa anggaran dengan row-level lock. Jika valid, transaksi langsung berstatus 'verified' tanpa verifikasi manual Admin.",
 )
-async def create_realisasi_draft(
+async def create_realisasi(
     realisasi_in: RealisasiAnggaranCreateDraft,
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
-    db_obj = await realisasi_anggaran.create_draft(
+    db_obj = await realisasi_anggaran.create_realisasi_direct(
         db,
         obj_in=realisasi_in,
         id_pegawai=current_user.id_pegawai,

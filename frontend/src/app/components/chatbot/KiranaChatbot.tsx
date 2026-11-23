@@ -26,6 +26,11 @@ export function KiranaChatbot({ theme = "light" }: { theme?: "light" | "dark" })
   const [inputMessage, setInputMessage] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
 
+  // Dispatch custom event so other components (e.g., Toast notification) can adjust their position
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("kirana-chatbot-toggle", { detail: { isOpen } }))
+  }, [isOpen])
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",

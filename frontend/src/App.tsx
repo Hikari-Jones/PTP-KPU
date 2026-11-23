@@ -24,9 +24,10 @@ import { AdminDashboardView } from "./app/components/views/AdminDashboardView"
 import { KelolaUserView } from "./app/components/views/KelolaUserView"
 import { BugReportView } from "./app/components/views/BugReportView"
 import { ArsipAdminView } from "./app/components/views/ArsipAdminView"
+import { ReadOnlyBanner } from "./app/components/ui/read-only"
 
 function MainLayout() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, canEdit } = useAuth()
 
   // Theme state: default is "light"
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -89,14 +90,14 @@ function MainLayout() {
         return <LaporanBulananView theme={theme} />
       case "surat":
       case "surat-summary":
-        return <SuratView key="surat-overview" theme={theme} subTab="overview" />
+        return <SuratView key="surat-overview" theme={theme} subTab="overview" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-keluar":
-        return <SuratView key="surat-keluar" theme={theme} subTab="surat-keluar" />
+        return <SuratView key="surat-keluar" theme={theme} subTab="surat-keluar" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-tugas":
       case "surat-masuk":
-        return <SuratView key="surat-tugas" theme={theme} subTab="surat-tugas" />
+        return <SuratView key="surat-tugas" theme={theme} subTab="surat-tugas" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-klasifikasi":
-        return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" />
+        return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-alur":
         return <SuratMenyuratModule theme={theme} subTab="ringkasan" />
       case "arsip":
@@ -153,6 +154,11 @@ function MainLayout() {
             >
               <Menu className="size-5" />
             </button>
+            {(activeMenu === "realisasi_anggaran" || activeMenu.startsWith("realization-")) && !canEdit("anggaran") && (
+              <div className="mb-5">
+                <ReadOnlyBanner theme={theme} modul="realisasi anggaran" pengelola="Sub Bagian Keuangan dan Sub Bagian Perencanaan, Data dan Informasi (RENDATIN)" />
+              </div>
+            )}
             {renderContent()}
           </div>
         </main>

@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "PTP-KPU Local Operations API"
@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5:latest"
     SECRET_KEY: str = "kpu_sulut_secret_key_2026_change_in_production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    UPLOAD_DIR: str = "uploads"
+    MAX_UPLOAD_SIZE_MB: int = 25
 
     class Config:
         env_file = (".env", "app/.env")

@@ -9,8 +9,12 @@ interface InputSuratMasukModalProps {
   onSubmit: (formData: SuratMasukFormState) => void
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
 export function InputSuratMasukModal({ theme, isOpen, onClose, onSubmit }: InputSuratMasukModalProps) {
-  if (!isOpen) return null
   const isDark = theme === "dark"
 
   const [formData, setFormData] = useState<SuratMasukFormState>({
@@ -26,6 +30,8 @@ export function InputSuratMasukModal({ theme, isOpen, onClose, onSubmit }: Input
 
   const [simulatedFile, setSimulatedFile] = useState<File | null>(null)
 
+  if (!isOpen) return null
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.nomorSurat || !formData.perihal || !formData.pengirim) {
@@ -35,6 +41,8 @@ export function InputSuratMasukModal({ theme, isOpen, onClose, onSubmit }: Input
     onSubmit({
       ...formData,
       fileName: simulatedFile ? simulatedFile.name : formData.fileName || "Dokumen_Surat_Masuk.pdf",
+      fileUrl: simulatedFile ? URL.createObjectURL(simulatedFile) : undefined,
+      fileSize: simulatedFile ? formatFileSize(simulatedFile.size) : undefined,
     })
     onClose()
   }
