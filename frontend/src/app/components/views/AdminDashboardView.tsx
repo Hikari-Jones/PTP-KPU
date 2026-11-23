@@ -41,16 +41,6 @@ export function AdminDashboardView({ theme }: { theme: 'light' | 'dark' }) {
       category="Administrator"
       title="Dashboard Administrator"
       description="Ringkasan status basis data, aktivitas persuratan, dan audit anggaran sistem PTP-KPU"
-      actions={
-        <button
-          className={`${buttonSecondary} !px-3.5 !py-2 !text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer shadow-xs transition-all active:scale-95`}
-          disabled={busy}
-          onClick={load}
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
-          <span>Muat Ulang</span>
-        </button>
-      }
     >
       {error && (
         <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-semibold">

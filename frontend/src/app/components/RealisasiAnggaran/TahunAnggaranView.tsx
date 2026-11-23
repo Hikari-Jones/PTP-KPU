@@ -423,18 +423,6 @@ export function TahunAnggaranView({ theme }: Props) {
 
         <div className="flex items-center gap-2.5">
           <button
-            type="button"
-            onClick={fetchTahunAnggaran}
-            disabled={loading}
-            className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
-              isDark ? "bg-[#0f172a] border-white/10 text-gray-300 hover:bg-[#1e293b]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-            }`}
-            title="Refresh Data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-red-500" : ""}`} />
-            Refresh
-          </button>
-          <button
             onClick={handleExportExcel}
             className={`px-4 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95 ${
               isDark

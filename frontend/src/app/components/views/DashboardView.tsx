@@ -341,21 +341,6 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
               </option>
             ))}
           </select>
-
-          {/* Refresh Button */}
-          <button
-            type="button"
-            onClick={refreshAll}
-            disabled={loading || overviewLoading}
-            className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-              isDark
-                ? "border-white/10 bg-[#1e293b]/70 hover:bg-[#1e293b] text-white"
-                : "border-slate-300 bg-white hover:bg-slate-100 text-slate-800"
-            }`}
-            title="Segarkan Data Server"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading || overviewLoading ? "animate-spin text-red-500" : ""}`} />
-          </button>
         </div>
       </div>
 

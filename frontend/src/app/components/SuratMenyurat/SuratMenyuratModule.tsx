@@ -195,17 +195,6 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
         </div>
       )}
 
-      {/* Tombol Muat Ulang Tipis & Ramping */}
-      <div className="flex items-center justify-between">
-        <button
-          className={`${button} !px-3 !py-1.5 !text-xs shadow-2xs`}
-          disabled={busy}
-          onClick={() => void run(load)}
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
-          <span>Muat Ulang</span>
-        </button>
-      </div>
 
       {/* Form Registrasi / Buat Draft Baru - Berjarak & Berhuruf Kapital */}
       {canEdit('surat') && (

@@ -293,16 +293,6 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={fetchData}
-            disabled={loading}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold cursor-pointer transition-colors ${isDark ? "bg-[#0f172a] border-white/10 text-gray-300 hover:bg-[#1e293b]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
-            title="Refresh Data"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin text-red-500" : ""}`} />
-            Refresh
-          </button>
-          <button
-            type="button"
             onClick={handleExport}
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold cursor-pointer transition-colors ${isDark ? "bg-[#0f172a] border-white/10 text-gray-300 hover:bg-[#1e293b]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
           >

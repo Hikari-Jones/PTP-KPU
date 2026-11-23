@@ -239,10 +239,10 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
-            Laporan Anggaran
+            Realisasi Anggaran
           </p>
           <h1 className={`m-0 text-xl font-bold tracking-tight ${isDark ? "text-white" : "text-black"}`}>
             Laporan Realisasi Bulanan (12 Bulan)
@@ -252,7 +252,7 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-start xl:justify-end gap-2">
           {/* Filter TA */}
           <select
             value={selectedTahunId ?? ""}
@@ -261,7 +261,7 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
           >
             {tahunList.map((t) => (
               <option key={t.id_tahun_anggaran} value={t.id_tahun_anggaran}>
-                TA {t.tahun} ({t.status})
+                TA {t.tahun}
               </option>
             ))}
           </select>
@@ -296,18 +296,6 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
 
           <button
             type="button"
-            onClick={fetchReport}
-            disabled={loading}
-            className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-              isDark ? "border-white/10 bg-[#1e293b] text-white" : "border-slate-300 bg-white text-slate-800"
-            }`}
-            title="Segarkan Laporan"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-red-500" : ""}`} />
-          </button>
-
-          <button
-            type="button"
             onClick={handleExportExcel}
             disabled={isExportingExcel || loading}
             className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer active:scale-95 disabled:opacity-50"
@@ -323,10 +311,10 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold border transition-colors cursor-pointer active:scale-95 ${
               isDark
                 ? "border-slate-700 bg-slate-900 text-white hover:bg-slate-800"
-                : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
-            <FileSpreadsheet className="h-4 w-4 text-red-600" />
+            <FileSpreadsheet className="h-4 w-4" />
             <span>Export CSV</span>
           </button>
         </div>

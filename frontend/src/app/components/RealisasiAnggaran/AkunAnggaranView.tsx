@@ -260,18 +260,6 @@ export function AkunAnggaranView({ theme }: Props) {
 
         <div className="flex items-center gap-2.5">
           <button
-            type="button"
-            onClick={fetchAkunAnggaran}
-            disabled={loading}
-            className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
-              isDark ? "border-slate-700 bg-slate-900 text-white hover:bg-slate-800" : "border-slate-300 bg-white text-black hover:bg-slate-50"
-            }`}
-            title="Refresh Data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-red-500" : ""}`} />
-            Refresh
-          </button>
-          <button
             onClick={handleExport}
             className={`px-4 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-xs ${
               isDark ? "border-slate-700 bg-slate-900 text-white hover:bg-slate-800" : "border-slate-300 bg-white text-black hover:bg-slate-50"

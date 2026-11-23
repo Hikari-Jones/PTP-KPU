@@ -598,14 +598,6 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            className={`px-4 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50 ${isDark ? "border-slate-700 bg-[#0f172a] text-white" : "border-slate-300 bg-white text-black"}`}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Muat Ulang
-          </button>
           {activeTab === "surat-keluar" && !readOnly && (
             <button
               type="button"

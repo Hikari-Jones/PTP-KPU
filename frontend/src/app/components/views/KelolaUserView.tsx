@@ -194,10 +194,6 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
           <h2 className="font-bold text-base text-slate-900 dark:text-white">
             Daftar Akun Pengguna ({users.length})
           </h2>
-          <button disabled={busy} className={buttonSecondary} onClick={() => void run(load)}>
-            <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
-            <span>Muat ulang</span>
-          </button>
         </div>
 
         {busy && users.length === 0 ? (

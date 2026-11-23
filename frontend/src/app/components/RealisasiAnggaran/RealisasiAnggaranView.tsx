@@ -325,20 +325,6 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
 
         {/* Global Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={refetchData}
-            disabled={loading}
-            className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-              isDark
-                ? "border-white/10 bg-[#1e293b] text-white hover:bg-slate-800"
-                : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-            }`}
-            title="Segarkan Data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-red-500" : ""}`} />
-          </button>
-
           {!readOnly && (
             <button
               type="button"

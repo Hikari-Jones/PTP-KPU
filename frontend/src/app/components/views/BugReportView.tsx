@@ -171,10 +171,6 @@ export function BugReportView({ theme }: { theme: 'light' | 'dark' }) {
                 <span>Export Log (.log)</span>
               </button>
             )}
-            <button disabled={busy} className={buttonSecondary} onClick={() => void run(load)}>
-              <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
-              <span>Muat ulang</span>
-            </button>
           </div>
         </div>
 
