@@ -22,6 +22,7 @@ export function Workspace({
   category,
   description,
   actions,
+  navigation,
   children
 }: {
   theme: 'light' | 'dark'
@@ -29,6 +30,7 @@ export function Workspace({
   category?: string
   description?: string
   actions?: ReactNode
+  navigation?: ReactNode
   children: ReactNode
 }) {
   const isDark = theme === 'dark'
@@ -57,6 +59,8 @@ export function Workspace({
           </div>
         )}
       </div>
+
+      {navigation}
 
       <section
         className={`p-6 sm:p-7 rounded-2xl border transition-all backdrop-blur-md shadow-lg ${

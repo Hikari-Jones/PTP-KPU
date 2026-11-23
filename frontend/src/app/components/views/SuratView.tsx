@@ -62,7 +62,7 @@ const BEBAN_ANGGARAN = ["DIPA KPU Provinsi Sulawesi Utara", "Non-DIPA"]
 
 const TABS: { id: Tab | "surat-masuk"; label: string }[] = [
   { id: "overview", label: "Dashboard" },
-  { id: "surat-masuk", label: "Surat Masuk" },
+  { id: "surat-masuk", label: "Surat Masuk & Disposisi" },
   { id: "surat-keluar", label: "Surat Keluar" },
   { id: "surat-tugas", label: "Surat Tugas" },
   { id: "klasifikasi", label: "Kode Klasifikasi" },

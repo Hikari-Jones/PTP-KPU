@@ -4,8 +4,24 @@ import type { Employee } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
 import { Workspace, field, button, useOperation } from '../ui/operations'
 import { useAuth } from '../../context/AuthContext'
-import { RefreshCw, FileText, ChevronDown, Download, CheckCircle, AlertCircle, Send, Archive, Check, Search, Filter, X, Eye } from 'lucide-react'
+import { RefreshCw, FileText, ChevronDown, Download, CheckCircle, AlertCircle, Send, Archive, Check, Search, Filter, X, Eye, Inbox } from 'lucide-react'
 import { showToast as notify } from '../../../services/activity'
+
+const TABS: { id: string; label: string }[] = [
+  { id: "overview", label: "Dashboard" },
+  { id: "surat-masuk", label: "Surat Masuk & Disposisi" },
+  { id: "surat-keluar", label: "Surat Keluar" },
+  { id: "surat-tugas", label: "Surat Tugas" },
+  { id: "klasifikasi", label: "Kode Klasifikasi" },
+]
+
+const TAB_ROUTE: Record<string, string> = {
+  overview: "surat-summary",
+  "surat-masuk": "surat-masuk",
+  "surat-keluar": "surat-keluar",
+  "surat-tugas": "surat-tugas",
+  klasifikasi: "surat-klasifikasi",
+}
 
 interface Letter {
   id: number
@@ -27,6 +43,7 @@ interface Letter {
 export interface SuratMenyuratModuleProps {
   theme: 'light' | 'dark'
   subTab?: 'ringkasan' | 'masuk' | 'keluar'
+  onNavigate?: (tab: string) => void
 }
 
 const statuses: Record<string, string> = {
@@ -40,7 +57,7 @@ const statuses: Record<string, string> = {
   archived: 'Terarsip',
 }
 
-export function SuratMenyuratModule({ theme, subTab = 'ringkasan' }: SuratMenyuratModuleProps) {
+export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }: SuratMenyuratModuleProps) {
   const requestId = useRef(0)
   const [page, setPage] = useState(0)
   const [hasNext, setHasNext] = useState(false)
@@ -133,12 +150,43 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan' }: SuratMenyur
     <Workspace
       theme={theme}
       category="Surat"
-      title={subTab === 'masuk' ? 'Surat Masuk' : 'Alur Persuratan'}
-      description="Registrasi Mandiri, Alur Disposisi Naskah Dinas, dan Pelacakan Persetujuan Dokumen KPU Sulawesi Utara"
+      title={subTab === 'masuk' ? 'Surat Masuk & Disposisi' : 'Alur Persuratan'}
+      description={
+        subTab === 'masuk'
+          ? 'Buku Agenda Surat Masuk, Lembar Disposisi Pimpinan, dan Pelacakan Tindak Lanjut Dokumen KPU Sulawesi Utara'
+          : 'Registrasi Mandiri, Alur Disposisi Naskah Dinas, dan Pelacakan Persetujuan Dokumen KPU Sulawesi Utara'
+      }
+      navigation={
+        <nav aria-label="Sub-menu persuratan" className="flex gap-2 overflow-x-auto pb-1">
+          {TABS.map((t) => {
+            const active = t.id === 'surat-masuk'
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                onClick={() => onNavigate?.(TAB_ROUTE[t.id])}
+                className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                  active
+                    ? 'bg-red-600 border-red-600 text-white shadow-md'
+                    : theme === 'dark'
+                      ? 'border-white/10 bg-[#0f172a] text-gray-300 hover:border-red-500/50'
+                      : 'border-slate-300 bg-white text-slate-700 hover:border-red-400'
+                }`}
+              >
+                {t.id === 'surat-masuk' && <Inbox className="w-3.5 h-3.5" />}
+                {t.label}
+              </button>
+            )
+          })}
+        </nav>
+      }
     >
       {/* Banner Informasi Regulasi / Status Operasional */}
       <div className="p-3.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/20 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-        Registrasi, disposisi, revisi, dan persetujuan tersimpan di server. Nomor ALUR adalah register internal. Penerbitan nomor surat resmi belum diaktifkan sampai format dan kewenangan KPU divalidasi. Persetujuan ini bukan TTE tersertifikasi.
+        {subTab === 'masuk'
+          ? 'Buku agenda surat masuk terpadu dengan lembar disposisi digital pimpinan. Setiap surat masuk dapat langsung diteruskan atau ditindaklanjuti oleh pegawai pelaksana tugas.'
+          : 'Registrasi, disposisi, revisi, dan persetujuan tersimpan di server. Nomor ALUR adalah register internal. Penerbitan nomor surat resmi belum diaktifkan sampai format dan kewenangan KPU divalidasi. Persetujuan ini bukan TTE tersertifikasi.'}
       </div>
 
       {error && (
@@ -165,7 +213,7 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan' }: SuratMenyur
           <summary className="cursor-pointer font-semibold text-xs tracking-wide px-4 py-3 select-none flex items-center justify-between text-slate-800 dark:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-white/5 transition-colors">
             <span className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-red-600 dark:text-red-500" />
-              Registrasi / Buat Draft Surat Baru
+              {subTab === 'masuk' ? 'Registrasi Surat Masuk Baru' : 'Registrasi / Buat Draft Surat Baru'}
             </span>
             <ChevronDown className="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" />
           </summary>
@@ -299,7 +347,7 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan' }: SuratMenyur
             {/* Tombol Simpan */}
             <div className="pt-2">
               <button disabled={busy} className={button}>
-                {busy ? 'Menyimpan Surat...' : 'Simpan Surat'}
+                {busy ? 'Menyimpan Surat...' : subTab === 'masuk' ? 'Simpan & Daftarkan Surat Masuk' : 'Simpan Surat'}
               </button>
             </div>
           </form>
@@ -417,7 +465,7 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan' }: SuratMenyur
           <article className="space-y-4 border rounded-xl p-5 border-slate-200 dark:border-white/10 bg-white/60 dark:bg-slate-900/40 shadow-xs">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 block mb-1">
-                Detail Alur Surat
+                {item.kind === 'masuk' ? 'Lembar Disposisi & Detail Surat Masuk' : 'Detail Alur Surat'}
               </span>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">{item.subject}</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

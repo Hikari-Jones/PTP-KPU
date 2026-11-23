@@ -72,11 +72,10 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
 
   const suratSubmenus = [
     { id: "surat-summary", label: "Dashboard" },
-    { id: "surat-masuk", label: "Surat Masuk" },
+    { id: "surat-masuk", label: "Surat Masuk & Disposisi" },
     { id: "surat-keluar", label: "Surat Keluar" },
     { id: "surat-tugas", label: "Surat Tugas" },
     { id: "surat-klasifikasi", label: "Kode Klasifikasi" },
-    { id: "surat-alur", label: "Alur Disposisi" },
   ]
 
   const adminMenu = [
@@ -292,7 +291,8 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                     {suratSubmenus.map((sub) => {
                       const isSubActive =
                         activeMenu === sub.id ||
-                        (activeMenu === "surat" && sub.id === "surat-summary")
+                        (activeMenu === "surat" && sub.id === "surat-summary") ||
+                        (activeMenu === "surat-alur" && sub.id === "surat-masuk")
                       return (
                         <button
                           key={sub.id}

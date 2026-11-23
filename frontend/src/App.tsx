@@ -140,13 +140,12 @@ function MainLayout() {
       case "surat-keluar":
         return <SuratView key="surat-keluar" theme={theme} subTab="surat-keluar" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-masuk":
-        return <SuratMenyuratModule key="surat-masuk" theme={theme} subTab="masuk" />
+      case "surat-alur":
+        return <SuratMenyuratModule key="surat-masuk" theme={theme} subTab="masuk" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-tugas":
         return <SuratView key="surat-tugas" theme={theme} subTab="surat-tugas" onNavigate={(tab) => setActiveMenu(tab)} />
       case "surat-klasifikasi":
         return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" onNavigate={(tab) => setActiveMenu(tab)} />
-      case "surat-alur":
-        return <SuratMenyuratModule theme={theme} subTab="ringkasan" />
       case "arsip":
         return <ArsipView theme={theme} />
       case "pengaturan":
