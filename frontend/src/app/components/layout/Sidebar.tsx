@@ -63,11 +63,11 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   const realisasiSubmenus = [
     { id: "realization-summary", label: "Dashboard" },
     { id: "realization-ta", label: "Tahun Anggaran" },
+    { id: "realization-reports", label: "Laporan Bulanan" },
     ...(SATKER_MENU_ENABLED ? [{ id: "realization-satker", label: "Satker" }] : []),
     { id: "realization-akun", label: "Akun Anggaran" },
     { id: "realization-pagu", label: "Pagu Anggaran" },
     { id: "realization-input", label: "Input Realisasi" },
-    { id: "realization-reports", label: "Laporan Bulanan" },
   ]
 
   const suratSubmenus = [

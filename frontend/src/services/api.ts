@@ -417,6 +417,56 @@ export const paguAnggaranApi = {
     if (!res.ok) throw new Error(`Gagal memuat pagu anggaran (${res.status})`);
     return await res.json();
   },
+  create: async (payload: {
+    id_tahun_anggaran: number;
+    id_akun_anggaran: number;
+    pagu_awal: number;
+    pagu_aktif?: number;
+    nomor_sk?: string;
+    tanggal_sk?: string;
+    keterangan?: string;
+  }): Promise<PaguAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/pagu-anggaran/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal menambah pagu anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  update: async (
+    id: number,
+    payload: {
+      nomor_sk?: string;
+      tanggal_sk?: string;
+      keterangan?: string;
+    }
+  ): Promise<PaguAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/pagu-anggaran/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal memperbarui pagu anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  delete: async (id: number): Promise<PaguAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/pagu-anggaran/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal menghapus pagu anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
 };
 
 export const realisasiAnggaranApi = {

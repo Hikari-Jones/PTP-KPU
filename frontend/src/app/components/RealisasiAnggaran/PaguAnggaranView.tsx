@@ -1,6 +1,6 @@
 import { saveCsv } from "../../../services/csv"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { BarChart3, Download, Plus, RefreshCw, Search, X, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { BarChart3, Download, Plus, RefreshCw, Search, X, Loader2, AlertCircle, CheckCircle2, Pencil, Trash2 } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { useAuth } from "../../context/AuthContext"
@@ -8,11 +8,13 @@ import {
   paguAnggaranApi,
   revisiAnggaranApi,
   tahunAnggaranApi,
+  akunAnggaranApi,
 } from "../../../services/api"
 import type {
   PaguAnggaranResponse,
   RevisiAnggaranResponse,
   TahunAnggaranResponse,
+  AkunAnggaranResponse,
 } from "./types"
 
 type Subbagian = "SDM" | "RENDATIN" | "Teknis" | "Hukum" | "Keuangan" | "UMLOG"
@@ -24,10 +26,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const readOnly = !useAuth().canEdit("anggaran")
   const [activeTab, setActiveTab] = useState<"pagu" | "revisi">("pagu")
 
-  // Master Tahun Anggaran
+  // Master Tahun Anggaran & Akun Anggaran
   const [tahunList, setTahunList] = useState<TahunAnggaranResponse[]>([])
   const [selectedTAId, setSelectedTAId] = useState<number | undefined>(undefined)
   const [selectedTAYear, setSelectedTAYear] = useState<number>(new Date().getFullYear())
+  const [allAkunList, setAllAkunList] = useState<AkunAnggaranResponse[]>([])
 
   // Data states
   const [paguList, setPaguList] = useState<PaguAnggaranResponse[]>([])
@@ -43,6 +46,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   // Modal & Form states
   const [modalType, setModalType] = useState<"pagu" | "revisi" | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedPaguToEdit, setSelectedPaguToEdit] = useState<PaguAnggaranResponse | null>(null)
+
+  // Form Tambah / Edit Pagu Fields
+  const [formAkunId, setFormAkunId] = useState<number | "">("")
+  const [formPaguAwal, setFormPaguAwal] = useState<number>(0)
+  const [formNomorSK, setFormNomorSK] = useState("")
+  const [formTanggalSK, setFormTanggalSK] = useState("")
+  const [formKeterangan, setFormKeterangan] = useState("")
 
   // Revisi Form Fields (Aligned with Phase 12 RevisiAnggaranCreate)
   const [formPaguId, setFormPaguId] = useState<number | "">("")
@@ -56,15 +67,19 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   const formatRupiah = (value: number | string | null | undefined) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(value) || 0)}`
 
-  // 1. Initial Load: Fetch Tahun Anggaran
+  // 1. Initial Load: Fetch Tahun Anggaran & Master Akun Anggaran
   useEffect(() => {
     let isMounted = true
-    const initTahun = async () => {
+    const initMaster = async () => {
       try {
-        const res = await tahunAnggaranApi.getAll({ limit: 100 })
+        const [taRes, akunRes] = await Promise.all([
+          tahunAnggaranApi.getAll({ limit: 100 }).catch(() => ({ total: 0, items: [] })),
+          akunAnggaranApi.getAll({ limit: 500 }).catch(() => ({ total: 0, items: [] })),
+        ])
         if (!isMounted) return
-        const items = res.items || []
+        const items = taRes.items || []
         setTahunList(items)
+        setAllAkunList(akunRes.items || [])
         if (items.length > 0) {
           const activeYr = items.find((y) => y.status === "active") || items[0]
           setSelectedTAId(activeYr.id_tahun_anggaran)
@@ -72,10 +87,10 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
         }
       } catch (e: any) {
         if (!isMounted) return
-        console.warn("Gagal memuat tahun anggaran", e)
+        console.warn("Gagal memuat master", e)
       }
     }
-    initTahun()
+    initMaster()
     return () => { isMounted = false }
   }, [])
 
@@ -146,6 +161,12 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   const closeModal = () => {
     setModalType(null)
+    setSelectedPaguToEdit(null)
+    setFormAkunId("")
+    setFormPaguAwal(0)
+    setFormNomorSK("")
+    setFormTanggalSK("")
+    setFormKeterangan("")
     setFormPaguId("")
     setFormNomorRevisi("")
     setFormTanggalRevisi("")
@@ -153,6 +174,95 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setFormPaguBaru(0)
     setFormAlasanRevisi("")
     setError(null)
+  }
+
+  // Buka Modal Tambah Pagu Baru
+  const openAddPagu = () => {
+    setSelectedPaguToEdit(null)
+    setFormAkunId("")
+    setFormPaguAwal(0)
+    setFormNomorSK("")
+    const today = new Date().toISOString().split("T")[0]
+    setFormTanggalSK(today)
+    setFormKeterangan("")
+    setError(null)
+    setModalType("pagu")
+  }
+
+  // Buka Modal Edit Pagu (Metadata)
+  const openEditPagu = (item: PaguAnggaranResponse) => {
+    setSelectedPaguToEdit(item)
+    setFormAkunId(item.id_akun_anggaran)
+    setFormPaguAwal(Number(item.pagu_awal) || 0)
+    setFormNomorSK(item.nomor_sk || "")
+    setFormTanggalSK(item.tanggal_sk || "")
+    setFormKeterangan(item.keterangan || "")
+    setError(null)
+    setModalType("pagu")
+  }
+
+  // Hapus Pagu
+  const handleDeletePagu = async (item: PaguAnggaranResponse) => {
+    if (confirm(`Apakah Anda yakin ingin menghapus pagu ${item.kode_akun} — ${item.nama_akun}? Pagu hanya dapat dihapus jika belum memiliki transaksi realisasi atau revisi.`)) {
+      setLoading(true)
+      try {
+        await paguAnggaranApi.delete(item.id_pagu)
+        setSuccessMessage(`Pagu untuk akun ${item.kode_akun} berhasil dihapus.`)
+        setTimeout(() => setSuccessMessage(null), 4000)
+        await fetchData()
+      } catch (e: any) {
+        setError(e.message || "Gagal menghapus pagu anggaran")
+      } finally {
+        setLoading(false)
+      }
+    }
+  }
+
+  // Submit Tambah atau Edit Pagu
+  const submitPagu = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!selectedTAId) {
+      setError("Pilih tahun anggaran terlebih dahulu.")
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      if (selectedPaguToEdit) {
+        // Mode Edit Metadata
+        await paguAnggaranApi.update(selectedPaguToEdit.id_pagu, {
+          nomor_sk: formNomorSK.trim() || undefined,
+          tanggal_sk: formTanggalSK || undefined,
+          keterangan: formKeterangan.trim() || undefined,
+        })
+        setSuccessMessage(`Pagu ${selectedPaguToEdit.kode_akun} berhasil diperbarui!`)
+      } else {
+        // Mode Tambah Pagu Baru
+        if (!formAkunId) {
+          setError("Pilih akun anggaran terlebih dahulu.")
+          setSubmitting(false)
+          return
+        }
+        await paguAnggaranApi.create({
+          id_tahun_anggaran: selectedTAId,
+          id_akun_anggaran: Number(formAkunId),
+          pagu_awal: Number(formPaguAwal) || 0,
+          pagu_aktif: Number(formPaguAwal) || 0,
+          nomor_sk: formNomorSK.trim() || undefined,
+          tanggal_sk: formTanggalSK || undefined,
+          keterangan: formKeterangan.trim() || undefined,
+        })
+        setSuccessMessage("Pagu anggaran baru berhasil ditambahkan!")
+      }
+      setTimeout(() => setSuccessMessage(null), 4000)
+      closeModal()
+      await fetchData()
+    } catch (e: any) {
+      setError(e.message || "Gagal menyimpan pagu anggaran")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const openAddRevisi = () => {
@@ -243,6 +353,10 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   const inputClass = `w-full rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition-colors ${isDark ? "bg-[#131b2e] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`
 
+  // Akun yang belum dialokasikan di TA ini (untuk dropdown Tambah Pagu)
+  const existingAkunIds = new Set(paguList.map((p) => p.id_akun_anggaran))
+  const availableAkunList = allAkunList.filter((a) => a.status === "active" && !existingAkunIds.has(a.id_akun_anggaran))
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Tab Navigation */}
@@ -299,13 +413,25 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
             <Download className="h-4 w-4" /> Export
           </button>
           {!readOnly && (
-            <button
-              type="button"
-              onClick={openAddRevisi}
-              className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer shadow-md hover:opacity-95"
-            >
-              <Plus className="h-4 w-4" /> Tambah Revisi DIPA
-            </button>
+            <>
+              {activeTab === "pagu" ? (
+                <button
+                  type="button"
+                  onClick={openAddPagu}
+                  className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer shadow-md hover:opacity-95"
+                >
+                  <Plus className="h-4 w-4" /> Tambah Pagu
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openAddRevisi}
+                  className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer shadow-md hover:opacity-95"
+                >
+                  <Plus className="h-4 w-4" /> Tambah Revisi DIPA
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -368,13 +494,13 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
             <CardContent className="p-0">
               <Table>
                 <TableHeader><TableRow className={isDark ? "bg-[#0a0f1d]" : "bg-slate-50"}>
-                  {['KODE', 'NAMA AKUN', 'BAGIAN / UNIT', 'PAGU AWAL', 'PAGU AKTIF', 'REALISASI', 'SISA', 'SERAPAN'].map((head) => (
-                    <TableHead key={head} className={`text-[11px] font-extrabold ${head === 'SERAPAN' ? 'text-center' : ''} ${isDark ? "text-gray-400" : "text-slate-600"}`}>{head}</TableHead>
+                  {['KODE', 'NAMA AKUN', 'BAGIAN / UNIT', 'PAGU AWAL', 'PAGU AKTIF', 'REALISASI', 'SISA', 'SERAPAN', 'AKSI'].map((head) => (
+                    <TableHead key={head} className={`text-[11px] font-extrabold ${head === 'SERAPAN' ? 'text-center' : ''} ${head === 'AKSI' ? 'text-right' : ''} ${isDark ? "text-gray-400" : "text-slate-600"}`}>{head}</TableHead>
                   ))}
                 </TableRow></TableHeader>
                 <TableBody>
                   {filteredPagu.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="py-10 text-center text-xs text-slate-500">Tidak ada data pagu untuk filter ini.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={9} className="py-10 text-center text-xs text-slate-500">Tidak ada data pagu untuk filter ini.</TableCell></TableRow>
                   ) : filteredPagu.map((item) => {
                     const percentage = item.persentase_serapan || 0
                     return (
@@ -387,6 +513,30 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                         <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.total_realisasi_verified)}</TableCell>
                         <TableCell className={`whitespace-nowrap text-xs font-bold ${Number(item.sisa_anggaran) < 0 ? "text-rose-500" : isDark ? "text-red-400" : "text-red-600"}`}>{formatRupiah(item.sisa_anggaran)}</TableCell>
                         <TableCell><div className="flex min-w-[105px] items-center justify-center gap-2"><div className={`h-2 flex-1 overflow-hidden rounded-full ${isDark ? "bg-slate-800" : "bg-slate-200"}`}><div className="h-full rounded-full bg-red-600" style={{ width: `${Math.min(percentage, 100)}%` }} /></div><span className="text-[11px] font-bold text-red-600 dark:text-red-400">{percentage}%</span></div></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {!readOnly && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditPagu(item)}
+                                  title="Edit Keterangan / SK Pagu"
+                                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-600 dark:text-red-400 transition-colors cursor-pointer"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePagu(item)}
+                                  title="Hapus Pagu"
+                                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-rose-500 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     )
                   })}
@@ -435,6 +585,139 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
             <div className={`border-t p-4 text-xs ${isDark ? "border-white/10 text-gray-400" : "border-slate-200 text-slate-600"}`}>Menampilkan {filteredRevisi.length} catatan audit trail revisi</div>
           </CardContent>
         </Card>
+      )}
+
+      {/* MODAL TAMBAH / EDIT PAGU */}
+      {modalType === "pagu" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
+          <div className={`w-full max-w-lg overflow-hidden rounded-2xl border shadow-2xl ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
+            <div className={`flex items-center justify-between border-b p-4 ${isDark ? "border-white/10 bg-[#0a0f1d]" : "border-slate-200 bg-slate-50"}`}>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">TA {selectedTAYear}</p>
+                <h2 className="text-sm font-bold">
+                  {selectedPaguToEdit ? `Edit Pagu ${selectedPaguToEdit.kode_akun}` : "Tambahkan Pagu Anggaran Baru"}
+                </h2>
+              </div>
+              <button type="button" onClick={closeModal} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-500/15 hover:text-red-500 cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={submitPagu} className="space-y-4 p-5 text-xs">
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Pilih Akun (Hanya saat Tambah Baru) */}
+              {!selectedPaguToEdit ? (
+                <label className="block space-y-1 font-semibold">
+                  Pilih Akun Anggaran / MAK
+                  <select
+                    required
+                    value={formAkunId}
+                    onChange={(e) => setFormAkunId(Number(e.target.value))}
+                    className={inputClass}
+                  >
+                    <option value="">-- Pilih Akun MAK yang Belum Dialokasikan --</option>
+                    {availableAkunList.map((a) => (
+                      <option key={a.id_akun_anggaran} value={a.id_akun_anggaran}>
+                        {a.kode_akun} — {a.nama_akun} ({a.nama_bagian || "Tanpa Bagian"})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="space-y-1">
+                  <span className="block font-semibold text-slate-400">Akun Anggaran</span>
+                  <div className={`p-2.5 rounded-xl border font-bold ${isDark ? "bg-white/5 border-white/10 text-white" : "bg-slate-100 border-slate-200 text-slate-800"}`}>
+                    {selectedPaguToEdit.kode_akun} — {selectedPaguToEdit.nama_akun}
+                  </div>
+                </div>
+              )}
+
+              {/* Nilai Pagu Awal (Hanya saat Tambah Baru) */}
+              {!selectedPaguToEdit ? (
+                <label className="block space-y-1 font-semibold">
+                  Pagu Awal Penetapan DIPA (Rp)
+                  <input
+                    required
+                    min={0}
+                    type="number"
+                    value={formPaguAwal}
+                    onChange={(e) => setFormPaguAwal(Number(e.target.value))}
+                    placeholder="Contoh: 50000000"
+                    className={inputClass}
+                  />
+                </label>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="block font-semibold text-slate-400">Pagu Awal</span>
+                    <div className="font-bold text-sm text-slate-300">{formatRupiah(selectedPaguToEdit.pagu_awal)}</div>
+                  </div>
+                  <div>
+                    <span className="block font-semibold text-slate-400">Pagu Aktif</span>
+                    <div className="font-bold text-sm text-red-500">{formatRupiah(selectedPaguToEdit.pagu_aktif)}</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="space-y-1 font-semibold">
+                  Nomor SK / Dasar Hukum (Opsional)
+                  <input
+                    value={formNomorSK}
+                    onChange={(e) => setFormNomorSK(e.target.value)}
+                    placeholder="Contoh: SK-001/DIPA/2026"
+                    className={inputClass}
+                  />
+                </label>
+                <label className="space-y-1 font-semibold">
+                  Tanggal SK (Opsional)
+                  <input
+                    type="date"
+                    value={formTanggalSK}
+                    onChange={(e) => setFormTanggalSK(e.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+
+              <label className="block space-y-1 font-semibold">
+                Keterangan (Opsional)
+                <textarea
+                  rows={2}
+                  value={formKeterangan}
+                  onChange={(e) => setFormKeterangan(e.target.value)}
+                  placeholder="Catatan alokasi pagu..."
+                  className={inputClass}
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={submitting}
+                  className={`rounded-xl border px-4 py-2 font-bold cursor-pointer ${isDark ? "border-white/10 text-gray-300" : "border-slate-300 text-slate-700"}`}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="btn-kpu-red flex items-center gap-2 rounded-xl px-5 py-2 font-bold text-white cursor-pointer shadow-md hover:opacity-95"
+                >
+                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {submitting ? "Menyimpan..." : selectedPaguToEdit ? "Simpan Perubahan" : "Tambahkan Pagu"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* MODAL TAMBAH REVISI DIPA (PHASE 12 ATOMIC EXECUTION) */}
