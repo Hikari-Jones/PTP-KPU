@@ -1654,6 +1654,18 @@ class CRUDRealisasiAnggaran(CRUDBase[RealisasiAnggaran, RealisasiAnggaranCreateD
                 detail="Hanya transaksi berstatus 'draft' yang dapat dihapus",
             )
 
+        # Check fiscal year status: cannot delete transaction on closed year
+        pagu_res = await db.execute(select(PaguAnggaran).where(PaguAnggaran.id_pagu == tx.id_pagu))
+        pagu_obj = pagu_res.scalar_one_or_none()
+        if pagu_obj:
+            ta_res = await db.execute(select(TahunAnggaran).where(TahunAnggaran.id_tahun_anggaran == pagu_obj.id_tahun_anggaran))
+            ta_obj = ta_res.scalar_one_or_none()
+            if ta_obj and ta_obj.status == "closed":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tidak dapat menghapus transaksi pada tahun anggaran {ta_obj.tahun} yang sudah ditutup (closed)",
+                )
+
         await self._audit(db, tx, current_user_id, "delete")
         await db.delete(tx)
         await db.commit()
