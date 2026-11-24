@@ -290,11 +290,6 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
 
           {mode === "login" && (
             <form className="login-form" onSubmit={handleSubmit} aria-busy={isLoading}>
-              {errorMessage && (
-                <div className="login-error" id="login-error" role="alert">
-                  <AlertCircle size={18} aria-hidden="true" /><span>{errorMessage}</span>
-                </div>
-              )}
               <div className="login-field">
                 <label htmlFor="login-nip">Nomor Induk Pegawai <span>(NIP)</span></label>
                 <div className="login-input-wrap">
@@ -330,6 +325,11 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
               <div className="login-help" id="login-help" hidden={!showHelp}>
                 Hubungi administrator PTP-KPU di Sekretariat KPU Provinsi Sulawesi Utara untuk bantuan pengaturan ulang kata sandi.
               </div>
+              {errorMessage && (
+                <div className="login-error" id="login-error" role="alert">
+                  <AlertCircle size={18} aria-hidden="true" /><span>{errorMessage}</span>
+                </div>
+              )}
               <button className="login-submit" type="submit" disabled={isLoading}>
                 {isLoading ? (
                   <><LoaderCircle className="login-spinner" size={19} aria-hidden="true" /><span>Memverifikasi akun...</span></>

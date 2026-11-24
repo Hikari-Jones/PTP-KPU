@@ -745,15 +745,6 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
       {/* 2. SURAT KELUAR */}
       {activeTab === "surat-keluar" && (
         <Card className={cardClass}>
-          {isAdmin && !readOnly && issuanceLocked && (
-            <div className={`flex items-start gap-2 px-4 py-3 border-b text-xs font-semibold ${isDark ? "border-amber-500/20 bg-amber-500/10 text-amber-300" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-              <Lock className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>
-                <Badge variant="outline" className="mr-2">Mode Uji Coba</Badge>
-                {issuanceLockReason} Draft tetap dapat dibuat dan disimpan.
-              </span>
-            </div>
-          )}
           <CardHeader className="flex flex-col gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
             <div className="flex flex-col lg:flex-row lg:items-center gap-3">
               <div className="relative w-full lg:max-w-sm">

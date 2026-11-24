@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { request, message } from '../../../services/operations'
 import type { Employee, Department } from '../../../services/operations'
 import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
@@ -24,6 +24,7 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
   const [requests, setRequests] = useState<AccountRequest[]>([])
   const [showRequests, setShowRequests] = useState(false)
   const [edit, setEdit] = useState<number | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const blank = { nama: '', nip: '', password: '', role: 'Operator', id_bagian: '', jabatan: '' }
   const [form, setForm] = useState(blank)
   const { busy, error, run, setError } = useOperation()
@@ -58,6 +59,7 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
 
       {/* Form Card */}
       <form
+        ref={formRef}
         onSubmit={e => {
           e.preventDefault()
           void run(async () => {
@@ -121,14 +123,26 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
               Jabatan
             </label>
-            <input
+            <select
+              required
               className={field}
-              type="text"
-              autoComplete="off"
-              placeholder="Contoh: Kepala Bagian / Staf Pengelola"
               value={form.jabatan}
               onChange={e => setForm({ ...form, jabatan: e.target.value })}
-            />
+            >
+              <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                Pilih jabatan
+              </option>
+              {['Staf', 'Kepala Subbagian', 'Kepala Bagian'].map(j => (
+                <option key={j} value={j} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                  {j}
+                </option>
+              ))}
+              {form.jabatan && !['Staf', 'Kepala Subbagian', 'Kepala Bagian'].includes(form.jabatan) && (
+                <option value={form.jabatan} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                  {form.jabatan}
+                </option>
+              )}
+            </select>
           </div>
 
           <div>
@@ -406,6 +420,8 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
                           jabatan: u.jabatan || '',
                           password: '',
                         })
+                        document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'smooth' })
+                        window.scrollTo({ top: 0, behavior: 'smooth' })
                       }}
                     >
                       <Edit3 className="w-3.5 h-3.5" />

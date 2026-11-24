@@ -29,6 +29,12 @@ class RegisterRequest(BaseModel):
     id_bagian: Optional[int] = None
 
 
+class UpdateMeRequest(BaseModel):
+    nama: str = Field(min_length=2, max_length=150)
+    nip: str = Field(min_length=18, max_length=18, pattern=r"^\d{18}$")
+    password: Optional[str] = Field(None, min_length=8, max_length=255)
+
+
 class RegisterResponse(BaseModel):
     id_request: int
     nama: str
@@ -254,6 +260,38 @@ async def get_me(db: AsyncSession = Depends(get_db), current_user: Pegawai = Dep
     if not current_user.is_online:
         current_user.is_online = True
         await db.commit()
+    return _profile(current_user, current_user.bagian.nama_bagian if current_user.bagian else "")
+
+
+@router.put("/me", response_model=UserProfileOut)
+async def update_me(
+    payload: UpdateMeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+):
+    """Perbarui nama, NIP, atau kata sandi akun yang sedang login."""
+    nip_clean = payload.nip.strip()
+    nama_clean = payload.nama.strip()
+
+    if nip_clean != current_user.nip:
+        existing = (
+            await db.execute(
+                select(Pegawai).where(
+                    Pegawai.nip == nip_clean,
+                    Pegawai.id_pegawai != current_user.id_pegawai,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=409, detail="NIP sudah digunakan oleh akun lain.")
+
+    current_user.nama = nama_clean
+    current_user.nip = nip_clean
+    if payload.password and payload.password.strip():
+        current_user.password = hash_password(payload.password.strip())
+
+    await db.commit()
+    await db.refresh(current_user)
     return _profile(current_user, current_user.bagian.nama_bagian if current_user.bagian else "")
 
 

@@ -815,6 +815,18 @@ export const authApi = {
 
     return await res.json();
   },
+  updateMe: async (payload: { nama: string; nip: string; password?: string }): Promise<UserProfileResponse> => {
+    const res = await fetch(`${API_BASE_URL}/auth/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Gagal memperbarui profil' }));
+      throw new Error(err.detail || `Gagal memperbarui profil (${res.status})`);
+    }
+    return await res.json();
+  },
 };
 
 export const filesApi = {

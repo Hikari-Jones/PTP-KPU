@@ -84,6 +84,7 @@ interface AuthContextType {
   isRendatinOrKeuangan: boolean
   canViewBudget: boolean
   login: (nip: string, pass: string) => Promise<{ success: boolean; error?: string }>
+  updateProfile: (payload: { nama: string; nip: string; password?: string }) => Promise<UserProfile>
   logout: () => void
 }
 
@@ -155,6 +156,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  const updateProfile = async (payload: { nama: string; nip: string; password?: string }): Promise<UserProfile> => {
+    const updated = await authApi.updateMe(payload)
+    const profile = updated as UserProfile
+    setCurrentUser(profile)
+    localStorage.setItem("ptp_kpu_user", JSON.stringify(profile))
+    return profile
+  }
+
   const logout = () => {
     void request('/auth/logout', 'POST').then(() => {
       setCurrentUser(null)
@@ -171,7 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canViewBudget = canViewBudgetFeature(currentUser)
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, isRendatinOrKeuangan, canViewBudget, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, isRendatinOrKeuangan, canViewBudget, login, updateProfile, logout }}>
       {children}
     </AuthContext.Provider>
   )
