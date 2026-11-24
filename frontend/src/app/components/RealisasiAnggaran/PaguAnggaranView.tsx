@@ -1,6 +1,6 @@
 import { saveCsv } from "../../../services/csv"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { BarChart3, Download, Plus, RefreshCw, Search, X, Loader2, AlertCircle, CheckCircle2, Pencil, Trash2 } from "lucide-react"
+import { BarChart3, Download, Plus, RefreshCw, Search, X, Loader2, AlertCircle, CheckCircle2, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { useAuth } from "../../context/AuthContext"
@@ -21,6 +21,8 @@ type Subbagian = "SDM" | "RENDATIN" | "Teknis" | "Hukum" | "Keuangan" | "UMLOG"
 
 const SUBBAGIAN_OPTIONS: Subbagian[] = ["SDM", "RENDATIN", "Teknis", "Hukum", "Keuangan", "UMLOG"]
 
+const ITEMS_PER_PAGE = 100
+
 export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigate?: (tab: string) => void }) {
   const isDark = theme === "dark"
   const auth = useAuth()
@@ -30,14 +32,17 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   // Master Tahun Anggaran & Akun Anggaran
   const [tahunList, setTahunList] = useState<TahunAnggaranResponse[]>([])
   const [selectedTAId, setSelectedTAId] = useState<number | undefined>(undefined)
-  const [selectedTAYear, setSelectedTAYear] = useState<number>(new Date().getFullYear())
+  const [selectedTAYear, setSelectedTAYear] = useState<number | null>(null)
   const [allAkunList, setAllAkunList] = useState<AkunAnggaranResponse[]>([])
+  const [loadingActiveYear, setLoadingActiveYear] = useState<boolean>(true)
+  const [activeYearError, setActiveYearError] = useState<string | null>(null)
 
   // Data states
   const [paguList, setPaguList] = useState<PaguAnggaranResponse[]>([])
   const [revisiList, setRevisiList] = useState<RevisiAnggaranResponse[]>([])
   const [selectedSubbagian, setSelectedSubbagian] = useState("Semua Subbagian")
   const [searchQuery, setSearchQuery] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Loading & Error states
   const [loading, setLoading] = useState(false)
@@ -74,27 +79,42 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   const formatRupiah = (value: number | string | null | undefined) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(value) || 0)}`
 
-  // 1. Initial Load: Fetch Tahun Anggaran & Master Akun Anggaran
+  // 1. Initial Load: Fetch Global Active Year, All Tahun Anggaran & Master Akun Anggaran
   useEffect(() => {
     let isMounted = true
     const initMaster = async () => {
+      setLoadingActiveYear(true)
+      setActiveYearError(null)
       try {
-        const [taRes, akunRes] = await Promise.all([
+        const [activeRes, taRes, akunRes] = await Promise.all([
+          tahunAnggaranApi.getActive().catch((e) => {
+            console.warn("Gagal memuat tahun anggaran aktif", e)
+            return null
+          }),
           tahunAnggaranApi.getAll({ limit: 100 }).catch(() => ({ total: 0, items: [] })),
           akunAnggaranApi.getAll({ limit: 500 }).catch(() => ({ total: 0, items: [] })),
         ])
         if (!isMounted) return
+
         const items = taRes.items || []
         setTahunList(items)
         setAllAkunList(akunRes.items || [])
-        if (items.length > 0) {
+
+        if (activeRes) {
+          setSelectedTAId(activeRes.id_tahun_anggaran)
+          setSelectedTAYear(activeRes.tahun)
+        } else if (items.length > 0) {
           const activeYr = items.find((y) => y.status === "active") || items[0]
           setSelectedTAId(activeYr.id_tahun_anggaran)
           setSelectedTAYear(activeYr.tahun)
+        } else {
+          setActiveYearError("Sistem belum memiliki Tahun Anggaran yang aktif. Silakan hubungi Administrator.")
         }
       } catch (e: any) {
         if (!isMounted) return
-        console.warn("Gagal memuat master", e)
+        setActiveYearError(e.message || "Gagal memuat konfigurasi tahun anggaran dari server")
+      } finally {
+        if (isMounted) setLoadingActiveYear(false)
       }
     }
     initMaster()
@@ -103,6 +123,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   // 2. Fetch Data (Pagu & Revisi) whenever selectedTAId changes
   const fetchData = useCallback(async () => {
+    if (!selectedTAId) return
     const currentReq = ++requestIdRef.current
     setLoading(true)
     setError(null)
@@ -140,8 +161,10 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   }, [selectedTAId])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (selectedTAId) {
+      fetchData()
+    }
+  }, [selectedTAId, fetchData])
 
   // Filtered Pagu List
   const filteredPagu = paguList.filter((item) => {
@@ -153,6 +176,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
       (item.nama_bagian || "").toLowerCase().includes(term)
     return matchesSubbagian && matchesSearch
   })
+
+  const totalPages = Math.max(1, Math.ceil(filteredPagu.length / ITEMS_PER_PAGE))
+  const activePage = Math.min(currentPage, totalPages)
+  const firstItemIndex = (activePage - 1) * ITEMS_PER_PAGE
+  const paginatedPagu = filteredPagu.slice(firstItemIndex, firstItemIndex + ITEMS_PER_PAGE)
 
   // Filtered Revisi List
   const filteredRevisi = revisiList.filter((item) => {
@@ -409,7 +437,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
             {activeTab === "pagu" ? "Pagu Anggaran" : "Histori Revisi Anggaran (Audit Trail)"}
           </h1>
           <p className={`mt-1 text-xs font-medium ${isDark ? "text-gray-400" : "text-slate-600"}`}>
-            {activeTab === "pagu" ? `${filteredPagu.length} pagu terdaftar` : `${filteredRevisi.length} riwayat revisi tercatat`} — Tahun Anggaran {selectedTAYear}
+            {activeTab === "pagu" ? `${filteredPagu.length} pagu terdaftar` : `${filteredRevisi.length} riwayat revisi tercatat`} — Tahun Anggaran {selectedTAYear ?? "..."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -443,6 +471,20 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
           )}
         </div>
       </div>
+
+      {/* Global Active Year Loading / Error */}
+      {loadingActiveYear && (
+        <div className="flex items-center justify-center py-6 gap-2 text-xs font-semibold text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin text-red-600" />
+          Memverifikasi tahun anggaran aktif global...
+        </div>
+      )}
+      {activeYearError && (
+        <div className="flex items-center gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3.5 text-xs font-bold text-rose-600 dark:text-rose-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{activeYearError}</span>
+        </div>
+      )}
 
       {/* Filter Toolbar */}
       <div className="flex flex-col gap-3 md:flex-row">
@@ -509,7 +551,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 <TableBody>
                   {filteredPagu.length === 0 ? (
                     <TableRow><TableCell colSpan={9} className="py-10 text-center text-xs text-slate-500">Tidak ada data pagu untuk filter ini.</TableCell></TableRow>
-                  ) : filteredPagu.map((item) => {
+                  ) : paginatedPagu.map((item) => {
                     const percentage = item.persentase_serapan || 0
                     return (
                       <TableRow key={item.id_pagu}>
@@ -550,7 +592,56 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   })}
                 </TableBody>
               </Table>
-              <div className={`border-t p-4 text-xs ${isDark ? "border-white/10 text-gray-400" : "border-slate-200 text-slate-600"}`}>Menampilkan {filteredPagu.length} data pagu anggaran</div>
+              {/* Pagination */}
+              <div className={`p-4 flex items-center justify-between text-xs border-t ${
+                isDark ? "border-slate-800 text-gray-300" : "border-slate-200 text-slate-700"
+              }`}>
+                <span>
+                  {filteredPagu.length === 0
+                    ? "Tidak ada data pagu"
+                    : `Menampilkan ${firstItemIndex + 1}-${Math.min(firstItemIndex + ITEMS_PER_PAGE, filteredPagu.length)} dari ${filteredPagu.length} data pagu anggaran`}
+                </span>
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={activePage === 1}
+                      className={`p-1.5 rounded-lg border transition-colors ${
+                        activePage === 1 ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:border-red-500 hover:text-red-500"
+                      } ${isDark ? "border-slate-700 text-white" : "border-slate-300 text-black"}`}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`min-w-7 h-7 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                          page === activePage
+                            ? "bg-red-600 text-white"
+                            : isDark
+                            ? "border border-slate-700 text-gray-300 hover:bg-white/5"
+                            : "border border-slate-300 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                      disabled={activePage === totalPages}
+                      className={`p-1.5 rounded-lg border transition-colors ${
+                        activePage === totalPages ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:border-red-500 hover:text-red-500"
+                      } ${isDark ? "border-slate-700 text-white" : "border-slate-300 text-black"}`}
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </>

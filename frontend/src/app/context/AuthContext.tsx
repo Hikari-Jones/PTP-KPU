@@ -27,15 +27,24 @@ const MODULE_EDITORS: Record<ModuleKey, string[]> = {
 
 export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {
   if (!user) return false
-  if (user.role === "Admin" && (!user.subbagian || user.subbagian.toLowerCase().includes("admin"))) return true
+  const roleLower = (user.role || "").toLowerCase()
   const sub = (user.subbagian || "").toLowerCase()
+  const isAdminSystem = (roleLower === "admin" || roleLower === "administrator") && (!user.subbagian || sub.includes("admin"))
+  if (isAdminSystem) return true
+  if (module === "anggaran") {
+    // Only System Admin, RENDATIN, or Keuangan may edit financial data.
+    // Kabag of other subsections (SDM, Teknis, Hukum, UMLOG) who have role "admin" are strictly READ-ONLY.
+    return ["keuangan", "rendatin", "perencanaan"].some((key) => sub.includes(key))
+  }
   return MODULE_EDITORS[module].some((key) => sub.includes(key.toLowerCase()))
 }
 
 export function isRendatinOrKeuanganUser(user: UserProfile | null): boolean {
   if (!user) return false
-  if (user.role === "Admin" && (!user.subbagian || user.subbagian.toLowerCase().includes("admin"))) return true
+  const roleLower = (user.role || "").toLowerCase()
   const sub = (user.subbagian || "").toLowerCase()
+  const isAdminSystem = (roleLower === "admin" || roleLower === "administrator") && (!user.subbagian || sub.includes("admin"))
+  if (isAdminSystem) return true
   return ["keuangan", "rendatin", "perencanaan"].some((k) => sub.includes(k))
 }
 

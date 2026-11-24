@@ -262,6 +262,11 @@ export const bagianApi = {
 };
 
 export const tahunAnggaranApi = {
+  getActive: async (): Promise<TahunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/active`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat tahun anggaran aktif (${res.status})`);
+    return await res.json();
+  },
   getAll: async (params?: {
     search?: string;
     status?: 'draft' | 'active' | 'closed';

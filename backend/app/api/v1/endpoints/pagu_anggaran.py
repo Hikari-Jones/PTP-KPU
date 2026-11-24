@@ -18,7 +18,7 @@ from app.schemas.anggaran import (
     PaguAnggaranListResponse,
     BudgetSummaryResponse,
 )
-from app.services.anggaran import pagu_anggaran, calculate_budget_summary
+from app.services.anggaran import pagu_anggaran, calculate_budget_summary, tahun_anggaran
 
 router = APIRouter()
 
@@ -42,9 +42,17 @@ async def read_pagu_anggaran(
     limit: int = Query(50, ge=1, le=500, description="Limit"),
 ) -> Any:
     effective_bagian = get_effective_subbagian_id(current_user, id_bagian)
+
+    # Resolve active fiscal year if omitted
+    resolved_id_tahun = id_tahun_anggaran
+    if resolved_id_tahun is None:
+        active_yr = await tahun_anggaran.get_active_year(db)
+        if active_yr:
+            resolved_id_tahun = active_yr.id_tahun_anggaran
+
     items, total = await pagu_anggaran.get_filtered(
         db,
-        id_tahun_anggaran=id_tahun_anggaran,
+        id_tahun_anggaran=resolved_id_tahun,
         id_akun_anggaran=id_akun_anggaran,
         id_bagian=effective_bagian,
         status_tahun=status_tahun,

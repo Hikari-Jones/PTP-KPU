@@ -212,10 +212,17 @@ async def run_role_restriction_tests():
         print("\n--- Test Suite 3: Direct API Access to Restricted Modules ---")
         # Forbidden endpoints for non-RENDATIN/Keuangan:
         # /api/v1/tahun-anggaran
+        # All authenticated users may read /tahun-anggaran/ to know the active year, but only authorized can mutate
         res = await client.get("/api/v1/tahun-anggaran/", headers=h_teknis)
-        assert res.status_code == 403, f"Teknis accessing /tahun-anggaran expected 403, got {res.status_code}"
+        assert res.status_code == 200, f"Teknis reading /tahun-anggaran expected 200, got {res.status_code}"
         res = await client.get("/api/v1/tahun-anggaran/", headers=h_keuangan)
         assert res.status_code == 200, f"Keuangan accessing /tahun-anggaran expected 200, got {res.status_code}"
+
+        # Unauthorized mutation attempt must return 403
+        res_mut = await client.post("/api/v1/tahun-anggaran/", headers=h_teknis, json={
+            "tahun": 2028, "tanggal_mulai": "2028-01-01", "tanggal_selesai": "2028-12-31"
+        })
+        assert res_mut.status_code == 403, f"Teknis creating TA expected 403, got {res_mut.status_code}"
 
         # /api/v1/akun-anggaran
         res = await client.get("/api/v1/akun-anggaran/", headers=h_teknis)

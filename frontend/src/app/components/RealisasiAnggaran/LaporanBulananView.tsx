@@ -47,7 +47,8 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
     let isMounted = true
     const initMaster = async () => {
       try {
-        const [taRes, bagRes, akunRes] = await Promise.all([
+        const [activeTaRes, taRes, bagRes, akunRes] = await Promise.all([
+          tahunAnggaranApi.getActive().catch(() => null),
           tahunAnggaranApi.getAll({ limit: 100 }).catch(() => {
             if (isMounted) setError("Daftar tahun anggaran gagal dimuat dari server. Coba muat ulang halaman.")
             return { total: 0, items: [] as TahunAnggaranResponse[] }
@@ -61,14 +62,18 @@ export function LaporanBulananView({ theme }: { theme: "light" | "dark" }) {
         setBagianList(bagRes)
         setAkunList(akunRes.items)
 
-        // Default to active year
-        const activeTa = taRes.items.find((item) => item.status === "active")
-        if (activeTa) {
-          setSelectedTahunId(activeTa.id_tahun_anggaran)
-        } else if (taRes.items.length > 0) {
-          setSelectedTahunId(taRes.items[0].id_tahun_anggaran)
+        // Default to active year from single source of truth
+        if (activeTaRes) {
+          setSelectedTahunId(activeTaRes.id_tahun_anggaran)
         } else {
-          setLoading(false)
+          const activeTa = taRes.items.find((item) => item.status === "active")
+          if (activeTa) {
+            setSelectedTahunId(activeTa.id_tahun_anggaran)
+          } else if (taRes.items.length > 0) {
+            setSelectedTahunId(taRes.items[0].id_tahun_anggaran)
+          } else {
+            setLoading(false)
+          }
         }
       } catch (err: any) {
         if (isMounted) setError("Gagal memuat master filter laporan")
