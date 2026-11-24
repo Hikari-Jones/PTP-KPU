@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import get_current_user, require_admin, require_rendatin_or_keuangan
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     AkunAnggaranCreate,
@@ -25,6 +25,7 @@ router = APIRouter()
 async def read_akun_anggaran(
     response: Response,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
     kode_akun: Optional[str] = Query(None, description="Filter kode akun MAK"),
     nama_akun: Optional[str] = Query(None, description="Filter nama akun"),
     id_bagian: Optional[int] = Query(None, description="Filter divisi / bagian KPU"),
@@ -62,6 +63,7 @@ async def read_akun_anggaran(
 async def read_akun_anggaran_by_id(
     id_akun_anggaran: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
     db_obj = await akun_anggaran.get_detail(db, id_akun_anggaran)
     if not db_obj:
@@ -84,6 +86,7 @@ async def create_akun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     db_obj = await akun_anggaran.create_akun(db, obj_in=akun_in)
     return akun_anggaran.enrich_akun_response(db_obj)
 
@@ -100,6 +103,7 @@ async def update_akun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     db_obj = await akun_anggaran.update_akun(
         db,
         id_akun=id_akun_anggaran,
@@ -119,6 +123,7 @@ async def delete_akun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     db_obj = await akun_anggaran.get_detail(db, id_akun_anggaran)
     if not db_obj:
         raise HTTPException(

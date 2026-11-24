@@ -23,7 +23,8 @@ const SUBBAGIAN_OPTIONS: Subbagian[] = ["SDM", "RENDATIN", "Teknis", "Hukum", "K
 
 export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigate?: (tab: string) => void }) {
   const isDark = theme === "dark"
-  const readOnly = !useAuth().canEdit("anggaran")
+  const auth = useAuth()
+  const readOnly = !auth.canEdit("anggaran") || !auth.isRendatinOrKeuangan
   const [activeTab, setActiveTab] = useState<"pagu" | "revisi">("pagu")
 
   // Master Tahun Anggaran & Akun Anggaran

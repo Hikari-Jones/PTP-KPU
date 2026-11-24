@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import get_current_user, require_admin, require_rendatin_or_keuangan
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     TahunAnggaranCreate,
@@ -22,11 +22,12 @@ router = APIRouter()
     "/",
     response_model=TahunAnggaranListResponse,
     summary="List Tahun Anggaran",
-    description="Mengambil daftar tahun anggaran dengan filter status, search, dan pagination.",
+    description="Mengambil daftar tahun anggaran dengan filter status, search, dan pagination. Hanya untuk Keuangan dan RENDATIN.",
 )
 async def read_tahun_anggaran(
     response: Response,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
     search: Optional[str] = Query(None, description="Pencarian deskripsi atau tahun"),
     status: Optional[str] = Query(None, pattern="^(draft|active|closed)$", description="Filter status tahun: draft, active, closed"),
     skip: int = Query(0, ge=0, description="Offset data"),
@@ -47,11 +48,12 @@ async def read_tahun_anggaran(
     "/{id_tahun_anggaran}",
     response_model=TahunAnggaranResponse,
     summary="Detail Tahun Anggaran",
-    description="Mengambil informasi detail tahun anggaran beserta statistik pagu dan realisasinya.",
+    description="Mengambil informasi detail tahun anggaran beserta statistik pagu dan realisasinya. Hanya untuk Keuangan dan RENDATIN.",
 )
 async def read_tahun_anggaran_by_id(
     id_tahun_anggaran: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
     db_obj = await tahun_anggaran.get(db, id_tahun_anggaran)
     if not db_obj:
@@ -67,13 +69,14 @@ async def read_tahun_anggaran_by_id(
     response_model=TahunAnggaranResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Tambah Tahun Anggaran",
-    description="Membuka tahun anggaran baru. Membutuhkan role Administrator.",
+    description="Membuka tahun anggaran baru. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def create_tahun_anggaran(
     tahun_in: TahunAnggaranCreate,
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     db_obj = await tahun_anggaran.create_tahun(
         db,
         obj_in=tahun_in,
@@ -86,7 +89,7 @@ async def create_tahun_anggaran(
     "/{id_tahun_anggaran}",
     response_model=TahunAnggaranResponse,
     summary="Update Tahun Anggaran",
-    description="Memperbarui informasi tahun anggaran. Membutuhkan role Administrator.",
+    description="Memperbarui informasi tahun anggaran. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def update_tahun_anggaran(
     id_tahun_anggaran: int,
@@ -94,6 +97,7 @@ async def update_tahun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     db_obj = await tahun_anggaran.update_tahun(
         db,
         id_tahun=id_tahun_anggaran,
@@ -106,7 +110,7 @@ async def update_tahun_anggaran(
     "/{id_tahun_anggaran}/activate",
     response_model=TahunAnggaranResponse,
     summary="Aktivasi Otomatis Tahun Anggaran",
-    description="Mengaktifkan tahun anggaran yang dipilih (draft/closed). Tahun aktif sebelumnya otomatis berubah menjadi closed. Proses atomik dengan database lock & audit log. Membutuhkan role Administrator.",
+    description="Mengaktifkan tahun anggaran yang dipilih (draft/closed). Tahun aktif sebelumnya otomatis berubah menjadi closed. Proses atomik dengan database lock & audit log. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def activate_tahun_anggaran(
     id_tahun_anggaran: int,
@@ -114,6 +118,7 @@ async def activate_tahun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     target_year, _, _ = await tahun_anggaran.switch_active_fiscal_year(
         db,
         target_id=id_tahun_anggaran,
@@ -128,11 +133,11 @@ async def activate_tahun_anggaran(
     "/audit-aktivasi/history",
     response_model=List[AuditAktivasiTahunResponse],
     summary="Riwayat Audit Aktivasi Tahun Anggaran",
-    description="Mengambil jejak audit pergantian Tahun Anggaran (siapa, kapan, tahun sebelum, tahun aktif, alasan).",
+    description="Mengambil jejak audit pergantian Tahun Anggaran (siapa, kapan, tahun sebelum, tahun aktif, alasan). Hanya untuk Keuangan dan RENDATIN.",
 )
 async def read_audit_aktivasi(
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(get_current_user),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
     from app.models.schema import AuditAktivasiTahunAnggaran
     from sqlalchemy import select, desc
@@ -145,13 +150,14 @@ async def read_audit_aktivasi(
     "/{id_tahun_anggaran}",
     response_model=TahunAnggaranResponse,
     summary="Hapus Tahun Anggaran",
-    description="Menghapus tahun anggaran jika belum memiliki alokasi pagu. Membutuhkan role Administrator.",
+    description="Menghapus tahun anggaran jika belum memiliki alokasi pagu. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def delete_tahun_anggaran(
     id_tahun_anggaran: int,
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
+    require_rendatin_or_keuangan(current_user)
     db_obj = await tahun_anggaran.get(db, id_tahun_anggaran)
     if not db_obj:
         raise HTTPException(

@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -66,6 +67,52 @@ async def get_current_user(
 def is_admin(user: Pegawai) -> bool:
     """Check if the user has Administrator privileges based on database role."""
     return user.role.strip().lower() in ["admin", "administrator"]
+
+def is_rendatin_or_keuangan(user: Pegawai) -> bool:
+    """
+    Check if user belongs to RENDATIN or Keuangan subsection.
+    System Administrators (id_bagian == 1 or ADMIN) also qualify.
+    """
+    if not user:
+        return False
+    if is_admin(user) and (not user.bagian or user.bagian.kode_bagian == "ADMIN"):
+        return True
+    if not user.bagian:
+        return False
+    kode = (user.bagian.kode_bagian or "").strip().upper()
+    nama = (user.bagian.nama_bagian or "").strip().lower()
+    return (
+        kode in ["BAG-02", "BAG-06", "ADMIN"]
+        or "rendatin" in nama
+        or "perencanaan" in nama
+        or "keuangan" in nama
+    )
+
+def get_effective_subbagian_id(user: Pegawai, requested_subbagian_id: Optional[int] = None) -> Optional[int]:
+    """
+    Enforces subsection data isolation:
+    - RENDATIN and Keuangan (and system admin) can view all or filter by requested_subbagian_id.
+    - All other subsections (Teknis, Hukum, SDM, UMLOG, etc.) are strictly locked to their OWN id_bagian.
+      Direct URL or query parameter tampering is completely overridden by authenticated user's id_bagian.
+    """
+    if is_rendatin_or_keuangan(user):
+        return requested_subbagian_id
+    # Non-RENDATIN & Non-Keuangan user: strictly locked to their own subsection!
+    return user.id_bagian
+
+async def require_rendatin_or_keuangan(
+    current_user: Pegawai = Depends(get_current_user),
+) -> Pegawai:
+    """
+    Strict dependency: Only RENDATIN and Keuangan personnel (or system admin) are allowed.
+    Other subsections (Teknis, Hukum, SDM, UMLOG, etc.) are rejected with HTTP 403.
+    """
+    if not is_rendatin_or_keuangan(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak: Operasi administrasi keuangan hanya diizinkan untuk Subbagian Keuangan dan RENDATIN",
+        )
+    return current_user
 
 async def require_admin(
     current_user: Pegawai = Depends(get_current_user),

@@ -33,7 +33,7 @@ const BugReportView = lazy(() => import("./app/components/views/BugReportView").
 const ArsipAdminView = lazy(() => import("./app/components/views/ArsipAdminView").then((m) => ({ default: m.ArsipAdminView })))
 
 function MainLayout() {
-  const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser } = useAuth()
+  const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser, isRendatinOrKeuangan } = useAuth()
 
   // Theme state: default is "light"
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -122,15 +122,24 @@ function MainLayout() {
       case "realization-summary":
         return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-ta":
+        if (!isRendatinOrKeuangan) {
+          return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
+        }
         return <TahunAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-satker":
-        if (!SATKER_MENU_ENABLED) return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
+        if (!SATKER_MENU_ENABLED || !isRendatinOrKeuangan) return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         return <SatkerView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-akun":
+        if (!isRendatinOrKeuangan) {
+          return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
+        }
         return <AkunAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-pagu":
         return <PaguAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-input":
+        if (!isRendatinOrKeuangan) {
+          return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
+        }
         return <InputRealisasiView theme={theme} />
       case "realization-reports":
         return <LaporanBulananView theme={theme} />

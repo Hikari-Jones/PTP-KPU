@@ -3,7 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import (
+    get_current_user,
+    require_admin,
+    is_rendatin_or_keuangan,
+    get_effective_subbagian_id,
+    require_rendatin_or_keuangan,
+)
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     PaguAnggaranCreate,
@@ -26,6 +32,7 @@ router = APIRouter()
 async def read_pagu_anggaran(
     response: Response,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
     id_tahun_anggaran: Optional[int] = Query(None, description="Filter tahun anggaran"),
     id_akun_anggaran: Optional[int] = Query(None, description="Filter akun MAK"),
     id_bagian: Optional[int] = Query(None, description="Filter bagian / divisi KPU"),
@@ -34,11 +41,12 @@ async def read_pagu_anggaran(
     skip: int = Query(0, ge=0, description="Offset"),
     limit: int = Query(50, ge=1, le=500, description="Limit"),
 ) -> Any:
+    effective_bagian = get_effective_subbagian_id(current_user, id_bagian)
     items, total = await pagu_anggaran.get_filtered(
         db,
         id_tahun_anggaran=id_tahun_anggaran,
         id_akun_anggaran=id_akun_anggaran,
-        id_bagian=id_bagian,
+        id_bagian=effective_bagian,
         status_tahun=status_tahun,
         search=search,
         skip=skip,
@@ -57,6 +65,7 @@ async def read_pagu_anggaran(
 async def read_pagu_anggaran_by_id(
     id_pagu: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
     db_obj = await pagu_anggaran.get_detail(db, id_pagu)
     if not db_obj:
@@ -64,6 +73,12 @@ async def read_pagu_anggaran_by_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Pagu anggaran dengan ID {id_pagu} tidak ditemukan",
         )
+    if not is_rendatin_or_keuangan(current_user):
+        if db_obj.akun_anggaran and db_obj.akun_anggaran.id_bagian != current_user.id_bagian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses ditolak: Anda tidak memiliki akses ke alokasi pagu subbagian lain",
+            )
     return await pagu_anggaran.enrich_pagu_response(db, db_obj)
 
 
@@ -76,7 +91,17 @@ async def read_pagu_anggaran_by_id(
 async def read_pagu_summary(
     id_pagu: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
+    db_obj = await pagu_anggaran.get_detail(db, id_pagu)
+    if not db_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Pagu {id_pagu} tidak ditemukan")
+    if not is_rendatin_or_keuangan(current_user):
+        if db_obj.akun_anggaran and db_obj.akun_anggaran.id_bagian != current_user.id_bagian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses ditolak: Anda tidak memiliki akses ke ringkasan pagu subbagian lain",
+            )
     return await calculate_budget_summary(db, id_pagu)
 
 
@@ -85,13 +110,15 @@ async def read_pagu_summary(
     response_model=PaguAnggaranResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Tambah Alokasi Pagu Anggaran",
-    description="Menetapkan pagu anggaran awal (DIPA) untuk suatu akun pada tahun tertentu. Membutuhkan role Administrator.",
+    description="Menetapkan pagu anggaran awal (DIPA) untuk suatu akun pada tahun tertentu. Membutuhkan role Administrator RENDATIN/Keuangan.",
 )
 async def create_pagu_anggaran(
     pagu_in: PaguAnggaranCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
+    if not is_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hanya Administrator yang dapat menambah pagu anggaran")
     db_obj = await pagu_anggaran.create_pagu(db, obj_in=pagu_in)
     return await pagu_anggaran.enrich_pagu_response(db, db_obj)
 
@@ -100,14 +127,16 @@ async def create_pagu_anggaran(
     "/{id_pagu}",
     response_model=PaguAnggaranResponse,
     summary="Update Metadata Pagu Anggaran",
-    description="Memperbarui metadata SK atau keterangan pagu. Nilai pagu aktif TIDAK diubah melalui endpoint ini, melainkan via Revisi Anggaran. Membutuhkan role Administrator.",
+    description="Memperbarui metadata SK atau keterangan pagu. Nilai pagu aktif TIDAK diubah melalui endpoint ini, melainkan via Revisi Anggaran. Membutuhkan role Administrator RENDATIN/Keuangan.",
 )
 async def update_pagu_anggaran(
     id_pagu: int,
     pagu_in: PaguAnggaranUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
+    if not is_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hanya Administrator yang dapat mengubah pagu anggaran")
     db_obj = await pagu_anggaran.update_pagu(
         db,
         id_pagu=id_pagu,
@@ -120,13 +149,15 @@ async def update_pagu_anggaran(
     "/{id_pagu}",
     response_model=PaguAnggaranResponse,
     summary="Hapus Alokasi Pagu Anggaran",
-    description="Menghapus alokasi pagu jika belum memiliki transaksi realisasi atau revisi anggaran. Membutuhkan role Administrator.",
+    description="Menghapus alokasi pagu jika belum memiliki transaksi realisasi atau revisi anggaran. Membutuhkan role Administrator RENDATIN/Keuangan.",
 )
 async def delete_pagu_anggaran(
     id_pagu: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
+    if not is_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Hanya Administrator yang dapat menghapus pagu anggaran")
     db_obj = await pagu_anggaran.get_detail(db, id_pagu)
     if not db_obj:
         raise HTTPException(

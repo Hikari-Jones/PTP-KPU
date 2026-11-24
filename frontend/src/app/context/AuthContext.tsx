@@ -27,9 +27,16 @@ const MODULE_EDITORS: Record<ModuleKey, string[]> = {
 
 export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {
   if (!user) return false
-  if (user.role === "Admin") return true
-  const sub = user.subbagian.toLowerCase()
+  if (user.role === "Admin" && (!user.subbagian || user.subbagian.toLowerCase().includes("admin"))) return true
+  const sub = (user.subbagian || "").toLowerCase()
   return MODULE_EDITORS[module].some((key) => sub.includes(key.toLowerCase()))
+}
+
+export function isRendatinOrKeuanganUser(user: UserProfile | null): boolean {
+  if (!user) return false
+  if (user.role === "Admin" && (!user.subbagian || user.subbagian.toLowerCase().includes("admin"))) return true
+  const sub = (user.subbagian || "").toLowerCase()
+  return ["keuangan", "rendatin", "perencanaan"].some((k) => sub.includes(k))
 }
 
 interface AuthContextType {
@@ -39,6 +46,7 @@ interface AuthContextType {
   userRole: string
   currentUser: UserProfile | null
   canEdit: (module: ModuleKey) => boolean
+  isRendatinOrKeuangan: boolean
   login: (nip: string, pass: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
 }
@@ -121,8 +129,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
   }
 
+  const isRendatinOrKeuangan = isRendatinOrKeuanganUser(currentUser)
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, isRendatinOrKeuangan, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

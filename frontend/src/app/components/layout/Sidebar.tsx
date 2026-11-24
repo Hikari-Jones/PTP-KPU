@@ -31,7 +31,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu, theme = "light" }: SidebarProps) {
-  const { currentUser, userRole, logout } = useAuth()
+  const { currentUser, userRole, logout, isRendatinOrKeuangan } = useAuth()
 
   // Realisasi Anggaran submenus state
   const isRealisasiActive =
@@ -60,7 +60,10 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     }
   }, [isSuratActive])
 
-  const realisasiSubmenus = [
+  // Submenu configuration with strict role-based access control:
+  // Non-RENDATIN & Non-Keuangan users (Teknis, Hukum, SDM, UMLOG, dll)
+  // are strictly limited to Dashboard, Laporan Bulanan, and Pagu Anggaran only.
+  const fullRealisasiSubmenus = [
     { id: "realization-summary", label: "Dashboard" },
     { id: "realization-ta", label: "Tahun Anggaran" },
     { id: "realization-reports", label: "Laporan Bulanan" },
@@ -69,6 +72,16 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     { id: "realization-pagu", label: "Pagu Anggaran" },
     { id: "realization-input", label: "Input Realisasi" },
   ]
+
+  const restrictedRealisasiSubmenus = [
+    { id: "realization-summary", label: "Dashboard" },
+    { id: "realization-reports", label: "Laporan Bulanan" },
+    { id: "realization-pagu", label: "Pagu Anggaran" },
+  ]
+
+  const realisasiSubmenus = isRendatinOrKeuangan
+    ? fullRealisasiSubmenus
+    : restrictedRealisasiSubmenus
 
   const suratSubmenus = [
     { id: "surat-summary", label: "Dashboard" },

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from app.core.database import get_db
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_effective_subbagian_id, require_rendatin_or_keuangan
 from app.models.schema import Pegawai, TahunAnggaran
 from app.models.operations import HistoricalReportVersion, FinancialAuditLog
 from app.schemas.anggaran import DashboardSummaryResponse, MonthlyReportResponse
@@ -40,20 +40,22 @@ class HistoricalReportVersionResponse(BaseModel):
     "/summary",
     response_model=DashboardSummaryResponse,
     summary="Ringkasan Makro Dashboard Anggaran",
-    description="Menyajikan metrik agregat anggaran makro: total pagu aktif, total realisasi terverifikasi, sisa anggaran, persentase serapan, dan hitungan transaksi.",
+    description="Menyajikan metrik agregat anggaran makro: total pagu aktif, total realisasi terverifikasi, sisa anggaran, persentase serapan, dan hitungan transaksi. Subbagian non-RENDATIN/Keuangan otomatis dibatasi pada datanya sendiri.",
 )
 async def read_dashboard_summary(
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
     id_tahun_anggaran: Optional[int] = Query(None, description="ID tahun anggaran (default ke tahun anggaran aktif jika tidak diisi)"),
     id_akun_anggaran: Optional[int] = Query(None, description="ID akun anggaran (MAK) untuk filter spesifik akun"),
     id_bagian: Optional[int] = Query(None, description="ID bagian/divisi untuk filter spesifik bagian"),
     bulan: Optional[int] = Query(None, ge=1, le=12, description="Filter bulan spesifik (1-12)"),
 ) -> Any:
+    effective_bagian = get_effective_subbagian_id(current_user, id_bagian)
     return await get_dashboard_summary(
         db,
         id_tahun_anggaran=id_tahun_anggaran,
         id_akun_anggaran=id_akun_anggaran,
-        id_bagian=id_bagian,
+        id_bagian=effective_bagian,
         bulan=bulan,
     )
 
@@ -62,19 +64,21 @@ async def read_dashboard_summary(
     "/monthly-report",
     response_model=MonthlyReportResponse,
     summary="Laporan Bulanan Realisasi Anggaran (12 Bulan)",
-    description="Menyajikan matriks laporan serapan anggaran 12 bulan (Januari-Desember) per akun anggaran berdasarkan tahun anggaran, filter akun, dan filter bagian.",
+    description="Menyajikan matriks laporan serapan anggaran 12 bulan (Januari-Desember) per akun anggaran berdasarkan tahun anggaran, filter akun, dan filter bagian. Subbagian non-RENDATIN/Keuangan otomatis dibatasi pada datanya sendiri.",
 )
 async def read_monthly_report(
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
     id_tahun_anggaran: Optional[int] = Query(None, description="ID tahun anggaran (default ke tahun anggaran aktif jika tidak diisi)"),
     id_akun_anggaran: Optional[int] = Query(None, description="ID akun anggaran (MAK) untuk filter spesifik akun"),
     id_bagian: Optional[int] = Query(None, description="ID bagian/divisi untuk filter spesifik bagian"),
 ) -> Any:
+    effective_bagian = get_effective_subbagian_id(current_user, id_bagian)
     return await get_monthly_report(
         db,
         id_tahun_anggaran=id_tahun_anggaran,
         id_akun_anggaran=id_akun_anggaran,
-        id_bagian=id_bagian,
+        id_bagian=effective_bagian,
     )
 
 
@@ -87,7 +91,7 @@ async def read_monthly_report(
 async def publish_report_version(
     payload: PublishReportPayload,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(get_current_user),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
     ta_res = await db.execute(select(TahunAnggaran).where(TahunAnggaran.id_tahun_anggaran == payload.id_tahun_anggaran))
     ta = ta_res.scalar_one_or_none()

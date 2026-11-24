@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, is_admin
+from app.core.auth import (
+    get_current_user,
+    is_admin,
+    require_rendatin_or_keuangan,
+    is_rendatin_or_keuangan,
+    get_effective_subbagian_id,
+)
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     RealisasiAnggaranCreateDraft,
@@ -23,9 +29,11 @@ from app.services.arsip_sync import safe_sync
 router = APIRouter()
 
 async def require_budget_operator(user: Pegawai = Depends(get_current_user)):
-    if not is_admin(user) and not (user.bagian and any(
-            key in user.bagian.nama_bagian.lower() for key in ("keuangan", "rendatin"))):
-        raise HTTPException(403, "Akses input anggaran hanya untuk bagian keuangan/perencanaan")
+    if not is_rendatin_or_keuangan(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Akses ditolak: Input realisasi anggaran hanya untuk Subbagian Keuangan dan RENDATIN",
+        )
     return user
 
 async def require_budget_reviewer(user: Pegawai = Depends(get_current_user)):
@@ -49,6 +57,7 @@ async def capabilities(user: Pegawai = Depends(get_current_user)):
 async def read_realisasi_anggaran(
     response: Response,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
     id_pagu: Optional[int] = Query(None, description="Filter berdasarkan ID pagu anggaran"),
     id_tahun_anggaran: Optional[int] = Query(None, description="Filter berdasarkan tahun anggaran"),
     id_bagian: Optional[int] = Query(None, description="Filter berdasarkan divisi / bagian KPU"),
@@ -62,11 +71,12 @@ async def read_realisasi_anggaran(
     skip: int = Query(0, ge=0, description="Offset data"),
     limit: int = Query(50, ge=1, le=500, description="Limit data per halaman"),
 ) -> Any:
+    effective_bagian = get_effective_subbagian_id(current_user, id_bagian)
     items, total = await realisasi_anggaran.get_filtered(
         db,
         id_pagu=id_pagu,
         id_tahun_anggaran=id_tahun_anggaran,
-        id_bagian=id_bagian,
+        id_bagian=effective_bagian,
         id_akun_anggaran=id_akun_anggaran,
         bulan=bulan,
         status=status,
@@ -90,6 +100,7 @@ async def read_realisasi_anggaran(
 async def read_realisasi_anggaran_by_id(
     id_realisasi: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
     db_obj = await realisasi_anggaran.get_detail(db, id_realisasi)
     if not db_obj:
@@ -97,6 +108,13 @@ async def read_realisasi_anggaran_by_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
         )
+    if not is_rendatin_or_keuangan(current_user):
+        bagian_id = db_obj.akun_anggaran.id_bagian if db_obj.akun_anggaran else None
+        if bagian_id != current_user.id_bagian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akses ditolak: Anda hanya dapat melihat rincian realisasi subbagian Anda sendiri",
+            )
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
 
