@@ -16,6 +16,7 @@ from app.models.schema import (
     RealisasiAnggaran,
     RevisiAnggaran,
     TahunAnggaran,
+    AuditAktivasiTahunAnggaran,
 )
 from app.schemas.anggaran import (
     AkunAnggaranCreate,
@@ -114,48 +115,111 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
         res = await db.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def close_previous_active_year(
+    async def switch_active_fiscal_year(
         self,
         db: AsyncSession,
         *,
-        tahun_baru: int,
-        exclude_id: Optional[int],
-        konfirmasi_tutup_tahun: Optional[int],
-    ) -> Optional[TahunAnggaran]:
-        """Only one fiscal year may be active. Activating a new one closes the current one,
-        but only when the caller re-types the active year's number (second verification).
-        Closing is permanent, so every mismatch is rejected before anything changes."""
-        stmt = select(TahunAnggaran).where(TahunAnggaran.status == "active")
-        if exclude_id is not None:
-            stmt = stmt.where(TahunAnggaran.id_tahun_anggaran != exclude_id)
-        actives = list((await db.execute(stmt.with_for_update())).scalars().all())
-        if not actives:
-            return None
-        if len(actives) > 1:
-            daftar = ", ".join(str(t.tahun) for t in sorted(actives, key=lambda t: t.tahun))
+        target_id: int,
+        current_user_id: Optional[int] = None,
+        current_user_name: Optional[str] = None,
+        alasan: Optional[str] = None,
+    ) -> Tuple[TahunAnggaran, Optional[TahunAnggaran], AuditAktivasiTahunAnggaran]:
+        """
+        Automatic Fiscal Year Switching (Single Active Fiscal Year concept).
+        Atomically switches the active fiscal year to target_id:
+        - Locks active and target rows using SELECT ... FOR UPDATE
+        - Any previously active year is automatically set to 'closed'
+        - The target year is set to 'active'
+        - Ensures auto-creation of pagu for active accounts if none exist (idempotent)
+        - Logs audit trail (previous year, activated year, user, time, reason)
+        - Runs inside a single atomic database transaction
+        """
+        # 1. Lock and fetch target year
+        target_stmt = select(TahunAnggaran).where(TahunAnggaran.id_tahun_anggaran == target_id).with_for_update()
+        target_res = await db.execute(target_stmt)
+        target_year = target_res.scalar_one_or_none()
+        if not target_year:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Terdapat lebih dari satu tahun anggaran aktif ({daftar}). Tutup secara manual terlebih dahulu.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tahun anggaran dengan ID {target_id} tidak ditemukan",
             )
-        previous = actives[0]
-        if tahun_baru <= previous.tahun:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tahun yang diaktifkan harus lebih baru dari TA {previous.tahun} yang sedang aktif",
-            )
-        if konfirmasi_tutup_tahun is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"TA {previous.tahun} masih aktif. Konfirmasi penutupan TA {previous.tahun} diperlukan sebelum mengaktifkan TA {tahun_baru}.",
-            )
-        if konfirmasi_tutup_tahun != previous.tahun:
+
+        if normalize_tahun_status(target_year.status) == "active":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Konfirmasi tidak cocok: ketik {previous.tahun} untuk menutup tahun anggaran yang sedang aktif.",
+                detail=f"Tahun anggaran {target_year.tahun} sudah dalam status aktif",
             )
-        previous.status = "closed"
-        db.add(previous)
-        return previous
+
+        # 2. Lock and fetch all currently active years (excluding target)
+        active_stmt = (
+            select(TahunAnggaran)
+            .where(
+                TahunAnggaran.status == "active",
+                TahunAnggaran.id_tahun_anggaran != target_id,
+            )
+            .with_for_update()
+        )
+        active_res = await db.execute(active_stmt)
+        active_years = list(active_res.scalars().all())
+
+        previous_year: Optional[TahunAnggaran] = None
+        for prev in active_years:
+            prev.status = "closed"
+            db.add(prev)
+            if not previous_year:
+                previous_year = prev
+
+        # 3. Set target year to active
+        target_year.status = "active"
+        db.add(target_year)
+
+        # 4. If target year had no pagu, ensure active accounts have baseline pagu (idempotent)
+        active_accounts_stmt = (
+            select(AkunAnggaran)
+            .where(AkunAnggaran.status == "active")
+            .order_by(AkunAnggaran.id_akun_anggaran.asc())
+        )
+        acc_res = await db.execute(active_accounts_stmt)
+        active_accounts = list(acc_res.scalars().all())
+
+        existing_pagu_stmt = select(PaguAnggaran.id_akun_anggaran).where(
+            PaguAnggaran.id_tahun_anggaran == target_year.id_tahun_anggaran
+        )
+        existing_pagu_res = await db.execute(existing_pagu_stmt)
+        existing_akun_ids = set(existing_pagu_res.scalars().all())
+
+        for acc in active_accounts:
+            if acc.id_akun_anggaran not in existing_akun_ids:
+                pagu_item = PaguAnggaran(
+                    id_tahun_anggaran=target_year.id_tahun_anggaran,
+                    id_akun_anggaran=acc.id_akun_anggaran,
+                    pagu_awal=Decimal("0.00"),
+                    pagu_aktif=Decimal("0.00"),
+                    nomor_sk=None,
+                    tanggal_sk=None,
+                    keterangan=f"Alokasi Pagu Awal TA {target_year.tahun}",
+                )
+                db.add(pagu_item)
+
+        # 5. Insert Audit Trail
+        audit_record = AuditAktivasiTahunAnggaran(
+            id_tahun_sebelum=previous_year.id_tahun_anggaran if previous_year else None,
+            tahun_sebelum=previous_year.tahun if previous_year else None,
+            id_tahun_aktif=target_year.id_tahun_anggaran,
+            tahun_aktif=target_year.tahun,
+            id_pegawai=current_user_id,
+            nama_pegawai=current_user_name,
+            alasan=alasan or f"Aktivasi otomatis Tahun Anggaran {target_year.tahun}",
+        )
+        db.add(audit_record)
+
+        await db.commit()
+        await db.refresh(target_year)
+        if previous_year:
+            await db.refresh(previous_year)
+        await db.refresh(audit_record)
+
+        return target_year, previous_year, audit_record
 
     async def create_tahun(self, db: AsyncSession, *, obj_in: TahunAnggaranCreate, current_user_id: Optional[int] = None) -> TahunAnggaran:
         # Check unique constraint on tahun
@@ -174,12 +238,23 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             )
 
         if obj_in.status == "active":
-            await self.close_previous_active_year(
-                db,
-                tahun_baru=obj_in.tahun,
-                exclude_id=None,
-                konfirmasi_tutup_tahun=obj_in.konfirmasi_tutup_tahun,
+            target_obj = TahunAnggaran(
+                tahun=obj_in.tahun,
+                status="draft", # temporary until switched
+                tanggal_mulai=obj_in.tanggal_mulai,
+                tanggal_selesai=obj_in.tanggal_selesai,
+                deskripsi=obj_in.deskripsi,
+                id_pegawai_pembuat=current_user_id or obj_in.id_pegawai_pembuat,
             )
+            db.add(target_obj)
+            await db.flush()
+            target_year, _, _ = await self.switch_active_fiscal_year(
+                db,
+                target_id=target_obj.id_tahun_anggaran,
+                current_user_id=current_user_id or obj_in.id_pegawai_pembuat,
+                alasan=f"Pembuatan dan aktivasi langsung TA {obj_in.tahun}",
+            )
+            return target_year
 
         db_obj = TahunAnggaran(
             tahun=obj_in.tahun,
@@ -259,13 +334,14 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
                 )
 
         # Validate Lifecycle State Transitions (draft -> active -> closed)
+        # Sesuai konsep Automatic Switching: status active dapat diaktifkan kembali dari closed/draft
         if "status" in update_data and update_data["status"] != normalize_tahun_status(db_obj.status):
             new_status = update_data["status"]
             current_status = normalize_tahun_status(db_obj.status)
             allowed_transitions = {
-                "draft": ["active"],
+                "draft": ["active", "closed"],
                 "active": ["closed"],
-                "closed": [],  # Terminal state: cannot be reopened to draft or active
+                "closed": ["active"],  # Dapat diaktifkan kembali
             }
             if new_status not in allowed_transitions.get(current_status, []):
                 raise HTTPException(
@@ -283,12 +359,14 @@ class CRUDTahunAnggaran(CRUDBase[TahunAnggaran, TahunAnggaranCreate, TahunAnggar
             )
 
         if update_data.get("status") == "active" and normalize_tahun_status(db_obj.status) != "active":
-            await self.close_previous_active_year(
+            await self.switch_active_fiscal_year(
                 db,
-                tahun_baru=update_data.get("tahun", db_obj.tahun),
-                exclude_id=db_obj.id_tahun_anggaran,
-                konfirmasi_tutup_tahun=konfirmasi_tutup_tahun,
+                target_id=db_obj.id_tahun_anggaran,
+                current_user_id=None,
+                alasan="Update status Tahun Anggaran menjadi active",
             )
+            # db_obj status already changed to active inside switch_active_fiscal_year
+            update_data.pop("status", None)
 
         for field, val in update_data.items():
             setattr(db_obj, field, val)

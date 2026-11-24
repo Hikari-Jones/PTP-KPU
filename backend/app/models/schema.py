@@ -1144,6 +1144,89 @@ class TahunAnggaran(Base):
 
 
 # =========================================================
+# 12B. AUDIT AKTIVASI TAHUN ANGGARAN
+# =========================================================
+
+class AuditAktivasiTahunAnggaran(Base):
+    __tablename__ = "audit_aktivasi_tahun_anggaran"
+
+    id_audit: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    id_tahun_sebelum: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "tahun_anggaran.id_tahun_anggaran",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    tahun_sebelum: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    id_tahun_aktif: Mapped[int] = mapped_column(
+        ForeignKey(
+            "tahun_anggaran.id_tahun_anggaran",
+            onupdate="CASCADE",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    tahun_aktif: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    id_pegawai: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "pegawai.id_pegawai",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    nama_pegawai: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    alasan: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    waktu_aktivasi: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+    )
+
+    # Relationships
+    tahun_sebelum_rel: Mapped[Optional["TahunAnggaran"]] = relationship(
+        "TahunAnggaran",
+        foreign_keys=[id_tahun_sebelum],
+    )
+
+    tahun_aktif_rel: Mapped["TahunAnggaran"] = relationship(
+        "TahunAnggaran",
+        foreign_keys=[id_tahun_aktif],
+    )
+
+    pegawai: Mapped[Optional["Pegawai"]] = relationship(
+        "Pegawai",
+        foreign_keys=[id_pegawai],
+    )
+
+
+# =========================================================
 # 13. AKUN ANGGARAN
 # =========================================================
 

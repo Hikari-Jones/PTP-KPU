@@ -49,6 +49,25 @@ class TahunAnggaranUpdate(BaseModel):
         return self
 
 
+class TahunAnggaranActivatePayload(BaseModel):
+    alasan: Optional[str] = Field(None, max_length=500, description="Alasan pengaktifan tahun anggaran")
+
+
+class AuditAktivasiTahunResponse(BaseModel):
+    id_audit: int
+    id_tahun_sebelum: Optional[int] = None
+    tahun_sebelum: Optional[int] = None
+    id_tahun_aktif: int
+    tahun_aktif: int
+    id_pegawai: Optional[int] = None
+    nama_pegawai: Optional[str] = None
+    alasan: Optional[str] = None
+    waktu_aktivasi: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class TahunAnggaranResponse(TahunAnggaranBase):
     id_tahun_anggaran: int
     id_pegawai_pembuat: Optional[int] = None

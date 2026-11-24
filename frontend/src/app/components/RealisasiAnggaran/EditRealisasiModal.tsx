@@ -27,6 +27,17 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
   const [noDokumen, setNoDokumen] = useState("")
   const [uraian, setUraian] = useState("")
   const [jumlahStr, setJumlahStr] = useState("")
+
+  const formatThousand = (val: string | number) => {
+    const raw = String(val).replace(/\D/g, "")
+    if (!raw) return ""
+    return new Intl.NumberFormat("id-ID").format(Number(raw))
+  }
+
+  const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "")
+    setJumlahStr(raw)
+  }
   const [periode, setPeriode] = useState("")
 
   const [loadingPagu, setLoadingPagu] = useState<boolean>(false)
@@ -255,11 +266,10 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
               Jumlah Realisasi Belanja (Rp) *
             </label>
             <Input
-              type="number"
-              step="any"
-              min="1"
-              value={jumlahStr}
-              onChange={(e) => setJumlahStr(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              value={formatThousand(jumlahStr)}
+              onChange={handleJumlahChange}
               required
               placeholder="0"
               className={`text-sm font-extrabold text-red-600 dark:text-red-400 ${

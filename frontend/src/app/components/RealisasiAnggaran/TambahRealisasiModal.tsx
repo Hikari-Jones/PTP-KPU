@@ -31,6 +31,17 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   )
   const [uraian, setUraian] = useState("")
   const [jumlahStr, setJumlahStr] = useState("")
+
+  const formatThousand = (val: string | number) => {
+    const raw = String(val).replace(/\D/g, "")
+    if (!raw) return ""
+    return new Intl.NumberFormat("id-ID").format(Number(raw))
+  }
+
+  const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "")
+    setJumlahStr(raw)
+  }
   const [periode, setPeriode] = useState(new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" }))
   const [fileName, setFileName] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -391,10 +402,11 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
               )}
             </div>
             <Input
-              type="number"
+              type="text"
+              inputMode="numeric"
               placeholder="0"
-              value={jumlahStr}
-              onChange={(e) => setJumlahStr(e.target.value)}
+              value={formatThousand(jumlahStr)}
+              onChange={handleJumlahChange}
               disabled={isSubmitting}
               className={`text-xs font-mono font-bold ${
                 isOverBudget

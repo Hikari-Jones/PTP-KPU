@@ -308,6 +308,25 @@ export const tahunAnggaranApi = {
     }
     return await res.json();
   },
+  activate: async (id: number, alasan?: string): Promise<TahunAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/${id}/activate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ alasan }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal mengaktifkan tahun anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  getAuditHistory: async (): Promise<any[]> => {
+    const res = await fetch(`${API_BASE_URL}/tahun-anggaran/audit-aktivasi/history`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error(`Gagal memuat riwayat audit aktivasi (${res.status})`);
+    return await res.json();
+  },
   delete: async (id: number): Promise<TahunAnggaranResponse> => {
     const res = await fetch(`${API_BASE_URL}/tahun-anggaran/${id}`, {
       method: 'DELETE',

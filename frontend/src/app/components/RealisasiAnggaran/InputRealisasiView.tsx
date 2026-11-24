@@ -27,6 +27,17 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
   )
   const [uraian, setUraian] = useState("")
   const [jumlah, setJumlah] = useState("")
+
+  const formatThousand = (val: string | number) => {
+    const raw = String(val).replace(/\D/g, "")
+    if (!raw) return ""
+    return new Intl.NumberFormat("id-ID").format(Number(raw))
+  }
+
+  const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "")
+    setJumlah(raw)
+  }
   const [periode, setPeriode] = useState(new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" }))
   const [fileName, setFileName] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -373,10 +384,11 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
                 )}
               </div>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="0"
-                value={jumlah}
-                onChange={(e) => setJumlah(e.target.value)}
+                value={formatThousand(jumlah)}
+                onChange={handleJumlahChange}
                 disabled={isSubmitting}
                 className={`${inputClass} font-mono ${isOverBudget ? "border-red-500 text-red-500" : ""}`}
               />

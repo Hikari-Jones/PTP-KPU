@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,8 @@ from app.schemas.anggaran import (
     TahunAnggaranUpdate,
     TahunAnggaranResponse,
     TahunAnggaranListResponse,
+    TahunAnggaranActivatePayload,
+    AuditAktivasiTahunResponse,
 )
 from app.services.anggaran import tahun_anggaran
 
@@ -98,6 +100,45 @@ async def update_tahun_anggaran(
         obj_in=tahun_in,
     )
     return await tahun_anggaran.enrich_tahun_response(db, db_obj)
+
+
+@router.post(
+    "/{id_tahun_anggaran}/activate",
+    response_model=TahunAnggaranResponse,
+    summary="Aktivasi Otomatis Tahun Anggaran",
+    description="Mengaktifkan tahun anggaran yang dipilih (draft/closed). Tahun aktif sebelumnya otomatis berubah menjadi closed. Proses atomik dengan database lock & audit log. Membutuhkan role Administrator.",
+)
+async def activate_tahun_anggaran(
+    id_tahun_anggaran: int,
+    payload: Optional[TahunAnggaranActivatePayload] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_admin),
+) -> Any:
+    target_year, _, _ = await tahun_anggaran.switch_active_fiscal_year(
+        db,
+        target_id=id_tahun_anggaran,
+        current_user_id=current_user.id_pegawai,
+        current_user_name=current_user.nama,
+        alasan=payload.alasan if payload else None,
+    )
+    return await tahun_anggaran.enrich_tahun_response(db, target_year)
+
+
+@router.get(
+    "/audit-aktivasi/history",
+    response_model=List[AuditAktivasiTahunResponse],
+    summary="Riwayat Audit Aktivasi Tahun Anggaran",
+    description="Mengambil jejak audit pergantian Tahun Anggaran (siapa, kapan, tahun sebelum, tahun aktif, alasan).",
+)
+async def read_audit_aktivasi(
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+) -> Any:
+    from app.models.schema import AuditAktivasiTahunAnggaran
+    from sqlalchemy import select, desc
+    stmt = select(AuditAktivasiTahunAnggaran).order_by(desc(AuditAktivasiTahunAnggaran.waktu_aktivasi)).limit(100)
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
 
 
 @router.delete(

@@ -50,7 +50,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
   // Form Tambah / Edit Pagu Fields
   const [formAkunId, setFormAkunId] = useState<number | "">("")
-  const [formPaguAwal, setFormPaguAwal] = useState<number>(0)
+  const [formPaguAwal, setFormPaguAwal] = useState<string>("")
   const [formNomorSK, setFormNomorSK] = useState("")
   const [formTanggalSK, setFormTanggalSK] = useState("")
   const [formKeterangan, setFormKeterangan] = useState("")
@@ -60,10 +60,16 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const [formNomorRevisi, setFormNomorRevisi] = useState("")
   const [formTanggalRevisi, setFormTanggalRevisi] = useState("")
   const [formPaguSebelum, setFormPaguSebelum] = useState(0)
-  const [formPaguBaru, setFormPaguBaru] = useState(0)
+  const [formPaguBaru, setFormPaguBaru] = useState<string>("")
   const [formAlasanRevisi, setFormAlasanRevisi] = useState("")
 
   const requestIdRef = useRef(0)
+
+  const formatThousand = (val: string | number) => {
+    const raw = String(val).replace(/\D/g, "")
+    if (!raw) return ""
+    return new Intl.NumberFormat("id-ID").format(Number(raw))
+  }
 
   const formatRupiah = (value: number | string | null | undefined) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(value) || 0)}`
 
@@ -163,7 +169,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setModalType(null)
     setSelectedPaguToEdit(null)
     setFormAkunId("")
-    setFormPaguAwal(0)
+    setFormPaguAwal("")
     setFormNomorSK("")
     setFormTanggalSK("")
     setFormKeterangan("")
@@ -171,7 +177,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setFormNomorRevisi("")
     setFormTanggalRevisi("")
     setFormPaguSebelum(0)
-    setFormPaguBaru(0)
+    setFormPaguBaru("")
     setFormAlasanRevisi("")
     setError(null)
   }
@@ -180,7 +186,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const openAddPagu = () => {
     setSelectedPaguToEdit(null)
     setFormAkunId("")
-    setFormPaguAwal(0)
+    setFormPaguAwal("")
     setFormNomorSK("")
     const today = new Date().toISOString().split("T")[0]
     setFormTanggalSK(today)
@@ -193,7 +199,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const openEditPagu = (item: PaguAnggaranResponse) => {
     setSelectedPaguToEdit(item)
     setFormAkunId(item.id_akun_anggaran)
-    setFormPaguAwal(Number(item.pagu_awal) || 0)
+    setFormPaguAwal(String(item.pagu_awal || 0))
     setFormNomorSK(item.nomor_sk || "")
     setFormTanggalSK(item.tanggal_sk || "")
     setFormKeterangan(item.keterangan || "")
@@ -247,8 +253,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
         await paguAnggaranApi.create({
           id_tahun_anggaran: selectedTAId,
           id_akun_anggaran: Number(formAkunId),
-          pagu_awal: Number(formPaguAwal) || 0,
-          pagu_aktif: Number(formPaguAwal) || 0,
+          pagu_awal: Number(formPaguAwal.replace(/\D/g, "")) || 0,
+          pagu_aktif: Number(formPaguAwal.replace(/\D/g, "")) || 0,
           nomor_sk: formNomorSK.trim() || undefined,
           tanggal_sk: formTanggalSK || undefined,
           keterangan: formKeterangan.trim() || undefined,
@@ -273,11 +279,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     if (firstPagu) {
       setFormPaguId(firstPagu.id_pagu)
       setFormPaguSebelum(Number(firstPagu.pagu_aktif) || 0)
-      setFormPaguBaru(Number(firstPagu.pagu_aktif) || 0)
+      setFormPaguBaru(String(firstPagu.pagu_aktif || 0))
     } else {
       setFormPaguId("")
       setFormPaguSebelum(0)
-      setFormPaguBaru(0)
+      setFormPaguBaru("")
     }
     setFormAlasanRevisi("")
     setModalType("revisi")
@@ -288,7 +294,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     const selected = paguList.find((p) => p.id_pagu === idPagu)
     if (selected) {
       setFormPaguSebelum(Number(selected.pagu_aktif) || 0)
-      setFormPaguBaru(Number(selected.pagu_aktif) || 0)
+      setFormPaguBaru(String(selected.pagu_aktif || 0))
     }
   }
 
@@ -299,13 +305,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
       setError("Pilih akun pagu anggaran yang akan direvisi.")
       return
     }
-    if (formPaguBaru < 0) {
+    const numericPaguBaru = Number(formPaguBaru.replace(/\D/g, "")) || 0
+    if (numericPaguBaru < 0) {
       setError("Pagu baru tidak boleh bernilai negatif.")
       return
     }
     const revisedPagu = paguList.find((p) => p.id_pagu === Number(formPaguId))
     const realisasiVerified = Number(revisedPagu?.total_realisasi_verified) || 0
-    if (formPaguBaru < realisasiVerified) {
+    if (numericPaguBaru < realisasiVerified) {
       setError(`Pagu baru tidak boleh lebih kecil dari realisasi terverifikasi (${formatRupiah(realisasiVerified)}).`)
       return
     }
@@ -325,7 +332,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
         id_pagu: Number(formPaguId),
         nomor_revisi: formNomorRevisi.trim(),
         tanggal_revisi: formTanggalRevisi,
-        pagu_baru: Number(formPaguBaru),
+        pagu_baru: numericPaguBaru,
         alasan_revisi: formAlasanRevisi.trim(),
       })
       setSuccessMessage("Revisi anggaran berhasil dieksekusi dan tercatat di audit trail!")
@@ -644,11 +651,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   Pagu Awal Penetapan DIPA (Rp)
                   <input
                     required
-                    min={0}
-                    type="number"
-                    value={formPaguAwal}
-                    onChange={(e) => setFormPaguAwal(Number(e.target.value))}
-                    placeholder="Contoh: 50000000"
+                    type="text"
+                    inputMode="numeric"
+                    value={formatThousand(formPaguAwal)}
+                    onChange={(e) => setFormPaguAwal(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Contoh: 50.000.000"
                     className={inputClass}
                   />
                 </label>
@@ -791,10 +798,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   Pagu Baru Setelah Revisi (Rp)
                   <input
                     required
-                    min={0}
-                    type="number"
-                    value={formPaguBaru}
-                    onChange={(e) => setFormPaguBaru(Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatThousand(formPaguBaru)}
+                    onChange={(e) => setFormPaguBaru(e.target.value.replace(/\D/g, ""))}
+                    placeholder="0"
                     className={inputClass}
                   />
                   <span className="block text-[11px] font-medium text-slate-500">
@@ -817,8 +825,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
               <div className={`rounded-xl border p-3 ${isDark ? "border-red-500/20 bg-red-950/20" : "border-red-200 bg-red-50"}`}>
                 <span className="text-slate-500">Perubahan Netto: </span>
-                <strong className={formPaguBaru - formPaguSebelum >= 0 ? "text-emerald-500" : "text-rose-500"}>
-                  {formPaguBaru - formPaguSebelum >= 0 ? "+" : "−"}{formatRupiah(Math.abs(formPaguBaru - formPaguSebelum))}
+                <strong className={(Number(formPaguBaru.replace(/\D/g, "")) || 0) - formPaguSebelum >= 0 ? "text-emerald-500" : "text-rose-500"}>
+                  {(Number(formPaguBaru.replace(/\D/g, "")) || 0) - formPaguSebelum >= 0 ? "+" : "−"}{formatRupiah(Math.abs((Number(formPaguBaru.replace(/\D/g, "")) || 0) - formPaguSebelum))}
                 </strong>
               </div>
 
