@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react"
-import { Building, Award, IdCard, Mail, Shield, Calendar, User } from "lucide-react"
-import { tahunAnggaranApi } from "../../../services/api"
+import { Award, IdCard, Shield, User } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 
 export function ProfilView({ theme }: { theme: "light" | "dark" }) {
@@ -9,19 +7,6 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
 
   // Unit kerja is the department stored for this employee (bagian).
   const unitKerja = currentUser?.subbagian || "-"
-
-  // Active budget year, from the backend
-  const [activeYear, setActiveYear] = useState<string>("…")
-  useEffect(() => {
-    let alive = true
-    tahunAnggaranApi.getAll({ limit: 100 })
-      .then((res) => {
-        const active = res.items.find((item) => item.status === "active")
-        if (alive) setActiveYear(active ? `TA ${active.tahun}` : "Belum ada TA aktif")
-      })
-      .catch(() => { if (alive) setActiveYear("Tidak dapat dimuat") })
-    return () => { alive = false }
-  }, [])
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -123,56 +108,6 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
                 </span>
                 <span className="text-xs font-bold truncate block text-slate-900 dark:text-white" title={unitKerja}>
                   {unitKerja}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Card Dalam 3: Informasi Sistem Kedinasan (2 Kolom Simetris) */}
-        <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2 px-1">
-            Informasi Sistem Kedinasan
-          </span>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {/* Box Email Kedinasan */}
-            <div
-              className={`p-4 rounded-xl border flex items-center gap-3.5 transition-all ${
-                isDark
-                  ? "bg-[#111827]/70 border-white/10 shadow-xs"
-                  : "bg-slate-50 border-slate-200 shadow-2xs"
-              }`}
-            >
-              <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                <Mail className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">
-                  Email Kedinasan
-                </span>
-                <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
-                  {currentUser?.email || "Belum tercatat"}
-                </span>
-              </div>
-            </div>
-
-            {/* Box Tahun Anggaran */}
-            <div
-              className={`p-4 rounded-xl border flex items-center gap-3.5 transition-all ${
-                isDark
-                  ? "bg-[#111827]/70 border-white/10 shadow-xs"
-                  : "bg-slate-50 border-slate-200 shadow-2xs"
-              }`}
-            >
-              <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-0.5">
-                  Tahun Anggaran
-                </span>
-                <span className="text-xs font-bold truncate block text-slate-900 dark:text-white">
-                  {activeYear}
                 </span>
               </div>
             </div>

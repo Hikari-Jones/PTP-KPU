@@ -79,7 +79,7 @@ async def run_setup():
             ("BAG-01", "Subbagian SDM dan Partisipasi Masyarakat"),
             ("BAG-02", "Subbagian RENDATIN (Perencanaan, Data dan Informasi)"),
             ("BAG-03", "Subbagian Teknis Penyelenggaraan Pemilu"),
-            ("BAG-04", "Subbagian Hukum dan Pengawasan"),
+            ("BAG-04", "Subbagian Hukum"),
             ("BAG-05", "Subbagian Umum dan Logistik (UMLOG)"),
             ("BAG-06", "Subbagian Keuangan"),
         ]
@@ -104,37 +104,37 @@ async def run_setup():
             ("198507182020031001", "Admin KPU Sulut", "Administrator Sistem", "admin123", "admin", b_map["BAG-02"]),
 
             # BAG-01: Subbagian SDM dan Partisipasi Masyarakat
-            ("197801152003121001", "Drs. Jerry Mandey, M.Si", "Kepala Bagian SDM dan Partisipasi Masyarakat", "123456", "admin", b_map["BAG-01"]),
+            ("197801152003121001", "Drs. Jerry Mandey, M.Si", "Kepala Bagian SDM dan Partisipasi Masyarakat", "123456", "pegawai", b_map["BAG-01"]),
             ("198203102008011002", "Meyke Tumengkol, S.Sos", "Kasubbag SDM dan Partisipasi Masyarakat", "123456", "operator", b_map["BAG-01"]),
             ("199106142015031004", "Farly Pontoh, S.Kom", "Staf Pengelola Kepegawaian", "123456", "operator", b_map["BAG-01"]),
             ("199508192020122005", "Priscilia Rompas, S.Pd", "Staf Sosialisasi Pendidikan Pemilih", "123456", "operator", b_map["BAG-01"]),
 
             # BAG-02: Subbagian RENDATIN (Perencanaan, Data dan Informasi)
-            ("197604122002121001", "Ir. Ronny Lumempow, MT", "Kepala Bagian Perencanaan, Data dan Informasi, Partisipasi, Hubungan Masyarakat dan SDM", "123456", "admin", b_map["BAG-02"]),
+            ("197604122002121001", "Ir. Ronny Lumempow, MT", "Kepala Bagian Perencanaan, Data dan Informasi, Partisipasi, Hubungan Masyarakat dan SDM", "123456", "pegawai", b_map["BAG-02"]),
             ("198307192009021002", "Christian Runtu, ST", "Kasubbag Perencanaan, Data dan Informasi", "123456", "operator", b_map["BAG-02"]),
             ("199302172017011004", "Michael Poluan, S.Kom", "Pranata Komputer / Analis Data", "123456", "operator", b_map["BAG-02"]),
             ("199609252022032005", "Natasya Pangemanan, S.Stat", "Pengolah Data SIDALIH", "123456", "operator", b_map["BAG-02"]),
 
             # BAG-03: Subbagian Teknis Penyelenggaraan Pemilu
-            ("197709282005011001", "Drs. Franky Mokodompit, M.Si", "Kepala Bagian Teknis Penyelenggaraan Pemilu dan Hukum", "123456", "admin", b_map["BAG-03"]),
+            ("197709282005011001", "Drs. Franky Mokodompit, M.Si", "Kepala Bagian Teknis Penyelenggaraan Pemilu dan Hukum", "123456", "pegawai", b_map["BAG-03"]),
             ("198112042006041002", "Hendrik Sumendap, SH", "Kasubbag Teknis Penyelenggaraan Pemilu", "123456", "operator", b_map["BAG-03"]),
             ("199208052021011002", "Ahmad Kurniawan", "Staf Teknis Penyelenggaraan", "123456", "operator", b_map["BAG-03"]),
             ("199410112019022004", "Ingrid Sondakh, S.Sos", "Staf Pengelola Sistem SILOG", "123456", "operator", b_map["BAG-03"]),
 
             # BAG-04: Subbagian Hukum dan Pengawasan
-            ("197903212006041001", "Donald Kalalo, SH, MH", "Kepala Bagian Hukum dan Pengawasan", "123456", "admin", b_map["BAG-04"]),
+            ("197903212006041001", "Donald Kalalo, SH, MH", "Kepala Bagian Hukum dan Pengawasan", "123456", "pegawai", b_map["BAG-04"]),
             ("198309142009121002", "Richard Senduk, SH", "Kasubbag Hukum dan Pengawasan", "123456", "operator", b_map["BAG-04"]),
             ("199403152021022003", "Siti Rahmawati", "Staf Subbagian Hukum", "123456", "operator", b_map["BAG-04"]),
             ("199512302020121005", "Aldo Maramis, SH", "Staf Dokumentasi JDIH KPU", "123456", "operator", b_map["BAG-04"]),
 
             # BAG-05: Subbagian Umum dan Logistik (UMLOG)
-            ("197508052001121001", "Dra. Jenny Walangitan, MM", "Kepala Bagian Keuangan, Umum dan Logistik", "123456", "admin", b_map["BAG-05"]),
+            ("197508052001121001", "Dra. Jenny Walangitan, MM", "Kepala Bagian Keuangan, Umum dan Logistik", "123456", "pegawai", b_map["BAG-05"]),
             ("198404182009022003", "Nova Lasut, SE", "Kasubbag Umum dan Logistik", "123456", "operator", b_map["BAG-05"]),
             ("198811202019031004", "Budi Santoso", "Staf Pengelola UMLOG", "123456", "operator", b_map["BAG-05"]),
             ("199211152018021006", "Rizky Rumagit, S.Kom", "Staf Pengadaan Logistik", "123456", "operator", b_map["BAG-05"]),
 
             # BAG-06: Subbagian Keuangan
-            ("197406182000031001", "Drs. Maxie Rondonuwu, M.Si, Ak", "Kepala Bagian Keuangan", "123456", "admin", b_map["BAG-06"]),
+            ("197406182000031001", "Drs. Maxie Rondonuwu, M.Si, Ak", "Kepala Bagian Keuangan", "123456", "pegawai", b_map["BAG-06"]),
             ("198010202007011002", "Albert Wenas, SE, Ak", "Kasubbag Pengelolaan Keuangan dan DIPA", "123456", "operator", b_map["BAG-06"]),
             ("199305142018012005", "Jessica Pandeirot, SE", "Bendahara Pengeluaran Pembantu", "123456", "operator", b_map["BAG-06"]),
             ("199507202020122007", "Stevani Waworuntu, SE", "Staf Verifikasi dan Akuntansi", "123456", "operator", b_map["BAG-06"]),

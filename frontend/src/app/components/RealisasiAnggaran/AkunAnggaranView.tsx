@@ -629,12 +629,6 @@ export function AkunAnggaranView({ theme }: Props) {
                 </div>
               </div>
 
-              <div className={`rounded-xl border p-3 ${isDark ? "border-emerald-500/20 bg-emerald-950/20" : "border-emerald-200 bg-emerald-50"}`}>
-                <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  ℹ️ <strong>Auto-Pagu Otomatis:</strong> Saat akun baru dengan status aktif dibuat, alokasi pagu pada seluruh tahun anggaran yang aktif otomatis dibentuk oleh backend.
-                </p>
-              </div>
-
               <div className="pt-2 flex items-center justify-end gap-2.5">
                 <button
                   type="button"

@@ -883,7 +883,7 @@ export function TahunAnggaranView({ theme }: Props) {
           <div className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-black"}`}>
             <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-white/10 bg-[#0a0f1d]" : "border-slate-200 bg-slate-50"}`}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
                   Konfirmasi Pergantian Tahun Aktif
                 </p>
                 <h3 className="text-sm font-bold">Aktifkan TA {activateConfirmItem.tahun}?</h3>
@@ -913,13 +913,13 @@ export function TahunAnggaranView({ theme }: Props) {
                     Tahun Anggaran aktif saat ini (
                     <strong className="text-amber-500">TA {activeYear.tahun}</strong>) akan otomatis{" "}
                     <strong className="text-amber-500">ditutup (Closed)</strong> dan{" "}
-                    <strong className="text-emerald-500">TA {activateConfirmItem.tahun}</strong> akan{" "}
-                    <strong className="text-emerald-500">diaktifkan (Active)</strong>.
+                    <strong className="text-red-600 dark:text-red-400">TA {activateConfirmItem.tahun}</strong> akan{" "}
+                    <strong className="text-red-600 dark:text-red-400">diaktifkan (Active)</strong>.
                   </>
                 ) : (
                   <>
-                    <strong className="text-emerald-500">TA {activateConfirmItem.tahun}</strong> akan{" "}
-                    <strong className="text-emerald-500">diaktifkan (Active)</strong> sebagai tahun anggaran berjalan.
+                    <strong className="text-red-600 dark:text-red-400">TA {activateConfirmItem.tahun}</strong> akan{" "}
+                    <strong className="text-red-600 dark:text-red-400">diaktifkan (Active)</strong> sebagai tahun anggaran berjalan.
                   </>
                 )}
               </p>
@@ -943,7 +943,7 @@ export function TahunAnggaranView({ theme }: Props) {
                   onChange={(e) => setActivateReason(e.target.value)}
                   placeholder="Contoh: Mulai tahun anggaran baru / Koreksi operasional"
                   className={`w-full px-3 py-2 rounded-xl border outline-none font-medium ${
-                    isDark ? "bg-[#131b2e] border-white/10 text-white focus:border-emerald-500" : "bg-slate-50 border-slate-300 text-black focus:border-emerald-500"
+                    isDark ? "bg-[#131b2e] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-black focus:border-red-500"
                   }`}
                 />
               </div>
@@ -963,7 +963,7 @@ export function TahunAnggaranView({ theme }: Props) {
                   type="button"
                   onClick={handleExecuteActivate}
                   disabled={submitting}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-2 cursor-pointer shadow-md transition-colors"
+                  className="px-5 py-2 rounded-xl btn-kpu-red text-white font-bold flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95"
                 >
                   {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {submitting ? "Mengaktifkan..." : `Ya, Aktifkan TA ${activateConfirmItem.tahun}`}

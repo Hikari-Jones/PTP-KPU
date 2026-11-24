@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react"
+import { useAuth } from "../../context/AuthContext"
 import {
   Mail,
   Archive,
   TrendingUp,
   Wallet,
   FileCheck,
-  RefreshCw,
   AlertCircle,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
@@ -98,6 +98,7 @@ function relativeTime(iso: string): string {
 
 export function DashboardView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
+  const { canViewBudget } = useAuth()
 
   // Dropdown options
   const [tahunList, setTahunList] = useState<TahunAnggaranResponse[]>([])
@@ -124,6 +125,10 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
 
   // Initial load of master options
   useEffect(() => {
+    if (!canViewBudget) {
+      setLoading(false)
+      return
+    }
     let isMounted = true
     const initMaster = async () => {
       try {
@@ -152,10 +157,11 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [canViewBudget])
 
   // Load Akun list when Bagian filter changes
   useEffect(() => {
+    if (!canViewBudget) return
     let isMounted = true
     const loadAkun = async () => {
       try {
@@ -180,10 +186,11 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
     return () => {
       isMounted = false
     }
-  }, [selectedBagianId])
+  }, [selectedBagianId, canViewBudget])
 
   // Fetch summary when filters change (with race protection)
   const fetchSummary = async () => {
+    if (!canViewBudget) return
     const currentReqId = ++requestIdRef.current
     setLoading(true)
     setError(null)
@@ -208,8 +215,10 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
   }
 
   useEffect(() => {
-    fetchSummary()
-  }, [selectedTahunId, selectedBagianId, selectedAkunId])
+    if (canViewBudget) {
+      fetchSummary()
+    }
+  }, [selectedTahunId, selectedBagianId, selectedAkunId, canViewBudget])
 
   // Active year object
   const currentTa = tahunList.find((t) => t.id_tahun_anggaran === selectedTahunId)
@@ -284,11 +293,14 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
             Dashboard Operasional Terpadu — TA {displayYear}
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-            Pusat pemantauan eksekutif realisasi anggaran, persuratan digital, dan arsip dokumen KPU Sulawesi Utara
+            {canViewBudget
+              ? "Pusat pemantauan eksekutif realisasi anggaran, persuratan digital, dan arsip dokumen KPU Sulawesi Utara"
+              : "Pusat pemantauan persuratan digital dan arsip dokumen KPU Sulawesi Utara"}
           </p>
         </div>
 
-        {/* Global Toolbar Filters */}
+        {/* Global Toolbar Filters (hanya untuk pengguna dengan akses Realisasi Anggaran) */}
+        {canViewBudget && (
         <div className="flex flex-wrap items-center justify-start xl:justify-end gap-2 shrink-0">
           {/* Filter Tahun */}
           <select
@@ -342,6 +354,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
             ))}
           </select>
         </div>
+        )}
       </div>
 
       {/* Error Banner with Retry */}
@@ -373,50 +386,54 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
         </div>
       )}
 
-      {/* 4 Metric Cards - Merah, Hitam, Putih */}
-      <div className="dashboard-metrics grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
-        {/* Card 1: Total Pagu Anggaran */}
-        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
-          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-            <div className="flex-1 flex flex-col justify-center min-w-0 pr-2">
-              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
-                Total Pagu TA {displayYear}
-              </p>
-              <h2 className={`text-2xl font-black mt-1 truncate ${isDark ? "text-white" : "text-black"}`}>
-                {loading ? <span className="inline-block w-24 h-7 bg-slate-300 dark:bg-slate-700 animate-pulse rounded-lg"></span> : `Rp ${formatMiliar(summary?.total_pagu_aktif ?? 0)} M`}
-              </h2>
-              <p className={`text-[10px] font-bold mt-1 truncate ${isDark ? "text-gray-400" : "text-slate-600"}`}>
-                {formatRupiah(summary?.total_pagu_aktif ?? 0)}
-              </p>
-            </div>
-            <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Wallet className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Metric Cards - Merah, Hitam, Putih */}
+      <div className={`dashboard-metrics grid grid-cols-1 ${canViewBudget ? "sm:grid-cols-2 2xl:grid-cols-4" : "sm:grid-cols-2"} gap-4`}>
+        {canViewBudget && (
+          <>
+            {/* Card 1: Total Pagu Anggaran */}
+            <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+              <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+                <div className="flex-1 flex flex-col justify-center min-w-0 pr-2">
+                  <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                    Total Pagu TA {displayYear}
+                  </p>
+                  <h2 className={`text-2xl font-black mt-1 truncate ${isDark ? "text-white" : "text-black"}`}>
+                    {loading ? <span className="inline-block w-24 h-7 bg-slate-300 dark:bg-slate-700 animate-pulse rounded-lg"></span> : `Rp ${formatMiliar(summary?.total_pagu_aktif ?? 0)} M`}
+                  </h2>
+                  <p className={`text-[10px] font-bold mt-1 truncate ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                    {formatRupiah(summary?.total_pagu_aktif ?? 0)}
+                  </p>
+                </div>
+                <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Wallet className="w-6 h-6" />
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Card 2: Total Realisasi Anggaran */}
-        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
-          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-            <div className="flex-1 flex flex-col justify-center min-w-0 pr-2">
-              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
-                Total Realisasi
-              </p>
-              <h2 className={`text-2xl font-black mt-1 truncate ${isDark ? "text-white" : "text-black"}`}>
-                {loading ? <span className="inline-block w-24 h-7 bg-slate-300 dark:bg-slate-700 animate-pulse rounded-lg"></span> : `Rp ${formatMiliar(summary?.total_realisasi_verified ?? 0)} M`}
-              </h2>
-              <p className={`text-[10px] font-bold flex items-center gap-1 mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
-                <TrendingUp className="w-3.5 h-3.5 text-red-500" />
-                <span>{summary?.persentase_serapan?.toFixed(2) ?? "0.00"}% terserap</span>
-              </p>
-            </div>
-            <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <FileCheck className="w-6 h-6" />
-            </div>
-          </CardContent>
-        </Card>
+            {/* Card 2: Total Realisasi Anggaran */}
+            <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+              <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+                <div className="flex-1 flex flex-col justify-center min-w-0 pr-2">
+                  <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                    Total Realisasi
+                  </p>
+                  <h2 className={`text-2xl font-black mt-1 truncate ${isDark ? "text-white" : "text-black"}`}>
+                    {loading ? <span className="inline-block w-24 h-7 bg-slate-300 dark:bg-slate-700 animate-pulse rounded-lg"></span> : `Rp ${formatMiliar(summary?.total_realisasi_verified ?? 0)} M`}
+                  </h2>
+                  <p className={`text-[10px] font-bold flex items-center gap-1 mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                    <TrendingUp className="w-3.5 h-3.5 text-red-500" />
+                    <span>{summary?.persentase_serapan?.toFixed(2) ?? "0.00"}% terserap</span>
+                  </p>
+                </div>
+                <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <FileCheck className="w-6 h-6" />
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
 
         {/* Card 3: Surat Masuk Aktif */}
         <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
@@ -462,8 +479,8 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
       </div>
 
       {/* Dual Visual Charts: Tren Realisasi Bulanan Dinamis (Monthly Recap) + Statistik Dokumen & Surat */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Tren Realisasi Bulanan Dinamis */}
+      <div className={`grid grid-cols-1 ${canViewBudget ? "lg:grid-cols-2" : ""} gap-6`}>
+        {canViewBudget && (
         <Card className={`min-w-0 overflow-hidden flex flex-col ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
             <div className="min-w-0">
@@ -577,6 +594,7 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Chart 2: Statistik Dokumen & Surat */}
         <DashboardChart
@@ -667,7 +685,9 @@ export function DashboardView({ theme }: { theme: "light" | "dark" }) {
                   {overviewLoading ? "Memuat aktivitas…" : "Belum ada aktivitas."}
                 </p>
               )}
-              {(overview?.recent_activity ?? []).map((act, index) => {
+              {(overview?.recent_activity ?? [])
+                .filter((act) => canViewBudget || act.type !== "anggaran")
+                .map((act, index) => {
                 const Icon = ACTIVITY_ICON[act.type] ?? Mail
                 return (
                   <div

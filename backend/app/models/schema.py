@@ -121,6 +121,8 @@ class Pegawai(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
 
+    is_online: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+
     # Relationships
     bagian: Mapped[Optional["Bagian"]] = relationship(
         "Bagian",
@@ -1761,3 +1763,31 @@ class Satker(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
     )
+
+
+# =========================================================
+# PERMINTAAN VERIFIKASI AKUN BARU (SIGN UP)
+# =========================================================
+
+class PermintaanAkun(Base):
+    """Pendaftaran akun pegawai baru yang menunggu verifikasi administrator."""
+    __tablename__ = "permintaan_akun"
+
+    id_request: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nama: Mapped[str] = mapped_column(String(150), nullable=False)
+    nip: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+    jabatan: Mapped[str] = mapped_column(String(100), nullable=False)
+    unit_bagian: Mapped[str] = mapped_column(String(150), nullable=False)
+    id_bagian: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("bagian.id_bagian", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+    nama_subbagian: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", server_default="pending")
+    catatan_admin: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reviewed_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    bagian: Mapped[Optional["Bagian"]] = relationship("Bagian")

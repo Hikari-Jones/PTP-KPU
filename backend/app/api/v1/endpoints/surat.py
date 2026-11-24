@@ -224,11 +224,6 @@ async def create_draft_surat_keluar(
         raise HTTPException(422, "Tahun surat tidak sesuai tanggal")
     if payload.bulan_romawi is not None and payload.bulan_romawi != roman:
         raise HTTPException(422, "Bulan surat tidak sesuai tanggal")
-    if not is_admin(current_user):
-        if not current_user.bagian or not any(key in current_user.bagian.nama_bagian.lower() for key in ('umum', 'umlog')):
-            raise HTTPException(403, "Input persuratan hanya untuk bagian Umum/Logistik")
-        if payload.id_bagian != current_user.id_bagian:
-            raise HTTPException(403, "Bagian surat harus sesuai bagian pengguna")
     for model, ident in ((KodeKlasifikasiArsip, payload.id_klasifikasi), (JenisSurat, payload.id_jenis_surat), (Bagian, payload.id_bagian)):
         if not await db.get(model, ident):
             raise HTTPException(422, "Referensi bagian, klasifikasi atau jenis surat tidak ditemukan")
@@ -578,11 +573,8 @@ class SuratTugasCreate(BaseModel):
 
 
 def _is_letter_manager(user: Pegawai) -> bool:
-    """Admins and staff of the Umum/Logistik section administer correspondence."""
-    if is_admin(user):
-        return True
-    nama = (user.bagian.nama_bagian if user.bagian else "").lower()
-    return any(key in nama for key in ("umum", "umlog"))
+    """Surat menyurat terbuka untuk semua pegawai (read & write)."""
+    return True
 
 
 def _surat_tugas_out(t: SuratTugas) -> dict:

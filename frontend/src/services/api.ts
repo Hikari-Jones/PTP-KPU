@@ -723,7 +723,68 @@ export interface LoginApiResponse {
   user: UserProfileResponse;
 }
 
+export interface SubbagianOption {
+  id_bagian: number;
+  kode_bagian: string;
+  nama_bagian: string;
+}
+
+export interface UnitBagianOption {
+  kode: string;
+  nama: string;
+  subbagian: SubbagianOption[];
+}
+
+export interface RegisterPayload {
+  nama: string;
+  nip: string;
+  password: string;
+  jabatan: string;
+  unit_bagian: string;
+  id_bagian?: number | null;
+}
+
+export interface RegisterResponse {
+  id_request: number;
+  nama: string;
+  nip: string;
+  jabatan: string;
+  unit_bagian: string;
+  nama_subbagian?: string | null;
+  status: string;
+  message: string;
+}
+
 export const authApi = {
+  getUnitOptions: async (): Promise<UnitBagianOption[]> => {
+    const res = await fetch(`${API_BASE_URL}/auth/unit-options`);
+    if (!res.ok) {
+      throw new Error(`Gagal memuat daftar unit bagian (${res.status})`);
+    }
+    return await res.json();
+  },
+  register: async (payload: RegisterPayload): Promise<RegisterResponse> => {
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Gagal mengirim pengajuan pendaftaran' }));
+      throw new Error(err.detail || `Pendaftaran gagal (${res.status})`);
+    }
+
+    return await res.json();
+  },
+  getRegisterStatus: async (nip: string): Promise<RegisterResponse> => {
+    const res = await fetch(`${API_BASE_URL}/auth/register-status?nip=${encodeURIComponent(nip.trim())}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Status verifikasi tidak ditemukan' }));
+      throw new Error(err.detail || `Gagal memeriksa status (${res.status})`);
+    }
+    return await res.json();
+  },
   login: async (payload: LoginPayload): Promise<LoginApiResponse> => {
     const res = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',

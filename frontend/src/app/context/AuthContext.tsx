@@ -25,27 +25,53 @@ const MODULE_EDITORS: Record<ModuleKey, string[]> = {
   surat: ["UMLOG", "Umum"],
 }
 
-export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {
+export function isFullBudgetUser(user: UserProfile | null): boolean {
   if (!user) return false
   const roleLower = (user.role || "").toLowerCase()
   const sub = (user.subbagian || "").toLowerCase()
+  const jab = (user.jabatan || "").toLowerCase()
   const isAdminSystem = (roleLower === "admin" || roleLower === "administrator") && (!user.subbagian || sub.includes("admin"))
   if (isAdminSystem) return true
-  if (module === "anggaran") {
-    // Only System Admin, RENDATIN, or Keuangan may edit financial data.
-    // Kabag of other subsections (SDM, Teknis, Hukum, UMLOG) who have role "admin" are strictly READ-ONLY.
-    return ["keuangan", "rendatin", "perencanaan"].some((key) => sub.includes(key))
+
+  const isKabag = jab.includes("kepala bagian") || jab.includes("kabag")
+  const isKabagPerencanaanSdm =
+    isKabag &&
+    ["perencanaan", "rendatin", "partisipasi", "hubungan masyarakat", "humas", "sdm"].some(
+      (key) => jab.includes(key) || sub.includes(key)
+    )
+  if (isKabagPerencanaanSdm) return true
+
+  // Kepala Subbagian RENDATIN & Staf Subbagian RENDATIN
+  return (
+    sub.includes("rendatin") ||
+    sub.includes("perencanaan, data dan informasi") ||
+    sub.includes("bag-02") ||
+    jab.includes("rendatin")
+  )
+}
+
+export function canViewBudgetFeature(user: UserProfile | null): boolean {
+  if (!user) return false
+  if (isFullBudgetUser(user)) return true
+  const jab = (user.jabatan || "").toLowerCase()
+  // Kepala Bagian lain hanya bisa Read-Only (tanpa menu Input Realisasi)
+  return jab.includes("kepala bagian") || jab.includes("kabag")
+}
+
+export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {
+  if (!user) return false
+  if (module === "surat") {
+    // Surat menyurat terbuka untuk semua pegawai (read & write)
+    return true
   }
-  return MODULE_EDITORS[module].some((key) => sub.includes(key.toLowerCase()))
+  if (module === "anggaran") {
+    return isFullBudgetUser(user)
+  }
+  return MODULE_EDITORS[module].some((key) => (user.subbagian || "").toLowerCase().includes(key.toLowerCase()))
 }
 
 export function isRendatinOrKeuanganUser(user: UserProfile | null): boolean {
-  if (!user) return false
-  const roleLower = (user.role || "").toLowerCase()
-  const sub = (user.subbagian || "").toLowerCase()
-  const isAdminSystem = (roleLower === "admin" || roleLower === "administrator") && (!user.subbagian || sub.includes("admin"))
-  if (isAdminSystem) return true
-  return ["keuangan", "rendatin", "perencanaan"].some((k) => sub.includes(k))
+  return isFullBudgetUser(user)
 }
 
 interface AuthContextType {
@@ -56,6 +82,7 @@ interface AuthContextType {
   currentUser: UserProfile | null
   canEdit: (module: ModuleKey) => boolean
   isRendatinOrKeuangan: boolean
+  canViewBudget: boolean
   login: (nip: string, pass: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
 }
@@ -113,6 +140,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem("ptp_kpu_token", result.access_token)
       const userProfile = result.user as UserProfile
       localStorage.setItem("ptp_kpu_user", JSON.stringify(userProfile))
+      localStorage.removeItem("ptp_pending_request")
+      localStorage.removeItem("ptp_login_mode")
       // Tandai flag bahwa user baru saja berhasil login untuk menampilkan notifikasi login
       sessionStorage.setItem("ptp_just_logged_in", "true")
       // Delay sejenak (800ms) untuk loading screen masuk dashboard
@@ -139,9 +168,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const isRendatinOrKeuangan = isRendatinOrKeuanganUser(currentUser)
+  const canViewBudget = canViewBudgetFeature(currentUser)
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, isRendatinOrKeuangan, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoadingAuth, isLoggingIn, userRole, currentUser, canEdit, isRendatinOrKeuangan, canViewBudget, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

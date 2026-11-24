@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import select
@@ -31,7 +31,7 @@ async def seed_all():
             ("BAG-01", "Subbagian SDM dan Partisipasi Masyarakat"),
             ("BAG-02", "Subbagian RENDATIN (Perencanaan, Data dan Informasi)"),
             ("BAG-03", "Subbagian Teknis Penyelenggaraan Pemilu"),
-            ("BAG-04", "Subbagian Hukum dan Pengawasan"),
+            ("BAG-04", "Subbagian Hukum"),
             ("BAG-05", "Subbagian Keuangan, Umum dan Logistik (UMLOG)"),
         ]
         bagian_map = {}

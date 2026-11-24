@@ -51,8 +51,6 @@ async def letters(response: Response, skip: int = Query(0, ge=0), limit: int = Q
                   year: int | None = Query(None, ge=1900, le=2100),
                   db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user)):
     q = select(WorkflowLetter).order_by(WorkflowLetter.id.desc())
-    if not is_admin(user):
-        q = q.where(or_(WorkflowLetter.owner_id == user.id_pegawai, WorkflowLetter.assignee_id == user.id_pegawai))
     if kind: q = q.where(WorkflowLetter.kind == kind)
     if status: q = q.where(WorkflowLetter.status == status)
     if year: q = q.where(func.extract('year', WorkflowLetter.date) == year)
@@ -65,8 +63,6 @@ async def letters(response: Response, skip: int = Query(0, ge=0), limit: int = Q
 
 @router.post('/letters', status_code=201)
 async def create_letter(payload: LetterInput, db: AsyncSession = Depends(get_db), user: Pegawai = Depends(get_current_user)):
-    if not is_admin(user) and not (user.bagian and any(x in user.bagian.nama_bagian.lower() for x in ['umum', 'umlog'])):
-        raise HTTPException(403, 'Hanya bagian Umum/Logistik atau admin dapat membuat surat')
     if payload.file_id:
         f = await db.get(FileRecord, payload.file_id)
         if not f or f.uploaded_by != user.id_pegawai:

@@ -23,6 +23,7 @@ class PegawaiUpdate(BaseModel):
 class PegawaiResponse(PegawaiBase):
     nip: Optional[str] = None
     id_pegawai: int
+    is_online: bool = False
 
     class Config:
         from_attributes = True

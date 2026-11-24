@@ -91,6 +91,12 @@ PUBLIC_PATHS = {
     "/openapi.json",
     "/api/v1/auth/login",
     "/api/auth/login",
+    "/api/v1/auth/register",
+    "/api/auth/register",
+    "/api/v1/auth/register-status",
+    "/api/auth/register-status",
+    "/api/v1/auth/unit-options",
+    "/api/auth/unit-options",
 }
 
 @app.middleware("http")

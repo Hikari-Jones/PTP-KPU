@@ -33,7 +33,7 @@ const BugReportView = lazy(() => import("./app/components/views/BugReportView").
 const ArsipAdminView = lazy(() => import("./app/components/views/ArsipAdminView").then((m) => ({ default: m.ArsipAdminView })))
 
 function MainLayout() {
-  const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser, isRendatinOrKeuangan } = useAuth()
+  const { isAuthenticated, isLoadingAuth, isLoggingIn, canEdit, currentUser, isRendatinOrKeuangan, canViewBudget } = useAuth()
 
   // Theme state: default is "light"
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -120,28 +120,35 @@ function MainLayout() {
         return <DashboardView theme={theme} />
       case "realisasi_anggaran":
       case "realization-summary":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-ta":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         if (!isRendatinOrKeuangan) {
           return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         }
         return <TahunAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-satker":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         if (!SATKER_MENU_ENABLED || !isRendatinOrKeuangan) return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         return <SatkerView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-akun":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         if (!isRendatinOrKeuangan) {
           return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         }
         return <AkunAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-pagu":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         return <PaguAnggaranView theme={theme} onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-input":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         if (!isRendatinOrKeuangan) {
           return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         }
         return <InputRealisasiView theme={theme} />
       case "realization-reports":
+        if (!canViewBudget) return <DashboardView theme={theme} />
         return <LaporanBulananView theme={theme} />
       case "surat":
       case "surat-summary":

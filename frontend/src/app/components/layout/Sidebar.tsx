@@ -31,7 +31,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu, theme = "light" }: SidebarProps) {
-  const { currentUser, userRole, logout, isRendatinOrKeuangan } = useAuth()
+  const { currentUser, userRole, logout, isRendatinOrKeuangan, canViewBudget } = useAuth()
 
   // Realisasi Anggaran submenus state
   const isRealisasiActive =
@@ -219,7 +219,8 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                 {!collapsed && <span className="truncate">Dashboard</span>}
               </button>
 
-              {/* Realisasi Anggaran Parent Menu (Expandable) */}
+              {/* Realisasi Anggaran Parent Menu (Hanya tampil jika punya akses penuh atau Kabag Read-Only) */}
+              {canViewBudget && (
               <div>
                 <button
                   onClick={handleRealisasiParentClick}
@@ -270,6 +271,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                   </div>
                 )}
               </div>
+              )}
 
               {/* Surat Parent Menu (Expandable) */}
               <div>

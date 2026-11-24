@@ -21,6 +21,6 @@ export async function download(path: string, filename: string) {
   }
   saveFile(filename, await res.blob())
 }
-export interface Employee { id_pegawai: number; nama: string; nip: string; role: string; id_bagian: number | null; jabatan: string | null; is_active: boolean }
+export interface Employee { id_pegawai: number; nama: string; nip: string; role: string; id_bagian: number | null; jabatan: string | null; is_active: boolean; is_online?: boolean }
 export interface Department { id_bagian: number; nama_bagian: string }
 export const message = (e: unknown) => e instanceof Error ? e.message : 'Terjadi kesalahan'
