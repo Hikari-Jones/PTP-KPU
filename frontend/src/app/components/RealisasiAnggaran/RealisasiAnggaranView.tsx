@@ -300,9 +300,9 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
       const months = ['januari','februari','maret','april','mei','juni','juli','agustus','september','oktober','november','desember'] as const
       saveCsv(`Realisasi_Bulanan_${data.tahun || 'semua'}.csv`, [
         ['Kode', 'Akun', 'Bagian', 'Pagu', ...MONTH_NAMES, 'Realisasi terverifikasi', 'Sisa'],
-        ...data.rows.map(row => [row.kode_akun, row.nama_akun, row.nama_bagian, row.pagu,
-          ...months.map(month => row[month]), row.total_realisasi, row.sisa_anggaran]),
-        ['TOTAL', '', '', data.total.pagu, ...months.map(month => data.total[month]), data.total.total_realisasi, data.total.sisa_anggaran]
+        ...data.rows.map(row => [row.kode_akun, row.nama_akun, row.nama_bagian, formatRupiah(row.pagu),
+          ...months.map(month => formatRupiah(row[month])), formatRupiah(row.total_realisasi), formatRupiah(row.sisa_anggaran)]),
+        ['TOTAL', '', '', formatRupiah(data.total.pagu), ...months.map(month => formatRupiah(data.total[month])), formatRupiah(data.total.total_realisasi), formatRupiah(data.total.sisa_anggaran)]
       ])
     } catch (e) { setError(e instanceof Error ? e.message : 'Ekspor gagal') }
   }
@@ -454,22 +454,6 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               <option value="tanpa">Belum Ada Bukti</option>
             </select>
           )}
-        </div>
-
-        {/* Search Input */}
-        <div className="relative min-w-56">
-          <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? "text-gray-400" : "text-slate-500"}`} />
-          <input
-            type="text"
-            placeholder="Cari Dokumen / Uraian..."
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setPage(0) }}
-            className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border outline-none ${
-              isDark
-                ? "bg-[#131b2e] border-[#1e293b] text-white placeholder-gray-500"
-                : "bg-slate-50 border-slate-300 text-black placeholder-slate-400"
-            }`}
-          />
         </div>
       </div>
 

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { request, download, message } from '../../../services/operations'
+import { request, download, fetchFilePreview, message } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
 import { showToast as notify } from '../../../services/activity'
 import { useAuth } from '../../context/AuthContext'
 import { Workspace, field, button, useOperation, SkeletonTable } from '../ui/operations'
 import { ArsipBulkImport } from './ArsipBulkImport'
-import { Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw, Loader2, Filter, RefreshCw, X } from 'lucide-react'
+import { Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw, Loader2, Filter, RefreshCw, X, Eye, ExternalLink } from 'lucide-react'
 
 interface Archive {
   id_dokumen: number
@@ -49,6 +49,7 @@ const SUB_LABEL: Record<string, string> = {
 }
 
 export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
+  const isDark = theme === 'dark'
   const [items, setItems] = useState<Archive[]>([])
   const [trash, setTrash] = useState(false)
   const [search, setSearch] = useState('')
@@ -76,6 +77,12 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
   const [tahun, setTahun] = useState('')
   const [options, setOptions] = useState<FilterOptions>({ years: [], sumber_modul: [], sub_kategori: {} })
   const [reloadKey, setReloadKey] = useState(0)
+  const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string; contentType: string; text?: string; filePath: string } | null>(null)
+
+  const closePreview = () => {
+    if (previewDoc?.url) URL.revokeObjectURL(previewDoc.url)
+    setPreviewDoc(null)
+  }
 
   const load = async () => {
     const params = new URLSearchParams({ limit: '50', skip: String(page * 50), search })
@@ -421,14 +428,35 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
               )}
               <div className="flex items-center gap-2 pt-1">
                 {x.file_path && /^\d+$/.test(x.file_path) && (
-                  <button
-                    className={`${button} !px-3 !py-1.5 !text-xs`}
-                    disabled={busy}
-                    onClick={() => void run(() => download(`/files/${x.file_path}`, x.nama_dokumen))}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Unduh</span>
-                  </button>
+                  <>
+                    <button
+                      className={`${button} !px-3 !py-1.5 !text-xs`}
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          const res = await fetchFilePreview(`/files/${x.file_path}`)
+                          setPreviewDoc({
+                            title: x.nama_dokumen,
+                            url: res.url,
+                            contentType: res.contentType,
+                            text: res.text,
+                            filePath: x.file_path!,
+                          })
+                        })
+                      }
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Buka / Baca</span>
+                    </button>
+                    <button
+                      className={`${button} !px-3 !py-1.5 !text-xs !bg-slate-600 hover:!bg-slate-700`}
+                      disabled={busy}
+                      onClick={() => void run(() => download(`/files/${x.file_path}`, x.nama_dokumen))}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Unduh</span>
+                    </button>
+                  </>
                 )}
                 <button
                   className={`${button} !px-3 !py-1.5 !text-xs !bg-slate-700 hover:!bg-slate-800`}
@@ -628,6 +656,96 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
           Berikutnya
         </button>
       </div>
+
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Pratinjau ${previewDoc.title}`}
+        >
+          <div
+            className={`w-full max-w-4xl h-[85vh] rounded-2xl border shadow-2xl flex flex-col overflow-hidden ${
+              isDark ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
+            }`}
+          >
+            <div className={`px-5 py-3.5 border-b flex items-center justify-between gap-3 ${isDark ? 'border-white/10 bg-[#0a0f1d]' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  Pembaca Dokumen Arsip
+                </p>
+                <h3 className="text-sm font-bold truncate">{previewDoc.title}</h3>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={previewDoc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 border transition-colors ${
+                    isDark
+                      ? 'border-white/15 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka di Tab Baru</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void run(() => download(`/files/${previewDoc.filePath}`, previewDoc.title))}
+                  className={`${button} !px-3 !py-1.5 !text-xs`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={closePreview}
+                  aria-label="Tutup pratinjau"
+                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-500 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto bg-slate-100 dark:bg-[#070b14] p-3 sm:p-5 flex items-center justify-center">
+              {previewDoc.contentType.includes('pdf') ? (
+                <iframe
+                  src={previewDoc.url}
+                  title={previewDoc.title}
+                  className="w-full h-full min-h-[65vh] rounded-xl border border-slate-200 dark:border-white/10 bg-white"
+                />
+              ) : previewDoc.contentType.startsWith('image/') ? (
+                <img
+                  src={previewDoc.url}
+                  alt={previewDoc.title}
+                  className="w-full h-full object-contain rounded-xl"
+                />
+              ) : previewDoc.text !== undefined ? (
+                <pre className={`w-full h-full overflow-auto p-4 rounded-xl text-xs font-mono whitespace-pre-wrap ${isDark ? 'bg-[#0f172a] text-slate-200' : 'bg-white text-slate-800 border border-slate-200'}`}>
+                  {previewDoc.text}
+                </pre>
+              ) : (
+                <div className="text-center space-y-3 p-6 max-w-md">
+                  <p className="text-sm font-semibold">Format berkas ini tidak dapat dipratinjau langsung di browser.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Anda dapat mengunduhnya untuk dibuka menggunakan aplikasi bawaan perangkat Anda.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void run(() => download(`/files/${previewDoc.filePath}`, previewDoc.title))}
+                    className={button}
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Unduh Berkas</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Workspace>
   )
 }

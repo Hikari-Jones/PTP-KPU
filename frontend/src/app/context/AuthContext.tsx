@@ -51,11 +51,7 @@ export function isFullBudgetUser(user: UserProfile | null): boolean {
 }
 
 export function canViewBudgetFeature(user: UserProfile | null): boolean {
-  if (!user) return false
-  if (isFullBudgetUser(user)) return true
-  const jab = (user.jabatan || "").toLowerCase()
-  // Kepala Bagian lain hanya bisa Read-Only (tanpa menu Input Realisasi)
-  return jab.includes("kepala bagian") || jab.includes("kabag")
+  return !!user
 }
 
 export function canEditModule(user: UserProfile | null, module: ModuleKey): boolean {

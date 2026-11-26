@@ -186,7 +186,8 @@ def _scoped_relation(name: str, user) -> str:
         # without the multi-table join small models get wrong. Read-only, unrestricted
         # tables only (same rows as before, one extra column).
         prefixed = ", ".join(f"x.`{c.name}`" for c in table.columns if c.name.lower() not in BLOCKED_COLUMNS)
-        query = (f"SELECT {prefixed}, t.`tahun` AS `tahun` FROM `{name}` x "
+        extra_cols = ", t.`tahun` AS `tahun`, t.`status` AS `status`" if name == "pagu_anggaran" else ", t.`tahun` AS `tahun`"
+        query = (f"SELECT {prefixed}{extra_cols} FROM `{name}` x "
                  f"{_WITH_TAHUN[name]} LEFT JOIN `tahun_anggaran` t ON t.`id_tahun_anggaran` = {_TAHUN_KEY[name]}")
     if is_admin(user):
         return query

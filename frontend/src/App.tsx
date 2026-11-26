@@ -242,11 +242,6 @@ function MainLayout() {
         {/* Dynamic Content Area */}
         <main id="main-content" className="app-content flex-1 overflow-y-auto px-4 pt-16 pb-6 sm:px-6 sm:pt-16 lg:pt-8 xl:px-8 xl:pt-10">
           <div className="max-w-[1440px] mx-auto min-w-0">
-            {(activeMenu === "realisasi_anggaran" || activeMenu.startsWith("realization-")) && !canEdit("anggaran") && (
-              <div className="mb-5">
-                <ReadOnlyBanner theme={theme} modul="realisasi anggaran" pengelola="Sub Bagian Keuangan dan Sub Bagian Perencanaan, Data dan Informasi (RENDATIN)" />
-              </div>
-            )}
             <Suspense
               fallback={
                 <div role="status" className="flex items-center justify-center gap-2 py-24 text-xs font-semibold text-slate-500">

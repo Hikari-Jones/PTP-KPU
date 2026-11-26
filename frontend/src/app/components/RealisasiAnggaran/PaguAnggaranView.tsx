@@ -53,6 +53,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const [modalType, setModalType] = useState<"pagu" | "revisi" | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedPaguToEdit, setSelectedPaguToEdit] = useState<PaguAnggaranResponse | null>(null)
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<PaguAnggaranResponse | null>(null)
+  const [confirmAddPagu, setConfirmAddPagu] = useState(false)
 
   // Form Tambah / Edit Pagu Fields
   const [formAkunId, setFormAkunId] = useState<number | "">("")
@@ -197,6 +199,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const closeModal = () => {
     setModalType(null)
     setSelectedPaguToEdit(null)
+    setConfirmAddPagu(false)
     setFormAkunId("")
     setFormPaguAwal("")
     setFormNomorSK("")
@@ -237,19 +240,26 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   }
 
   // Hapus Pagu
-  const handleDeletePagu = async (item: PaguAnggaranResponse) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus pagu ${item.kode_akun} — ${item.nama_akun}? Pagu hanya dapat dihapus jika belum memiliki transaksi realisasi atau revisi.`)) {
-      setLoading(true)
-      try {
-        await paguAnggaranApi.delete(item.id_pagu)
-        setSuccessMessage(`Pagu untuk akun ${item.kode_akun} berhasil dihapus.`)
-        setTimeout(() => setSuccessMessage(null), 4000)
-        await fetchData()
-      } catch (e: any) {
-        setError(e.message || "Gagal menghapus pagu anggaran")
-      } finally {
-        setLoading(false)
-      }
+  const handleDeletePagu = (item: PaguAnggaranResponse) => {
+    setDeleteConfirmItem(item)
+  }
+
+  const executeDeletePagu = async () => {
+    if (!deleteConfirmItem) return
+    const item = deleteConfirmItem
+    setSubmitting(true)
+    setError(null)
+    try {
+      await paguAnggaranApi.delete(item.id_pagu)
+      setDeleteConfirmItem(null)
+      setSuccessMessage(`Pagu ${item.kode_akun} (${item.nama_akun}) berhasil dihapus.`)
+      setTimeout(() => setSuccessMessage(null), 4000)
+      await fetchData()
+    } catch (e: any) {
+      setError(e.message || "Gagal menghapus pagu anggaran")
+      setDeleteConfirmItem(null)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -279,6 +289,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
           setSubmitting(false)
           return
         }
+        if (!confirmAddPagu) {
+          setConfirmAddPagu(true)
+          setSubmitting(false)
+          return
+        }
         await paguAnggaranApi.create({
           id_tahun_anggaran: selectedTAId,
           id_akun_anggaran: Number(formAkunId),
@@ -288,6 +303,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
           tanggal_sk: formTanggalSK || undefined,
           keterangan: formKeterangan.trim() || undefined,
         })
+        setConfirmAddPagu(false)
         setSuccessMessage("Pagu anggaran baru berhasil ditambahkan!")
       }
       setTimeout(() => setSuccessMessage(null), 4000)
@@ -380,10 +396,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     const rows: unknown[][] = activeTab === "pagu"
       ? [["Tahun", "Kode", "Nama Akun", "Bagian", "Pagu Awal", "Pagu Aktif", "Realisasi", "Sisa"],
          ...filteredPagu.map((item) => [item.tahun || selectedTAYear, item.kode_akun, item.nama_akun, item.nama_bagian || "",
-           Number(item.pagu_awal) || 0, Number(item.pagu_aktif) || 0, Number(item.total_realisasi_verified) || 0, Number(item.sisa_anggaran) || 0])]
+           formatRupiah(Number(item.pagu_awal) || 0), formatRupiah(Number(item.pagu_aktif) || 0),
+           formatRupiah(Number(item.total_realisasi_verified) || 0), formatRupiah(Number(item.sisa_anggaran) || 0)])]
       : [["No Revisi", "Tanggal", "Pagu Sebelum", "Pagu Sesudah", "Perubahan Netto", "Alasan", "Dibuat Oleh"],
-         ...filteredRevisi.map((item) => [item.nomor_revisi, item.tanggal_revisi, Number(item.pagu_sebelum) || 0,
-           Number(item.pagu_sesudah) || 0, Number(item.perubahan_netto) || 0, item.alasan_revisi, item.nama_pegawai || ""])]
+         ...filteredRevisi.map((item) => [item.nomor_revisi, item.tanggal_revisi, formatRupiah(Number(item.pagu_sebelum) || 0),
+           formatRupiah(Number(item.pagu_sesudah) || 0), formatRupiah(Number(item.perubahan_netto) || 0), item.alasan_revisi, item.nama_pegawai || ""])]
     saveCsv(`${activeTab === "pagu" ? "Pagu" : "Revisi"}_Anggaran_TA_${selectedTAYear}.csv`, rows)
   }
 
@@ -710,6 +727,60 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 </div>
               )}
 
+              {confirmAddPagu && !selectedPaguToEdit ? (
+                <div className="space-y-4">
+                  <div className={`rounded-xl border p-4 space-y-3 ${isDark ? "border-amber-500/25 bg-amber-500/10" : "border-amber-200 bg-amber-50"}`}>
+                    <p className={`text-xs font-bold ${isDark ? "text-amber-300" : "text-amber-800"}`}>
+                      Konfirmasi Ganda: Pastikan nominal pagu berikut sudah benar sebelum disimpan.
+                    </p>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-slate-500 dark:text-slate-400">Akun / MAK:</span>
+                        <strong className="text-right">
+                          {(() => {
+                            const ak = availableAkunList.find((a) => a.id_akun_anggaran === Number(formAkunId))
+                            return ak ? `${ak.kode_akun} — ${ak.nama_akun}` : "-"
+                          })()}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center gap-2 pt-1 border-t border-amber-500/20">
+                        <span className="text-slate-500 dark:text-slate-400">Nominal Pagu Awal:</span>
+                        <strong className="text-base font-extrabold text-red-600 dark:text-red-400">
+                          {formatRupiah(Number(formPaguAwal.replace(/\D/g, "")) || 0)}
+                        </strong>
+                      </div>
+                      {(formNomorSK || formTanggalSK) && (
+                        <div className="flex justify-between gap-2">
+                          <span className="text-slate-500 dark:text-slate-400">SK / Tanggal:</span>
+                          <strong className="text-right">
+                            {formNomorSK || "-"} {formTanggalSK ? `(${formTanggalSK})` : ""}
+                          </strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAddPagu(false)}
+                      disabled={submitting}
+                      className={`rounded-xl border px-4 py-2 font-bold cursor-pointer ${isDark ? "border-white/10 text-gray-300" : "border-slate-300 text-slate-700"}`}
+                    >
+                      Periksa Kembali
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="btn-kpu-red flex items-center gap-2 rounded-xl px-5 py-2 font-bold text-white cursor-pointer shadow-md hover:opacity-95"
+                    >
+                      {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {submitting ? "Menyimpan..." : "Ya, Simpan Pagu"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* Pilih Akun (Hanya saat Tambah Baru) */}
               {!selectedPaguToEdit ? (
                 <label className="block space-y-1 font-semibold">
@@ -814,6 +885,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   {submitting ? "Menyimpan..." : selectedPaguToEdit ? "Simpan Perubahan" : "Tambahkan Pagu"}
                 </button>
               </div>
+                </>
+              )}
             </form>
           </div>
         </div>
@@ -941,6 +1014,68 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Pagu */}
+      {deleteConfirmItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Konfirmasi Hapus Pagu Anggaran"
+        >
+          <div className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-black"}`}>
+            <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-white/10 bg-[#0a0f1d]" : "border-slate-200 bg-slate-50"}`}>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  Konfirmasi Penghapusan
+                </p>
+                <h3 className="text-sm font-bold">Hapus Pagu Anggaran?</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Batalkan"
+                onClick={() => setDeleteConfirmItem(null)}
+                disabled={submitting}
+                className="p-1 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="leading-relaxed">
+                Apakah Anda yakin ingin menghapus pagu{" "}
+                <strong className="text-red-600 dark:text-red-400">
+                  {deleteConfirmItem.kode_akun} — {deleteConfirmItem.nama_akun}
+                </strong>
+                ? Pagu hanya dapat dihapus jika belum memiliki transaksi realisasi atau revisi.
+              </p>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmItem(null)}
+                  disabled={submitting}
+                  className={`px-4 py-2 rounded-xl border font-bold cursor-pointer ${
+                    isDark ? "border-white/10 text-gray-300 hover:bg-white/5" : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={executeDeletePagu}
+                  disabled={submitting}
+                  className="btn-kpu-red px-5 py-2 rounded-xl text-white font-bold flex items-center gap-2 cursor-pointer shadow-md"
+                >
+                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {submitting ? "Menghapus..." : "Ya, Hapus Pagu"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -621,14 +621,26 @@ class CRUDAkunAnggaran(CRUDBase[AkunAnggaran, AkunAnggaranCreate, AkunAnggaranUp
                 detail="Akun anggaran tidak ditemukan",
             )
 
-        # Check references in pagu_anggaran
-        pagu_cnt_stmt = select(func.count(PaguAnggaran.id_pagu)).where(PaguAnggaran.id_akun_anggaran == id_akun)
-        pagu_res = await db.execute(pagu_cnt_stmt)
-        if (pagu_res.scalar_one() or 0) > 0:
+        # Tolak hanya jika akun sudah memiliki transaksi realisasi
+        real_cnt_stmt = select(func.count(RealisasiAnggaran.id_realisasi)).where(
+            RealisasiAnggaran.id_akun_anggaran == id_akun
+        )
+        if (await db.scalar(real_cnt_stmt) or 0) > 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Akun anggaran tidak dapat dihapus karena sudah memiliki alokasi pagu tahunan",
+                detail="Akun anggaran tidak dapat dihapus karena sudah memiliki transaksi realisasi",
             )
+
+        # Hapus revisi & alokasi pagu tahunan terkait akun ini sebelum menghapus akun
+        from sqlalchemy import delete
+        pagu_ids = (
+            await db.scalars(
+                select(PaguAnggaran.id_pagu).where(PaguAnggaran.id_akun_anggaran == id_akun)
+            )
+        ).all()
+        if pagu_ids:
+            await db.execute(delete(RevisiAnggaran).where(RevisiAnggaran.id_pagu.in_(pagu_ids)))
+            await db.execute(delete(PaguAnggaran).where(PaguAnggaran.id_pagu.in_(pagu_ids)))
 
         await db.delete(db_obj)
         await db.commit()

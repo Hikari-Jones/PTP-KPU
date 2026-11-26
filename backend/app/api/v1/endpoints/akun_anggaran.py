@@ -86,7 +86,7 @@ async def create_akun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
-    require_rendatin_or_keuangan(current_user)
+    await require_rendatin_or_keuangan(current_user)
     db_obj = await akun_anggaran.create_akun(db, obj_in=akun_in)
     return akun_anggaran.enrich_akun_response(db_obj)
 
@@ -103,7 +103,7 @@ async def update_akun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
-    require_rendatin_or_keuangan(current_user)
+    await require_rendatin_or_keuangan(current_user)
     db_obj = await akun_anggaran.update_akun(
         db,
         id_akun=id_akun_anggaran,
@@ -123,7 +123,7 @@ async def delete_akun_anggaran(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
-    require_rendatin_or_keuangan(current_user)
+    await require_rendatin_or_keuangan(current_user)
     db_obj = await akun_anggaran.get_detail(db, id_akun_anggaran)
     if not db_obj:
         raise HTTPException(

@@ -60,7 +60,7 @@ export function GlobalActivity() {
               className={`animate-in fade-in flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-xs font-medium shadow-lg bg-white dark:bg-slate-900 ${tone}`}
             >
               <Icon className="w-4 h-4 mt-px shrink-0" />
-              <span className="flex-1 leading-relaxed text-slate-800 dark:text-slate-100">{toast.text}</span>
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere] leading-relaxed text-slate-800 dark:text-slate-100">{toast.text}</span>
               <button
                 type="button"
                 aria-label="Tutup notifikasi"

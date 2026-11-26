@@ -63,6 +63,7 @@ export function AkunAnggaranView({ theme }: Props) {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<AkunAnggaranResponse | null>(null)
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<AkunAnggaranResponse | null>(null)
 
   // Form states
   const [formBagianId, setFormBagianId] = useState<number | "">("")
@@ -216,19 +217,26 @@ export function AkunAnggaranView({ theme }: Props) {
     }
   }
 
-  const handleDelete = async (item: AkunAnggaranResponse) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus akun ${item.kode_akun} — ${item.nama_akun}? Akun hanya dapat dihapus jika belum memiliki transaksi.`)) {
-      setLoading(true)
-      try {
-        await akunAnggaranApi.delete(item.id_akun_anggaran)
-        setSuccessMessage(`Akun ${item.kode_akun} berhasil dihapus.`)
-        setTimeout(() => setSuccessMessage(null), 4000)
-        await fetchAkunAnggaran()
-      } catch (e: any) {
-        setError(e.message || "Gagal menghapus akun anggaran")
-      } finally {
-        setLoading(false)
-      }
+  const handleDelete = (item: AkunAnggaranResponse) => {
+    setDeleteConfirmItem(item)
+  }
+
+  const executeDelete = async () => {
+    if (!deleteConfirmItem) return
+    const item = deleteConfirmItem
+    setSubmitting(true)
+    setError(null)
+    try {
+      await akunAnggaranApi.delete(item.id_akun_anggaran)
+      setDeleteConfirmItem(null)
+      setSuccessMessage(`Akun ${item.kode_akun} berhasil dihapus.`)
+      setTimeout(() => setSuccessMessage(null), 4000)
+      await fetchAkunAnggaran()
+    } catch (e: any) {
+      setError(e.message || "Gagal menghapus akun anggaran")
+      setDeleteConfirmItem(null)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -653,6 +661,68 @@ export function AkunAnggaranView({ theme }: Props) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Akun */}
+      {deleteConfirmItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Konfirmasi Hapus Akun Anggaran"
+        >
+          <div className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-black"}`}>
+            <div className={`p-4 border-b flex items-center justify-between ${isDark ? "border-white/10 bg-[#0a0f1d]" : "border-slate-200 bg-slate-50"}`}>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  Konfirmasi Penghapusan
+                </p>
+                <h3 className="text-sm font-bold">Hapus Akun Anggaran?</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Batalkan"
+                onClick={() => setDeleteConfirmItem(null)}
+                disabled={submitting}
+                className="p-1 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="leading-relaxed">
+                Apakah Anda yakin ingin menghapus akun{" "}
+                <strong className="text-red-600 dark:text-red-400">
+                  {deleteConfirmItem.kode_akun} — {deleteConfirmItem.nama_akun}
+                </strong>
+                ? Akun hanya dapat dihapus jika belum memiliki transaksi realisasi.
+              </p>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmItem(null)}
+                  disabled={submitting}
+                  className={`px-4 py-2 rounded-xl border font-bold cursor-pointer ${
+                    isDark ? "border-white/10 text-gray-300 hover:bg-white/5" : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={executeDelete}
+                  disabled={submitting}
+                  className="btn-kpu-red px-5 py-2 rounded-xl text-white font-bold flex items-center gap-2 cursor-pointer shadow-md"
+                >
+                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {submitting ? "Menghapus..." : "Ya, Hapus Akun"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
