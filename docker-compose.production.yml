@@ -57,6 +57,7 @@ services:
             return 'pegawai' in tables
         raise SystemExit(0 if asyncio.run(check()) else 1)
         " || python bootstrap.py
+        python upgrade_operations.py
         exec uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
       TZ: ${TZ:-Asia/Makassar}
@@ -100,10 +101,24 @@ services:
     restart: unless-stopped
     mem_limit: 128m
     ports:
-      - "${FRONTEND_PORT:-8081}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-8081}:80"
     depends_on:
       backend:
         condition: service_healthy
+
+  # Optional Cloudflare Tunnel sidecar (enable with: --profile cloudflare).
+  # In Cloudflare Zero Trust -> Tunnels -> ptp-kpu -> Public Hostname, point service URL to: http://frontend:80
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["cloudflare"]
+    logging: *default-logging
+    restart: unless-stopped
+    mem_limit: 128m
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - frontend
 
 volumes:
   mysql_data:

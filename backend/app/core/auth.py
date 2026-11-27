@@ -68,6 +68,29 @@ def is_admin(user: Pegawai) -> bool:
     """Check if the user has Administrator privileges based on database role."""
     return user.role.strip().lower() in ["admin", "administrator"]
 
+
+def is_letter_manager(user: Pegawai) -> bool:
+    """
+    Check if user has tata persuratan management privileges (Administrator or Subbagian Umum/Logistik).
+    Regular staff can still draft letters for their own section and view their own/assigned records.
+    """
+    if not user:
+        return False
+    if is_admin(user):
+        return True
+    bagian = getattr(user, "bagian", None)
+    if bagian:
+        kode = (bagian.kode_bagian or "").strip().upper()
+        nama = (bagian.nama_bagian or "").strip().lower()
+        if kode in ("BAG-05", "ADMIN"):
+            return True
+        if "umlog" in nama or "umum" in nama or "tata usaha" in nama:
+            return True
+    jabatan = (getattr(user, "jabatan", None) or "").strip().lower()
+    if "kasubbag umum" in jabatan or "sekretaris" in jabatan:
+        return True
+    return False
+
 def is_rendatin_or_keuangan(user: Pegawai) -> bool:
     """
     Check if user belongs to RENDATIN or Keuangan subsection.
@@ -75,30 +98,32 @@ def is_rendatin_or_keuangan(user: Pegawai) -> bool:
     """
     if not user:
         return False
-    if is_admin(user) and (not user.bagian or user.bagian.kode_bagian == "ADMIN"):
+    bagian = getattr(user, "bagian", None)
+    if is_admin(user) and (not bagian or (bagian.kode_bagian or "").strip().upper() == "ADMIN"):
         return True
-    if not user.bagian:
+    if not bagian:
         return False
-    kode = (user.bagian.kode_bagian or "").strip().upper()
-    nama = (user.bagian.nama_bagian or "").strip().lower()
-    return (
-        kode in ["BAG-02", "BAG-06", "ADMIN"]
-        or "rendatin" in nama
-        or "perencanaan" in nama
-        or "keuangan" in nama
-    )
+    kode = (bagian.kode_bagian or "").strip().upper()
+    nama = (bagian.nama_bagian or "").strip().lower()
+    if kode in ["BAG-02", "BAG-06", "ADMIN"]:
+        return True
+    if "rendatin" in nama or "perencanaan" in nama:
+        return True
+    if "keuangan" in nama and "umlog" not in nama and "umum dan logistik" not in nama:
+        return True
+    return False
 
 def get_effective_subbagian_id(user: Pegawai, requested_subbagian_id: Optional[int] = None) -> Optional[int]:
     """
     Enforces subsection data isolation:
     - RENDATIN and Keuangan (and system admin) can view all or filter by requested_subbagian_id.
     - All other subsections (Teknis, Hukum, SDM, UMLOG, etc.) are strictly locked to their OWN id_bagian.
-      Direct URL or query parameter tampering is completely overridden by authenticated user's id_bagian.
+      If a non-finance account has no id_bagian (e.g. unmapped Kepala Bagian), returns -1 so queries
+      return empty rather than leaking all departments' financial records.
     """
     if is_rendatin_or_keuangan(user):
         return requested_subbagian_id
-    # Non-RENDATIN & Non-Keuangan user: strictly locked to their own subsection!
-    return user.id_bagian
+    return user.id_bagian if user.id_bagian is not None else -1
 
 async def require_rendatin_or_keuangan(
     current_user: Pegawai = Depends(get_current_user),

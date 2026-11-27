@@ -1,4 +1,5 @@
 import logging
+import re
 from fastapi import FastAPI, HTTPException
 from sqlalchemy.exc import IntegrityError, OperationalError
 from fastapi.security import HTTPAuthorizationCredentials
@@ -103,7 +104,7 @@ PUBLIC_PATHS = {
 async def require_jwt(request, call_next):
     path = request.url.path
     normalized_path = path.rstrip("/") or "/"
-    is_public_verification = "/verifikasi/" in path
+    is_public_verification = bool(re.fullmatch(r"/api(?:/v1)?/verifikasi/[^/]+/?", path))
     if (
         request.method == "OPTIONS"
         or normalized_path in PUBLIC_PATHS

@@ -477,6 +477,40 @@ class SuratKeluar(Base):
         nullable=True,
     )
 
+    tembusan: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    penandatangan_nama: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    penandatangan_jabatan: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    atas_nama: Mapped[Optional[str]] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+
+    file_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "file_record.id_file",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    content_sha256: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     file_surat: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
@@ -592,6 +626,11 @@ class SuratTugas(Base):
         nullable=False,
     )
 
+    dasar_tugas: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
     tempat_tugas: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -612,6 +651,24 @@ class SuratTugas(Base):
         nullable=True,
         default="DIPA KPU Provinsi Sulawesi Utara",
         server_default="DIPA KPU Provinsi Sulawesi Utara",
+    )
+
+    id_pagu: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "pagu_anggaran.id_pagu",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    laporan_file_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "file_record.id_file",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
 
     # Relationships
@@ -838,6 +895,7 @@ class FileRecord(Base):
     relative_path: Mapped[str] = mapped_column(String(500), nullable=False)
     mime_type: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
     uploaded_by: Mapped[int] = mapped_column(
         ForeignKey("pegawai.id_pegawai", ondelete="RESTRICT", onupdate="CASCADE"),
@@ -941,12 +999,40 @@ class DokumenArsip(Base):
         default=0,
     )
 
-    # Hak akses
+    # Hak akses (4-tier SKKAAD PKPU 7/2021: biasa/internal/publik, terbatas, rahasia, sangat_rahasia)
     hak_akses: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         default="internal",
         server_default="internal",
+        index=True,
+    )
+
+    # Jadwal Retensi Arsip (PKPU 17/2023) & Tata Kelola Fisik/Digital
+    status_retensi: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="aktif",
+        server_default="aktif",
+        index=True,
+    )  # aktif | inaktif | siap_susut | disusutkan
+    nasib_akhir: Mapped[Optional[str]] = mapped_column(
+        String(30),
+        nullable=True,
+    )  # musnah | permanen | dinilai_kembali
+    tanggal_retensi_aktif: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    tanggal_retensi_inaktif: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    arsip_vital: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    legal_hold_alasan: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    lokasi_fisik: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    nomor_berkas: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    versi_dokumen: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    parent_dokumen_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("dokumen_arsip.id_dokumen", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
 
@@ -1066,6 +1152,14 @@ class DokumenArsip(Base):
             return self.pegawai.bagian.nama_bagian
 
         return None
+
+    @property
+    def kode_klasifikasi(self) -> Optional[str]:
+        return self.klasifikasi.kode_klasifikasi if self.klasifikasi else None
+
+    @property
+    def nama_klasifikasi(self) -> Optional[str]:
+        return self.klasifikasi.nama_klasifikasi if self.klasifikasi else None
 
 
 # =========================================================
@@ -1234,6 +1328,9 @@ class AuditAktivasiTahunAnggaran(Base):
 
 class AkunAnggaran(Base):
     __tablename__ = "akun_anggaran"
+    __table_args__ = (
+        UniqueConstraint("id_bagian", "kode_akun", name="uq_akun_bagian_kode"),
+    )
 
     id_akun_anggaran: Mapped[int] = mapped_column(
         Integer,
@@ -1253,7 +1350,7 @@ class AkunAnggaran(Base):
     kode_akun: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
-        unique=True,
+        index=True,
     )
 
     nama_akun: Mapped[str] = mapped_column(
@@ -1371,6 +1468,41 @@ class PaguAnggaran(Base):
         server_default="0",
     )
 
+    pagu_blokir: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_1: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_2: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_3: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_4: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     nomor_sk: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,
@@ -1478,6 +1610,19 @@ class RevisiAnggaran(Base):
         nullable=False,
     )
 
+    jenis_revisi: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="DIPA",
+        server_default="DIPA",
+    )
+
+    batch_kode: Mapped[Optional[str]] = mapped_column(
+        String(60),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
@@ -1570,6 +1715,53 @@ class RealisasiAnggaran(Base):
         nullable=False,
         default=0,
         server_default="0",
+    )
+
+    mekanisme_bayar: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="LS",
+        server_default="LS",
+    )
+
+    jenis_dokumen_bayar: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="SP2D",
+        server_default="SP2D",
+    )
+
+    nomor_sp2d: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    penerima_pembayaran: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+    )
+
+    potongan_pajak: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    is_koreksi: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+
+    koreksi_dari_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "realisasi_anggaran.id_realisasi",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(

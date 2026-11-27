@@ -101,6 +101,7 @@ async def create_tahun_anggaran(
         db,
         obj_in=tahun_in,
         current_user_id=current_user.id_pegawai,
+        current_user_name=current_user.nama,
     )
     return await tahun_anggaran.enrich_tahun_response(db, db_obj)
 
@@ -123,6 +124,8 @@ async def update_tahun_anggaran(
         db,
         id_tahun=id_tahun_anggaran,
         obj_in=tahun_in,
+        current_user_id=current_user.id_pegawai,
+        current_user_name=current_user.nama,
     )
     return await tahun_anggaran.enrich_tahun_response(db, db_obj)
 

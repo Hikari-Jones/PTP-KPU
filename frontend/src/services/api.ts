@@ -446,6 +446,11 @@ export const paguAnggaranApi = {
     id_akun_anggaran: number;
     pagu_awal: number;
     pagu_aktif?: number;
+    pagu_blokir?: number;
+    rpd_triwulan_1?: number;
+    rpd_triwulan_2?: number;
+    rpd_triwulan_3?: number;
+    rpd_triwulan_4?: number;
     nomor_sk?: string;
     tanggal_sk?: string;
     keterangan?: string;
@@ -467,6 +472,11 @@ export const paguAnggaranApi = {
       nomor_sk?: string;
       tanggal_sk?: string;
       keterangan?: string;
+      pagu_blokir?: number;
+      rpd_triwulan_1?: number;
+      rpd_triwulan_2?: number;
+      rpd_triwulan_3?: number;
+      rpd_triwulan_4?: number;
     }
   ): Promise<PaguAnggaranResponse> => {
     const res = await fetch(`${API_BASE_URL}/pagu-anggaran/${id}`, {
@@ -627,6 +637,21 @@ export const realisasiAnggaranApi = {
     }
     return await res.json();
   },
+  createKoreksi: async (
+    id: number,
+    payload: { nomor_dokumen: string; tanggal_transaksi: string; nominal_koreksi: number; alasan: string }
+  ): Promise<RealisasiAnggaranResponse> => {
+    const res = await fetch(`${API_BASE_URL}/realisasi-anggaran/${id}/koreksi`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
+      throw new Error(err.detail || `Gagal mencatat koreksi/SSPB (${res.status})`);
+    }
+    return await res.json();
+  },
 };
 
 export const dashboardAnggaranApi = {
@@ -660,6 +685,42 @@ export const dashboardAnggaranApi = {
     const url = `${API_BASE_URL}/anggaran/monthly-report${qs ? `?${qs}` : ''}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error(`Gagal memuat laporan bulanan anggaran (${res.status})`);
+    return await res.json();
+  },
+  getTriwulanRpd: async (params?: { id_tahun_anggaran?: number; id_bagian?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.id_bagian !== undefined) query.append('id_bagian', String(params.id_bagian));
+    const qs = query.toString();
+    const res = await fetch(`${API_BASE_URL}/anggaran/triwulan-rpd${qs ? `?${qs}` : ''}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat laporan RPD triwulan (${res.status})`);
+    return await res.json();
+  },
+  getAuditLogs: async (params?: { id_tahun_anggaran?: number; aksi?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.id_tahun_anggaran !== undefined) query.append('id_tahun_anggaran', String(params.id_tahun_anggaran));
+    if (params?.aksi) query.append('aksi', params.aksi);
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    const res = await fetch(`${API_BASE_URL}/anggaran/audit-logs${qs ? `?${qs}` : ''}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat log audit keuangan (${res.status})`);
+    return await res.json();
+  },
+  getVersions: async (id_tahun_anggaran: number) => {
+    const res = await fetch(`${API_BASE_URL}/anggaran/versions?id_tahun_anggaran=${id_tahun_anggaran}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Gagal memuat versi laporan historis (${res.status})`);
+    return await res.json();
+  },
+  publishVersion: async (payload: { id_tahun_anggaran: number; periode_laporan: string; alasan?: string }) => {
+    const res = await fetch(`${API_BASE_URL}/anggaran/publish`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Gagal menerbitkan versi laporan' }));
+      throw new Error(err.detail || `Gagal menerbitkan versi laporan (${res.status})`);
+    }
     return await res.json();
   },
 };
@@ -696,6 +757,25 @@ export const revisiAnggaranApi = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Terjadi kesalahan pada server' }));
       throw new Error(err.detail || `Gagal mengeksekusi revisi anggaran (${res.status})`);
+    }
+    return await res.json();
+  },
+  createPok: async (payload: {
+    id_pagu_asal: number;
+    id_pagu_tujuan: number;
+    nominal_geser: number;
+    nomor_revisi: string;
+    tanggal_revisi: string;
+    alasan_revisi: string;
+  }) => {
+    const res = await fetch(`${API_BASE_URL}/revisi-anggaran/pok`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Gagal mengeksekusi pergeseran POK' }));
+      throw new Error(err.detail || `Gagal mengeksekusi pergeseran POK (${res.status})`);
     }
     return await res.json();
   },

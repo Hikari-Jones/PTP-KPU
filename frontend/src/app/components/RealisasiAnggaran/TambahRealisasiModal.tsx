@@ -9,6 +9,12 @@ import {
   tahunAnggaranApi,
   filesApi,
 } from "../../../services/api"
+import {
+  formatCurrencyInput,
+  formatRupiah,
+  parseCurrencyValue,
+  sanitizeCurrencyInput,
+} from "../../../utils/currency"
 import type { PaguAnggaranResponse, TahunAnggaranResponse, FileUploadResponse } from "./types"
 
 interface Props {
@@ -31,16 +37,14 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   )
   const [uraian, setUraian] = useState("")
   const [jumlahStr, setJumlahStr] = useState("")
-
-  const formatThousand = (val: string | number) => {
-    const raw = String(val).replace(/\D/g, "")
-    if (!raw) return ""
-    return new Intl.NumberFormat("id-ID").format(Number(raw))
-  }
+  const [mekanismeBayar, setMekanismeBayar] = useState<"UP" | "TUP" | "GUP" | "LS">("UP")
+  const [jenisDokumenBayar, setJenisDokumenBayar] = useState<"SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi" | "SSPB">("Kuitansi")
+  const [nomorSp2d, setNomorSp2d] = useState<string>("")
+  const [penerimaPembayaran, setPenerimaPembayaran] = useState<string>("")
+  const [potonganPajakStr, setPotonganPajakStr] = useState<string>("")
 
   const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, "")
-    setJumlahStr(raw)
+    setJumlahStr(sanitizeCurrencyInput(e.target.value))
   }
   const [periode, setPeriode] = useState(new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" }))
   const [fileName, setFileName] = useState<string | null>(null)
@@ -53,6 +57,27 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  const handleClose = () => {
+    if (uploadedFileData && !successMessage) {
+      void filesApi.discard(uploadedFileData.file_id)
+    }
+    setNoDokumen("")
+    setUraian("")
+    setJumlahStr("")
+    setMekanismeBayar("UP")
+    setJenisDokumenBayar("Kuitansi")
+    setNomorSp2d("")
+    setPenerimaPembayaran("")
+    setPotonganPajakStr("")
+    setFileName(null)
+    setSelectedFile(null)
+    setUploadedFileData(null)
+    setUploadError(null)
+    setErrorMessage(null)
+    setSuccessMessage(null)
+    onClose()
+  }
 
   // Fetch active Tahun Anggaran and active Paguary
   useEffect(() => {
@@ -105,7 +130,7 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
   const selectedPagu = paguList.find((p) => p.id_pagu === selectedPaguId)
   const sisaPagu = selectedPagu ? Number(selectedPagu.sisa_anggaran) || 0 : 0
-  const nominal = parseFloat(jumlahStr) || 0
+  const nominal = parseCurrencyValue(jumlahStr)
   const isOverBudget = selectedPagu ? nominal > sisaPagu : false
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,10 +177,6 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
     setUploadError(null)
   }
 
-  const formatRupiah = (val: number) => {
-    return `Rp ${new Intl.NumberFormat("id-ID").format(Math.round(val))}`
-  }
-
   const handleSimpanDraft = async () => {
     setErrorMessage(null)
     setSuccessMessage(null)
@@ -194,6 +215,11 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
         uraian_kegiatan: uraian.trim(),
         jumlah_realisasi: nominal,
         periode,
+        mekanisme_bayar: mekanismeBayar || null,
+        jenis_dokumen_bayar: jenisDokumenBayar || null,
+        nomor_sp2d: nomorSp2d.trim() || null,
+        penerima_pembayaran: penerimaPembayaran.trim() || null,
+        potongan_pajak: parseCurrencyValue(potonganPajakStr) || 0,
         bukti_file_path: uploadedFileData ? `/api/v1/files/${uploadedFileData.file_id}` : null,
         bukti_file_nama: uploadedFileData ? uploadedFileData.filename : null,
         bukti_file_ukuran: uploadedFileData ? uploadedFileData.size : null,
@@ -201,8 +227,9 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
       })
 
       setSuccessMessage(
-        `Transaksi berhasil disimpan langsung sah (Direct Realisasi)! Nomor: ${res.nomor_dokumen} (Status: ${res.status})`
+        `Draft realisasi ${res.nomor_dokumen} berhasil disimpan (Status: ${res.status}). Ajukan transaksi pada menu Daftar Transaksi untuk pemeriksaan terpisah.`
       )
+      setUploadedFileData(null)
 
       // Trigger server-side refresh in parent component
       if (onSuccess) {
@@ -211,10 +238,17 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
       // Close modal smoothly after brief feedback
       setTimeout(() => {
+        setNoDokumen("")
+        setUraian("")
+        setJumlahStr("")
+        setFileName(null)
+        setSelectedFile(null)
+        setUploadError(null)
+        setSuccessMessage(null)
         onClose()
       }, 1000)
     } catch (err: any) {
-      setErrorMessage(err.message || "Gagal memproses direct realisasi anggaran")
+      setErrorMessage(err.message || "Gagal menyimpan draft realisasi anggaran")
     } finally {
       setIsSubmitting(false)
     }
@@ -247,7 +281,7 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isSubmitting}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               isDark ? "hover:bg-[#1e293b] text-gray-400" : "hover:bg-slate-200 text-slate-500"
@@ -357,17 +391,85 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
             </Card>
           )}
 
-          {/* Periode Anggaran */}
-          <div className="space-y-1.5">
-            <label className="font-semibold block">Periode Anggaran</label>
-            <Input
-              type="text"
-              value={periode}
-              onChange={(e) => setPeriode(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="Contoh: Triwulan I 2026 / Bulan Agustus"
-              className={`text-xs ${isDark ? "bg-[#131b2e] border-[#1e293b]" : "bg-slate-50 border-slate-300"}`}
-            />
+          {/* Periode Anggaran & Mekanisme Pembayaran (PMK 62/2023) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <label className="font-semibold block">Periode Anggaran</label>
+              <Input
+                type="text"
+                value={periode}
+                onChange={(e) => setPeriode(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Contoh: Triwulan I 2026"
+                className={`text-xs ${isDark ? "bg-[#131b2e] border-[#1e293b]" : "bg-slate-50 border-slate-300"}`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-semibold block">Mekanisme Bayar</label>
+              <select
+                value={mekanismeBayar}
+                onChange={(e) => setMekanismeBayar(e.target.value as "UP" | "TUP" | "GUP" | "LS")}
+                disabled={isSubmitting}
+                className={`w-full rounded-lg px-2.5 py-2 border text-xs ${isDark ? "bg-[#131b2e] border-[#1e293b] text-gray-200" : "bg-slate-50 border-slate-300 text-slate-800"}`}
+              >
+                <option value="UP">UP (Uang Persediaan)</option>
+                <option value="TUP">TUP (Tambahan UP)</option>
+                <option value="GUP">GUP (Ganti UP)</option>
+                <option value="LS">LS (Langsung)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-semibold block">Jenis Dokumen Bayar</label>
+              <select
+                value={jenisDokumenBayar}
+                onChange={(e) => setJenisDokumenBayar(e.target.value as "SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi" | "SSPB")}
+                disabled={isSubmitting}
+                className={`w-full rounded-lg px-2.5 py-2 border text-xs ${isDark ? "bg-[#131b2e] border-[#1e293b] text-gray-200" : "bg-slate-50 border-slate-300 text-slate-800"}`}
+              >
+                <option value="Kuitansi">Kuitansi</option>
+                <option value="SPBy">SPBy</option>
+                <option value="SPP">SPP</option>
+                <option value="SPM">SPM</option>
+                <option value="SP2D">SP2D</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <label className="font-semibold block">Nomor SP2D (Opsional)</label>
+              <Input
+                type="text"
+                value={nomorSp2d}
+                onChange={(e) => setNomorSp2d(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="SP2D-..."
+                className={`text-xs ${isDark ? "bg-[#131b2e] border-[#1e293b]" : "bg-slate-50 border-slate-300"}`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-semibold block">Penerima Pembayaran</label>
+              <Input
+                type="text"
+                value={penerimaPembayaran}
+                onChange={(e) => setPenerimaPembayaran(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Rekanan / Bendahara"
+                className={`text-xs ${isDark ? "bg-[#131b2e] border-[#1e293b]" : "bg-slate-50 border-slate-300"}`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-semibold block">Potongan Pajak (Rp)</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={formatCurrencyInput(potonganPajakStr)}
+                onChange={(e) => setPotonganPajakStr(sanitizeCurrencyInput(e.target.value))}
+                disabled={isSubmitting}
+                placeholder="0"
+                className={`text-xs font-mono ${isDark ? "bg-[#131b2e] border-[#1e293b]" : "bg-slate-50 border-slate-300"}`}
+              />
+            </div>
           </div>
 
           {/* Uraian Kegiatan / Belanja */}
@@ -403,9 +505,9 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
             </div>
             <Input
               type="text"
-              inputMode="numeric"
+              inputMode="decimal"
               placeholder="0"
-              value={formatThousand(jumlahStr)}
+              value={formatCurrencyInput(jumlahStr)}
               onChange={handleJumlahChange}
               disabled={isSubmitting}
               className={`text-xs font-mono font-bold ${
@@ -509,7 +611,7 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
         >
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isSubmitting}
             className={`px-4 py-2 rounded-xl text-xs font-bold border cursor-pointer transition-all ${
               isDark

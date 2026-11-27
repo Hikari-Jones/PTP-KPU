@@ -44,9 +44,9 @@ async def read_pagu_anggaran(
 ) -> Any:
     effective_bagian = get_effective_subbagian_id(current_user, id_bagian)
 
-    # Resolve active fiscal year if omitted
+    # Resolve active fiscal year only if both id_tahun_anggaran and status_tahun are omitted
     resolved_id_tahun = id_tahun_anggaran
-    if resolved_id_tahun is None:
+    if resolved_id_tahun is None and status_tahun is None:
         active_yr = await tahun_anggaran.get_active_year(db)
         if active_yr:
             resolved_id_tahun = active_yr.id_tahun_anggaran

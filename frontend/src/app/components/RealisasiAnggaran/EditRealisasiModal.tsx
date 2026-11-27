@@ -8,7 +8,15 @@ import {
   realisasiAnggaranApi,
   tahunAnggaranApi,
 } from "../../../services/api"
-import type { PaguAnggaranResponse, RealisasiAnggaranResponse, TahunAnggaranResponse } from "./types"
+import {
+  decimalToEditableString,
+  derivePeriodeFromDate,
+  formatCurrencyInput,
+  formatRupiah,
+  parseCurrencyValue,
+  sanitizeCurrencyInput,
+} from "../../../utils/currency"
+import type { PaguAnggaranResponse, RealisasiAnggaranResponse } from "./types"
 
 interface Props {
   isOpen: boolean
@@ -28,15 +36,8 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
   const [uraian, setUraian] = useState("")
   const [jumlahStr, setJumlahStr] = useState("")
 
-  const formatThousand = (val: string | number) => {
-    const raw = String(val).replace(/\D/g, "")
-    if (!raw) return ""
-    return new Intl.NumberFormat("id-ID").format(Number(raw))
-  }
-
   const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, "")
-    setJumlahStr(raw)
+    setJumlahStr(sanitizeCurrencyInput(e.target.value))
   }
   const [periode, setPeriode] = useState("")
 
@@ -52,11 +53,12 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
     let isMounted = true
     setErrorMessage(null)
     setSuccessMessage(null)
-    setTanggal(transaksi.tanggal_transaksi || new Date().toISOString().split("T")[0])
+    const txDate = transaksi.tanggal_transaksi || new Date().toLocaleDateString("en-CA")
+    setTanggal(txDate)
     setNoDokumen(transaksi.nomor_dokumen || "")
     setUraian(transaksi.uraian_kegiatan || "")
-    setJumlahStr(String(transaksi.jumlah_realisasi || 0))
-    setPeriode(transaksi.periode || "Agustus 2026")
+    setJumlahStr(decimalToEditableString(transaksi.jumlah_realisasi))
+    setPeriode(transaksi.periode || derivePeriodeFromDate(txDate))
     setSelectedPaguId(transaksi.id_pagu || null)
 
     const initPagu = async () => {
@@ -90,18 +92,12 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
 
   const selectedPagu = paguList.find((p) => p.id_pagu === selectedPaguId)
 
-  // Format IDR helper
-  const formatRupiah = (val: number | string) => {
-    const num = Number(val) || 0
-    return `Rp ${new Intl.NumberFormat("id-ID").format(Math.round(num))}`
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
     setSuccessMessage(null)
 
-    const numJumlah = Number(jumlahStr.replace(/[^0-9.-]+/g, ""))
+    const numJumlah = parseCurrencyValue(jumlahStr)
     if (isNaN(numJumlah) || numJumlah <= 0) {
       setErrorMessage("Nominal realisasi harus lebih besar dari 0")
       return
@@ -267,8 +263,8 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
             </label>
             <Input
               type="text"
-              inputMode="numeric"
-              value={formatThousand(jumlahStr)}
+              inputMode="decimal"
+              value={formatCurrencyInput(jumlahStr)}
               onChange={handleJumlahChange}
               required
               placeholder="0"
@@ -276,7 +272,7 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
                 isDark ? "bg-[#0f172a] border-white/10" : "bg-white border-slate-300"
               }`}
             />
-            {Number(jumlahStr) > 0 && (
+            {parseCurrencyValue(jumlahStr) > 0 && (
               <p className="text-[11px] font-bold text-slate-500">
                 Terbaca: {formatRupiah(jumlahStr)}
               </p>

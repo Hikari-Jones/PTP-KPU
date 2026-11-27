@@ -10,22 +10,42 @@ from sqlalchemy import select
 from app.models.schema import JenisSurat, KodeKlasifikasiArsip
 
 # (kode, nama, kategori_utama, retensi_aktif_tahun, retensi_inaktif_tahun, hak_akses)
+# Mengacu pada Keputusan KPU Nomor 1257 Tahun 2024 & PKPU 17/2023 (JRA)
 KLASIFIKASI_ARSIP = [
     ("PL.01.1", "Perencanaan Pemilu & Pilkada", "Penyelenggaraan Pemilu", 2, 5, "Internal"),
     ("PL.02.1", "Pemutakhiran Data Pemilih", "Penyelenggaraan Pemilu", 3, 5, "Internal"),
+    ("PL.02.2", "Pencalonan & Verifikasi Peserta Pemilu", "Penyelenggaraan Pemilu", 3, 5, "Terbatas"),
+    ("PL.02.4", "Pemungutan, Penghitungan & Rekapitulasi Suara", "Penyelenggaraan Pemilu", 5, 10, "Publik"),
+    ("PP.01.1", "Sosialisasi & Pendidikan Pemilih", "Partisipasi & Humas", 2, 3, "Publik"),
+    ("PP.06.1", "Hubungan Masyarakat & Layanan Informasi (PPID)", "Partisipasi & Humas", 2, 3, "Publik"),
+    ("HM.01.1", "Dokumentasi, Publikasi & Hubungan Kelembagaan", "Partisipasi & Humas", 2, 3, "Publik"),
     ("HR.01.2", "Surat Tugas & Kepegawaian", "SDM & Kepegawaian", 2, 5, "Internal"),
+    ("SDM.02.1", "Pengembangan Kompetensi, Mutasi & Disiplin Pegawai", "SDM & Kepegawaian", 3, 5, "Terbatas"),
     ("HK.01.1", "Peraturan & Keputusan KPU", "Hukum", 5, 10, "Publik"),
+    ("HK.03.1", "Advokasi, Sengketa & Bantuan Hukum", "Hukum", 5, 10, "Rahasia"),
     ("KU.01.3", "DIPA & Pertanggungjawaban Keuangan", "Keuangan", 5, 7, "Internal"),
+    ("KU.02.1", "Realisasi Anggaran, SPP/SPM/SP2D & Perbendaharaan", "Keuangan", 5, 10, "Terbatas"),
+    ("KU.03.1", "Laporan Keuangan, Rekonsiliasi & Akuntansi", "Keuangan", 5, 10, "Internal"),
+    ("PR.01.1", "Perencanaan Program, Anggaran & Evaluasi Kinerja", "Perencanaan & Data", 3, 5, "Internal"),
     ("IT.01.1", "Data & Infrastruktur IT", "Data & Informasi", 2, 5, "Internal"),
+    ("RT.01.1", "Ketatausahaan, Persuratan & Kearsipan", "Umum & Logistik", 2, 3, "Internal"),
+    ("RT.02.1", "Perlengkapan, Logistik Pemilu & Pengelolaan BMN", "Umum & Logistik", 5, 5, "Internal"),
+    ("PW.01.1", "Pengawasan Internal, PIPK & Tindak Lanjut Audit", "Pengawasan", 5, 5, "Rahasia"),
 ]
 
 # (kode_jenis, nama_jenis, format_nomor)
+# Mengacu pada PKPU 2/2021 jo. PKPU 8/2021 tentang Tata Naskah Dinas KPU
 JENIS_SURAT = [
     ("SD", "Surat Dinas", "{nomor_urut}/{kode_klasifikasi}-SD/71/{bulan_romawi}/{tahun}"),
     ("ST", "Surat Tugas", "{nomor_urut}/{kode_klasifikasi}-ST/71/{bulan_romawi}/{tahun}"),
     ("ND", "Nota Dinas", "{nomor_urut}/ND-{kode_bagian}/71/{bulan_romawi}/{tahun}"),
     ("Kpt", "Keputusan KPU", "{nomor_urut}/{kode_klasifikasi}-Kpt/71/{tahun}"),
     ("Und", "Surat Undangan", "{nomor_urut}/{kode_klasifikasi}-Und/71/{bulan_romawi}/{tahun}"),
+    ("SE", "Surat Edaran", "{nomor_urut}/{kode_klasifikasi}-SE/71/{tahun}"),
+    ("BA", "Berita Acara", "{nomor_urut}/{kode_klasifikasi}-BA/71/{bulan_romawi}/{tahun}"),
+    ("SKet", "Surat Keterangan", "{nomor_urut}/{kode_klasifikasi}-SKet/71/{bulan_romawi}/{tahun}"),
+    ("Peng", "Pengumuman", "{nomor_urut}/{kode_klasifikasi}-Peng/71/{bulan_romawi}/{tahun}"),
+    ("SPPD", "Surat Perjalanan Dinas", "{nomor_urut}/{kode_klasifikasi}-SPPD/71/{bulan_romawi}/{tahun}"),
 ]
 
 

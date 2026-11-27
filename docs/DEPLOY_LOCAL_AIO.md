@@ -136,8 +136,26 @@ Choose based on how sensitive the data is:
 | Option | How | Notes |
 |---|---|---|
 | **Tailscale (recommended)** | Install Tailscale on the AIO and on staff laptops | Private, end-to-end encrypted, no router changes, works behind ISP CGNAT. Not publicly exposed. |
-| Cloudflare Tunnel | `cloudflared` on the AIO → public `https://ptp.yourdomain.go.id` | Works without a public IP, but Cloudflare decrypts the traffic: weigh this against the data-sovereignty requirement, and protect it with Cloudflare Access. |
+| Cloudflare Tunnel | `cloudflared` sidecar in `docker-compose.production.yml` (`--profile cloudflare`) → `https://ptp.yourdomain.go.id` | Works without a public IP or port forwarding. Protect the hostname with **Cloudflare Zero Trust Access** (email OTP / office IP allow-list). |
 | Port forwarding | Router forwards 443 → AIO; a real domain with Caddy obtaining a Let's Encrypt certificate | Needs a static public IP (many Indonesian ISPs use CGNAT). Exposes the server to the whole internet; needs a security review first. |
+
+#### Running with Cloudflare Tunnel (`--profile cloudflare`)
+
+1. In Cloudflare Dashboard (**Zero Trust → Networks → Tunnels**), open your named tunnel (e.g., `ptp-kpu`) and add a **Public Hostname** pointing to:
+   - **Type:** `HTTP`
+   - **URL:** `frontend:80` (Docker internal service name — or `127.0.0.1:8081` if running `cloudflared` directly on the Linux host)
+2. Copy the Tunnel Token into `/opt/ptp-kpu/.env` on your Linux AIO (never commit `.env`):
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN=<paste-your-tunnel-token>
+   KIRANA_IDLE_UNLOAD_MINUTES=60
+   ```
+3. Start the full stack including `cloudflared`:
+   ```bash
+   cd /opt/ptp-kpu
+   docker compose -f docker-compose.production.yml --profile cloudflare up -d --build
+   docker compose -f docker-compose.production.yml --profile cloudflare ps
+   ```
+4. *(Strongly recommended)* Enable **Cloudflare Access** in Zero Trust and attach a reusable Allow policy (e.g., KPU staff emails via One-Time PIN or office IP allow-list) to your public hostname so the portal is never exposed openly to internet scanners.
 
 ## 6. Keep it running
 

@@ -16,38 +16,21 @@ export interface UserProfile {
 
 export type ModuleKey = "anggaran" | "surat"
 
-/**
- * Sub bagian yang berwenang mengelola (menambah/mengubah/menghapus) data tiap modul.
- * Sub bagian lain tetap dapat membuka modul tersebut dalam mode baca saja.
- */
-const MODULE_EDITORS: Record<ModuleKey, string[]> = {
-  anggaran: ["Keuangan", "RENDATIN"],
-  surat: ["UMLOG", "Umum"],
-}
-
 export function isFullBudgetUser(user: UserProfile | null): boolean {
   if (!user) return false
-  const roleLower = (user.role || "").toLowerCase()
-  const sub = (user.subbagian || "").toLowerCase()
-  const jab = (user.jabatan || "").toLowerCase()
-  const isAdminSystem = (roleLower === "admin" || roleLower === "administrator") && (!user.subbagian || sub.includes("admin"))
+  const roleLower = (user.role || "").trim().toLowerCase()
+  const sub = (user.subbagian || "").trim().toLowerCase()
+  const isAdminSystem =
+    (roleLower === "admin" || roleLower === "administrator") &&
+    (!sub || sub.includes("admin"))
   if (isAdminSystem) return true
 
-  const isKabag = jab.includes("kepala bagian") || jab.includes("kabag")
-  const isKabagPerencanaanSdm =
-    isKabag &&
-    ["perencanaan", "rendatin", "partisipasi", "hubungan masyarakat", "humas", "sdm"].some(
-      (key) => jab.includes(key) || sub.includes(key)
-    )
-  if (isKabagPerencanaanSdm) return true
-
-  // Kepala Subbagian RENDATIN & Staf Subbagian RENDATIN
-  return (
-    sub.includes("rendatin") ||
-    sub.includes("perencanaan, data dan informasi") ||
-    sub.includes("bag-02") ||
-    jab.includes("rendatin")
-  )
+  // Matches backend app/core/auth.py is_rendatin_or_keuangan:
+  // Subbagian RENDATIN (BAG-02) & Subbagian Keuangan (BAG-06), excluding non-finance UMLOG.
+  if (sub.includes("bag-02") || sub.includes("bag-06")) return true
+  if (sub.includes("rendatin") || sub.includes("perencanaan")) return true
+  if (sub.includes("keuangan") && !sub.includes("umlog") && !sub.includes("umum dan logistik")) return true
+  return false
 }
 
 export function canViewBudgetFeature(user: UserProfile | null): boolean {
@@ -63,7 +46,7 @@ export function canEditModule(user: UserProfile | null, module: ModuleKey): bool
   if (module === "anggaran") {
     return isFullBudgetUser(user)
   }
-  return MODULE_EDITORS[module].some((key) => (user.subbagian || "").toLowerCase().includes(key.toLowerCase()))
+  return false
 }
 
 export function isRendatinOrKeuanganUser(user: UserProfile | null): boolean {

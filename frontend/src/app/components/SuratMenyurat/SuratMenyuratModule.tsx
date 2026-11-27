@@ -30,6 +30,9 @@ interface Letter {
   sender: string
   recipient: string
   number: string | null
+  nomor_agenda?: string | null
+  sifat_surat?: string
+  batas_waktu?: string | null
   content: string
   date: string
   status: string
@@ -37,8 +40,25 @@ interface Letter {
   owner_id?: number
   assignee_id?: number | null
   version: number
-  history: { at: string; actor: string; action: string; note: string }[]
+  history: {
+    at: string
+    actor: string
+    action: string
+    note: string
+    assignee_name?: string
+    instruksi_disposisi?: string[]
+    batas_waktu?: string
+  }[]
 }
+
+const DISPOSISI_PRESETS = [
+  'Tindak Lanjuti',
+  'Siapkan Bahan',
+  'Koordinasikan',
+  'Untuk Diketahui',
+  'Hadir / Wakili',
+  'Arsipkan',
+]
 
 export interface SuratMenyuratModuleProps {
   theme: 'light' | 'dark'
@@ -66,14 +86,19 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
   const [selected, setSelected] = useState<number | null>(null)
   const [note, setNote] = useState('')
   const [assignee, setAssignee] = useState('')
+  const [instruksiDipilih, setInstruksiDipilih] = useState<string[]>([])
+  const [disposisiBatasWaktu, setDisposisiBatasWaktu] = useState('')
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const blank = {
-    kind: 'masuk',
+    kind: subTab === 'keluar' ? 'keluar' : 'masuk',
     subject: '',
     sender: '',
     recipient: '',
     number: '',
+    sifat_surat: 'Biasa',
+    batas_waktu: '',
     content: '',
     date: new Date().toLocaleDateString('en-CA'),
   }
@@ -140,9 +165,13 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
         version: item.version,
         note,
         assignee_id: assignee ? Number(assignee) : null,
+        ...(action === 'assign' && instruksiDipilih.length > 0 ? { instruksi_disposisi: instruksiDipilih } : {}),
+        ...(action === 'assign' && disposisiBatasWaktu ? { batas_waktu: disposisiBatasWaktu } : {}),
         ...(action === 'edit' ? { content } : {}),
       })
       setNote('')
+      setInstruksiDipilih([])
+      setDisposisiBatasWaktu('')
       await load()
     })
 
@@ -214,11 +243,16 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               void run(async () => {
                 // If saving the letter fails, the uploaded file is rolled back.
                 const save = (fileId: number | null) =>
-                  request('/operations/letters', 'POST', { ...form, file_id: fileId })
+                  request('/operations/letters', 'POST', {
+                    ...form,
+                    batas_waktu: form.batas_waktu || null,
+                    file_id: fileId,
+                  })
                 if (file) await filesApi.uploadThen(file, 'surat', (uploaded) => save(uploaded.file_id))
                 else await save(null)
                 setForm(blank)
                 setFile(null)
+                if (fileInputRef.current) fileInputRef.current.value = ''
                 await load()
               })
             }}
@@ -231,11 +265,12 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                 </label>
                 <select
                   className={field}
-                  value={form.kind}
+                  value={subTab === 'masuk' ? 'masuk' : form.kind}
+                  disabled={subTab === 'masuk'}
                   onChange={(e) => setForm({ ...form, kind: e.target.value })}
                 >
                   <option value="masuk">Surat Masuk</option>
-                  <option value="keluar">Draft Surat Keluar</option>
+                  {subTab !== 'masuk' && <option value="keluar">Draft Surat Keluar</option>}
                 </select>
               </div>
 
@@ -294,7 +329,7 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                 />
               </div>
 
-              <div className="space-y-1.5 md:col-span-2">
+              <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Nomor Surat Masuk {form.kind === 'masuk' ? <span className="text-slate-400 font-normal">(Opsional)</span> : <span className="text-slate-400 font-normal">(Dinonaktifkan untuk draft keluar)</span>}
                 </label>
@@ -306,6 +341,35 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                   value={form.number}
                   onChange={(e) => setForm({ ...form, number: e.target.value })}
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Sifat Surat
+                  </label>
+                  <select
+                    className={field}
+                    value={form.sifat_surat}
+                    onChange={(e) => setForm({ ...form, sifat_surat: e.target.value })}
+                  >
+                    <option value="Biasa">Biasa</option>
+                    <option value="Penting">Penting</option>
+                    <option value="Segera">Segera</option>
+                    <option value="Rahasia">Rahasia</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Batas Waktu (SLA)
+                  </label>
+                  <input
+                    type="date"
+                    className={field}
+                    value={form.batas_waktu}
+                    onChange={(e) => setForm({ ...form, batas_waktu: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5 md:col-span-2">
@@ -326,6 +390,7 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                   Lampiran Berkas <span className="text-slate-400 font-normal">(Opsional)</span>
                 </label>
                 <input
+                  ref={fileInputRef}
                   type="file"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
                   className={`${field} file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-red-600 file:text-white file:cursor-pointer hover:file:bg-red-700`}
@@ -439,7 +504,13 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-2">
-                    <span>{x.number || `Draft #${x.id}`} · {x.date}{x.file_id ? ' · 📎 Lampiran' : ''}</span>
+                    <span>
+                      {x.nomor_agenda ? `${x.nomor_agenda} · ` : ''}
+                      {x.number || `Draft #${x.id}`} · {x.date}
+                      {x.sifat_surat && x.sifat_surat !== 'Biasa' ? ` · ${x.sifat_surat}` : ''}
+                      {x.batas_waktu ? ` · SLA ${x.batas_waktu}` : ''}
+                      {x.file_id ? ' · 📎 Lampiran' : ''}
+                    </span>
                     <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-semibold shrink-0">
                       <Eye className="w-3 h-3" /> Lihat
                     </span>
@@ -461,7 +532,10 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                 {item.sender} → {item.recipient}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {item.nomor_agenda ? `${item.nomor_agenda} · ` : ''}
                 {item.kind === 'masuk' ? 'Surat Masuk' : 'Draft Surat Keluar'} · {item.number || `Draft #${item.id}`} · {item.date} · {statuses[item.status] || item.status}
+                {item.sifat_surat ? ` · Sifat: ${item.sifat_surat}` : ''}
+                {item.batas_waktu ? ` · Batas Waktu: ${item.batas_waktu}` : ''}
               </p>
             </div>
 
@@ -478,16 +552,32 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               </div>
             </div>
 
-            {item.file_id && (
-              <button
-                className={`${button} !px-3 !py-1.5 !text-xs`}
-                disabled={busy}
-                onClick={() => void run(() => download(`/files/${item.file_id}`, `lampiran-${item.id}`))}
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Unduh Lampiran Berkas</span>
-              </button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {item.file_id && (
+                <button
+                  className={`${button} !px-3 !py-1.5 !text-xs`}
+                  disabled={busy}
+                  onClick={() => void run(() => download(`/files/${item.file_id}`, `lampiran-${item.id}`))}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Lampiran Berkas</span>
+                </button>
+              )}
+              {item.kind === 'masuk' && (
+                <button
+                  className={`${button} !bg-slate-700 hover:!bg-slate-800 !px-3 !py-1.5 !text-xs`}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() =>
+                      download(`/operations/letters/${item.id}/lembar-disposisi`, `lembar-disposisi-${item.id}.pdf`)
+                    )
+                  }
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Cetak Lembar Disposisi (PDF)</span>
+                </button>
+              )}
+            </div>
 
             {/* Aksi & Catatan Disposisi */}
             <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
@@ -548,21 +638,62 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               )}
 
               {canAssign && (
-                <div className="space-y-2 pt-1">
+                <div className="space-y-2.5 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Penerima Disposisi
+                      </label>
+                      <select className={field} value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+                        <option value="">Pilih Pegawai Penerima Disposisi</option>
+                        {people
+                          .filter((p) => p.is_active)
+                          .map((p) => (
+                            <option key={p.id_pegawai} value={p.id_pegawai}>
+                              {p.nama}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Batas Waktu Tindak Lanjut
+                      </label>
+                      <input
+                        type="date"
+                        className={field}
+                        value={disposisiBatasWaktu}
+                        onChange={(e) => setDisposisiBatasWaktu(e.target.value)}
+                      />
+                    </div>
+                  </div>
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Penerima Disposisi
-                    </label>
-                    <select className={field} value={assignee} onChange={(e) => setAssignee(e.target.value)}>
-                      <option value="">Pilih Pegawai Penerima Disposisi</option>
-                      {people
-                        .filter((p) => p.is_active)
-                        .map((p) => (
-                          <option key={p.id_pegawai} value={p.id_pegawai}>
-                            {p.nama}
-                          </option>
-                        ))}
-                    </select>
+                    <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Instruksi Standar Disposisi
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {DISPOSISI_PRESETS.map((preset) => {
+                        const checked = instruksiDipilih.includes(preset)
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() =>
+                              setInstruksiDipilih((prev) =>
+                                checked ? prev.filter((x) => x !== preset) : [...prev, preset]
+                              )
+                            }
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-colors ${
+                              checked
+                                ? 'bg-red-600 border-red-600 text-white'
+                                : 'border-slate-300 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:border-red-400'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                   <button className={button} disabled={busy || !assignee} onClick={() => act('assign')}>
                     <Send className="w-3.5 h-3.5" />
@@ -599,7 +730,15 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
                         <span>{new Date(h.at).toLocaleString('id-ID')}</span>
                         <span className="font-semibold text-slate-700 dark:text-slate-300">{h.actor}</span>
                       </div>
-                      <p className="font-medium text-slate-800 dark:text-slate-200">{h.action}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-200">
+                        {h.action}
+                        {h.assignee_name ? ` → ${h.assignee_name}` : ''}
+                      </p>
+                      {h.instruksi_disposisi && h.instruksi_disposisi.length > 0 && (
+                        <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+                          Instruksi: {h.instruksi_disposisi.join(', ')}
+                        </p>
+                      )}
                       {h.note && <p className="text-slate-500 dark:text-slate-400 italic">"{h.note}"</p>}
                     </div>
                   ))}

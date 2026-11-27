@@ -3,10 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin, require_rendatin_or_keuangan
+from app.core.auth import require_admin, require_rendatin_or_keuangan
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     RevisiAnggaranCreate,
+    RevisiPOKCreate,
+    RevisiPOKResponse,
     RevisiAnggaranResponse,
     RevisiAnggaranListResponse,
 )
@@ -65,15 +67,15 @@ async def read_revisi_anggaran_by_id(
     "/",
     response_model=RevisiAnggaranResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Eksekusi Revisi Anggaran",
-    description="Melakukan pergeseran/perubahan pagu anggaran secara atomik. Otomatis mencatat pagu sebelumnya, mengunci pagu_anggaran, memvalidasi terhadap realisasi verified, dan mengupdate pagu_aktif. Membutuhkan role Administrator RENDATIN/Keuangan.",
+    summary="Eksekusi Revisi Anggaran (DIPA)",
+    description="Melakukan pergeseran/perubahan pagu anggaran secara atomik. Membutuhkan role Administrator RENDATIN/Keuangan.",
 )
 async def create_revisi_anggaran(
     revisi_in: RevisiAnggaranCreate,
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_admin),
 ) -> Any:
-    require_rendatin_or_keuangan(current_user)
+    await require_rendatin_or_keuangan(current_user)
     db_obj = await revisi_anggaran.create_revisi(
         db,
         obj_in=revisi_in,
@@ -81,6 +83,28 @@ async def create_revisi_anggaran(
     )
     return revisi_anggaran.enrich_revisi_response(db_obj)
 
-# CATATAN ARSITEKTUR KEAMANAN FINANSIAL:
-# Sesuai requirement, JANGAN menambahkan endpoint PUT atau DELETE pada /revisi-anggaran.
-# Seluruh catatan revisi DIPA/anggaran bersifat immutable untuk keperluan jejak audit finansial BPK/KPU.
+
+@router.post(
+    "/pok",
+    response_model=RevisiPOKResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Eksekusi Pergeseran POK (Zero-Sum Antar Pagu)",
+    description="Memindahkan sebagian pagu aktif secara seimbang (zero-sum) dari satu pagu ke pagu lain dalam tahun anggaran yang sama.",
+)
+async def create_revisi_pok(
+    pok_in: RevisiPOKCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_admin),
+) -> Any:
+    await require_rendatin_or_keuangan(current_user)
+    batch_kode, asal_obj, tujuan_obj = await revisi_anggaran.create_revisi_pok(
+        db,
+        obj_in=pok_in,
+        id_pegawai=current_user.id_pegawai,
+    )
+    return {
+        "batch_kode": batch_kode,
+        "nominal_geser": pok_in.nominal_geser,
+        "asal": revisi_anggaran.enrich_revisi_response(asal_obj),
+        "tujuan": revisi_anggaran.enrich_revisi_response(tujuan_obj),
+    }

@@ -9,8 +9,10 @@ from app.models.schema import (
     SuratTugasPelaksana,
     RiwayatStatusSurat,
     Disposisi,
+    FileRecord,
     DokumenArsip,
     TahunAnggaran,
+    AuditAktivasiTahunAnggaran,
     AkunAnggaran,
     PaguAnggaran,
     RevisiAnggaran,
@@ -18,6 +20,7 @@ from app.models.schema import (
     ChatSession,
     ChatMessage,
     Satker,
+    PermintaanAkun,
 )
 
 __all__ = [
@@ -31,8 +34,10 @@ __all__ = [
     "SuratTugasPelaksana",
     "RiwayatStatusSurat",
     "Disposisi",
+    "FileRecord",
     "DokumenArsip",
     "TahunAnggaran",
+    "AuditAktivasiTahunAnggaran",
     "AkunAnggaran",
     "PaguAnggaran",
     "RevisiAnggaran",
@@ -40,6 +45,26 @@ __all__ = [
     "ChatSession",
     "ChatMessage",
     "Satker",
+    "PermintaanAkun",
+    "AuthorityGrant",
+    "WorkflowLetter",
+    "BugReport",
+    "BudgetEvent",
+    "FinancialAuditLog",
+    "HistoricalReportVersion",
+    "ArsipAccessGrant",
+    "ArsipAuditLog",
+    "ArsipPenyusutan",
 ]
 
-from app.models.operations import WorkflowLetter, BugReport, BudgetEvent
+from app.models.operations import (
+    AuthorityGrant,
+    WorkflowLetter,
+    BugReport,
+    BudgetEvent,
+    FinancialAuditLog,
+    HistoricalReportVersion,
+    ArsipAccessGrant,
+    ArsipAuditLog,
+    ArsipPenyusutan,
+)

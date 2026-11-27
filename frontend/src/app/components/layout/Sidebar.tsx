@@ -71,12 +71,16 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     { id: "realization-akun", label: "Akun Anggaran" },
     { id: "realization-pagu", label: "Pagu Anggaran" },
     { id: "realization-input", label: "Input Realisasi" },
+    { id: "realization-transaksi", label: "Daftar Transaksi" },
+    { id: "realization-verifikasi", label: "Verifikasi Realisasi" },
+    { id: "realization-audit", label: "Audit & Versi Laporan" },
   ]
 
   const restrictedRealisasiSubmenus = [
     { id: "realization-summary", label: "Dashboard" },
     { id: "realization-reports", label: "Laporan Bulanan" },
     { id: "realization-pagu", label: "Pagu Anggaran" },
+    { id: "realization-transaksi", label: "Daftar Transaksi" },
   ]
 
   const realisasiSubmenus = isRendatinOrKeuangan
@@ -94,6 +98,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
   const adminMenu = [
     { id: "admin_dashboard", label: "Dashboard Admin", icon: LayoutGrid },
     { id: "kelola_user", label: "Kelola User", icon: Users },
+    { id: "arsip_admin", label: "Cadangan & Admin Arsip", icon: Database },
     { id: "bug_report", label: "Laporan Bug", icon: Bug },
   ]
 

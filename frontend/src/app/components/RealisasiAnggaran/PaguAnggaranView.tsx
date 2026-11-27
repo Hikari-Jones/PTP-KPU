@@ -9,17 +9,22 @@ import {
   revisiAnggaranApi,
   tahunAnggaranApi,
   akunAnggaranApi,
+  bagianApi,
 } from "../../../services/api"
+import {
+  decimalToEditableString,
+  formatCurrencyInput,
+  formatRupiah,
+  parseCurrencyValue,
+  sanitizeCurrencyInput,
+} from "../../../utils/currency"
 import type {
   PaguAnggaranResponse,
   RevisiAnggaranResponse,
   TahunAnggaranResponse,
   AkunAnggaranResponse,
+  BagianResponse,
 } from "./types"
-
-type Subbagian = "SDM" | "RENDATIN" | "Teknis" | "Hukum" | "Keuangan" | "UMLOG"
-
-const SUBBAGIAN_OPTIONS: Subbagian[] = ["SDM", "RENDATIN", "Teknis", "Hukum", "Keuangan", "UMLOG"]
 
 const ITEMS_PER_PAGE = 100
 
@@ -34,6 +39,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const [selectedTAId, setSelectedTAId] = useState<number | undefined>(undefined)
   const [selectedTAYear, setSelectedTAYear] = useState<number | null>(null)
   const [allAkunList, setAllAkunList] = useState<AkunAnggaranResponse[]>([])
+  const [bagianList, setBagianList] = useState<BagianResponse[]>([])
   const [loadingActiveYear, setLoadingActiveYear] = useState<boolean>(true)
   const [activeYearError, setActiveYearError] = useState<string | null>(null)
 
@@ -50,7 +56,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   // Modal & Form states
-  const [modalType, setModalType] = useState<"pagu" | "revisi" | null>(null)
+  const [modalType, setModalType] = useState<"pagu" | "revisi" | "pok" | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedPaguToEdit, setSelectedPaguToEdit] = useState<PaguAnggaranResponse | null>(null)
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<PaguAnggaranResponse | null>(null)
@@ -59,6 +65,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   // Form Tambah / Edit Pagu Fields
   const [formAkunId, setFormAkunId] = useState<number | "">("")
   const [formPaguAwal, setFormPaguAwal] = useState<string>("")
+  const [formPaguBlokir, setFormPaguBlokir] = useState<string>("")
+  const [formRpd1, setFormRpd1] = useState<string>("")
+  const [formRpd2, setFormRpd2] = useState<string>("")
+  const [formRpd3, setFormRpd3] = useState<string>("")
+  const [formRpd4, setFormRpd4] = useState<string>("")
   const [formNomorSK, setFormNomorSK] = useState("")
   const [formTanggalSK, setFormTanggalSK] = useState("")
   const [formKeterangan, setFormKeterangan] = useState("")
@@ -71,36 +82,35 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
   const [formPaguBaru, setFormPaguBaru] = useState<string>("")
   const [formAlasanRevisi, setFormAlasanRevisi] = useState("")
 
+  // Pergeseran POK (Zero-Sum) Fields
+  const [pokAsalId, setPokAsalId] = useState<number | "">("")
+  const [pokTujuanId, setPokTujuanId] = useState<number | "">("")
+  const [pokNominal, setPokNominal] = useState<string>("")
+
   const requestIdRef = useRef(0)
 
-  const formatThousand = (val: string | number) => {
-    const raw = String(val).replace(/\D/g, "")
-    if (!raw) return ""
-    return new Intl.NumberFormat("id-ID").format(Number(raw))
-  }
-
-  const formatRupiah = (value: number | string | null | undefined) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(value) || 0)}`
-
-  // 1. Initial Load: Fetch Global Active Year, All Tahun Anggaran & Master Akun Anggaran
+  // 1. Initial Load: Fetch Global Active Year, All Tahun Anggaran, Master Bagian & Master Akun Anggaran
   useEffect(() => {
     let isMounted = true
     const initMaster = async () => {
       setLoadingActiveYear(true)
       setActiveYearError(null)
       try {
-        const [activeRes, taRes, akunRes] = await Promise.all([
+        const [activeRes, taRes, akunRes, bagRes] = await Promise.all([
           tahunAnggaranApi.getActive().catch((e) => {
             console.warn("Gagal memuat tahun anggaran aktif", e)
             return null
           }),
           tahunAnggaranApi.getAll({ limit: 100 }).catch(() => ({ total: 0, items: [] })),
           akunAnggaranApi.getAll({ limit: 500 }).catch(() => ({ total: 0, items: [] })),
+          bagianApi.getAll({ limit: 100 }).catch(() => [] as BagianResponse[]),
         ])
         if (!isMounted) return
 
         const items = taRes.items || []
         setTahunList(items)
         setAllAkunList(akunRes.items || [])
+        setBagianList(bagRes || [])
 
         if (activeRes) {
           setSelectedTAId(activeRes.id_tahun_anggaran)
@@ -189,6 +199,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     const term = searchQuery.toLowerCase()
     return (
       (item.nomor_revisi || "").toLowerCase().includes(term) ||
+      (item.kode_akun || "").toLowerCase().includes(term) ||
+      (item.nama_akun || "").toLowerCase().includes(term) ||
       (item.alasan_revisi || "").toLowerCase().includes(term) ||
       (item.nama_pegawai || "").toLowerCase().includes(term)
     )
@@ -202,6 +214,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setConfirmAddPagu(false)
     setFormAkunId("")
     setFormPaguAwal("")
+    setFormPaguBlokir("")
+    setFormRpd1("")
+    setFormRpd2("")
+    setFormRpd3("")
+    setFormRpd4("")
     setFormNomorSK("")
     setFormTanggalSK("")
     setFormKeterangan("")
@@ -211,6 +228,9 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setFormPaguSebelum(0)
     setFormPaguBaru("")
     setFormAlasanRevisi("")
+    setPokAsalId("")
+    setPokTujuanId("")
+    setPokNominal("")
     setError(null)
   }
 
@@ -219,6 +239,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setSelectedPaguToEdit(null)
     setFormAkunId("")
     setFormPaguAwal("")
+    setFormPaguBlokir("")
+    setFormRpd1("")
+    setFormRpd2("")
+    setFormRpd3("")
+    setFormRpd4("")
     setFormNomorSK("")
     const today = new Date().toISOString().split("T")[0]
     setFormTanggalSK(today)
@@ -227,16 +252,33 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setModalType("pagu")
   }
 
-  // Buka Modal Edit Pagu (Metadata)
+  // Buka Modal Edit Pagu (Metadata, Blokir & RPD)
   const openEditPagu = (item: PaguAnggaranResponse) => {
     setSelectedPaguToEdit(item)
     setFormAkunId(item.id_akun_anggaran)
-    setFormPaguAwal(String(item.pagu_awal || 0))
+    setFormPaguAwal(decimalToEditableString(item.pagu_awal))
+    setFormPaguBlokir(decimalToEditableString(item.pagu_blokir ?? 0))
+    setFormRpd1(decimalToEditableString(item.rpd_triwulan_1 ?? 0))
+    setFormRpd2(decimalToEditableString(item.rpd_triwulan_2 ?? 0))
+    setFormRpd3(decimalToEditableString(item.rpd_triwulan_3 ?? 0))
+    setFormRpd4(decimalToEditableString(item.rpd_triwulan_4 ?? 0))
     setFormNomorSK(item.nomor_sk || "")
     setFormTanggalSK(item.tanggal_sk || "")
     setFormKeterangan(item.keterangan || "")
     setError(null)
     setModalType("pagu")
+  }
+
+  const openAddPok = () => {
+    const today = new Date().toISOString().split("T")[0]
+    setFormTanggalRevisi(today)
+    setFormNomorRevisi(`POK-${String(revisiList.length + 1).padStart(3, "0")}/${selectedTAYear}`)
+    setPokAsalId(paguList[0]?.id_pagu ?? "")
+    setPokTujuanId(paguList[1]?.id_pagu ?? "")
+    setPokNominal("")
+    setFormAlasanRevisi("")
+    setError(null)
+    setModalType("pok")
   }
 
   // Hapus Pagu
@@ -275,11 +317,16 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     setError(null)
     try {
       if (selectedPaguToEdit) {
-        // Mode Edit Metadata
+        // Mode Edit Metadata, Pagu Blokir & RPD Triwulan
         await paguAnggaranApi.update(selectedPaguToEdit.id_pagu, {
           nomor_sk: formNomorSK.trim() || undefined,
           tanggal_sk: formTanggalSK || undefined,
           keterangan: formKeterangan.trim() || undefined,
+          pagu_blokir: parseCurrencyValue(formPaguBlokir),
+          rpd_triwulan_1: parseCurrencyValue(formRpd1),
+          rpd_triwulan_2: parseCurrencyValue(formRpd2),
+          rpd_triwulan_3: parseCurrencyValue(formRpd3),
+          rpd_triwulan_4: parseCurrencyValue(formRpd4),
         })
         setSuccessMessage(`Pagu ${selectedPaguToEdit.kode_akun} berhasil diperbarui!`)
       } else {
@@ -294,11 +341,17 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
           setSubmitting(false)
           return
         }
+        const numericPaguAwal = parseCurrencyValue(formPaguAwal)
         await paguAnggaranApi.create({
           id_tahun_anggaran: selectedTAId,
           id_akun_anggaran: Number(formAkunId),
-          pagu_awal: Number(formPaguAwal.replace(/\D/g, "")) || 0,
-          pagu_aktif: Number(formPaguAwal.replace(/\D/g, "")) || 0,
+          pagu_awal: numericPaguAwal,
+          pagu_aktif: numericPaguAwal,
+          pagu_blokir: parseCurrencyValue(formPaguBlokir),
+          rpd_triwulan_1: parseCurrencyValue(formRpd1),
+          rpd_triwulan_2: parseCurrencyValue(formRpd2),
+          rpd_triwulan_3: parseCurrencyValue(formRpd3),
+          rpd_triwulan_4: parseCurrencyValue(formRpd4),
           nomor_sk: formNomorSK.trim() || undefined,
           tanggal_sk: formTanggalSK || undefined,
           keterangan: formKeterangan.trim() || undefined,
@@ -324,7 +377,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     if (firstPagu) {
       setFormPaguId(firstPagu.id_pagu)
       setFormPaguSebelum(Number(firstPagu.pagu_aktif) || 0)
-      setFormPaguBaru(String(firstPagu.pagu_aktif || 0))
+      setFormPaguBaru(decimalToEditableString(firstPagu.pagu_aktif))
     } else {
       setFormPaguId("")
       setFormPaguSebelum(0)
@@ -339,7 +392,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
     const selected = paguList.find((p) => p.id_pagu === idPagu)
     if (selected) {
       setFormPaguSebelum(Number(selected.pagu_aktif) || 0)
-      setFormPaguBaru(String(selected.pagu_aktif || 0))
+      setFormPaguBaru(decimalToEditableString(selected.pagu_aktif))
     }
   }
 
@@ -350,7 +403,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
       setError("Pilih akun pagu anggaran yang akan direvisi.")
       return
     }
-    const numericPaguBaru = Number(formPaguBaru.replace(/\D/g, "")) || 0
+    const numericPaguBaru = parseCurrencyValue(formPaguBaru)
     if (numericPaguBaru < 0) {
       setError("Pagu baru tidak boleh bernilai negatif.")
       return
@@ -387,6 +440,43 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
       await fetchData()
     } catch (e: any) {
       setError(e.message || "Gagal mengeksekusi revisi anggaran")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const submitPok = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!pokAsalId || !pokTujuanId || pokAsalId === pokTujuanId) {
+      setError("Pilih pagu asal dan pagu tujuan yang berbeda.")
+      return
+    }
+    const nominal = parseCurrencyValue(pokNominal)
+    if (nominal <= 0) {
+      setError("Nominal pergeseran POK harus lebih besar dari 0.")
+      return
+    }
+    if (!formNomorRevisi.trim() || formAlasanRevisi.trim().length < 5) {
+      setError("Nomor POK dan alasan pergeseran (minimal 5 karakter) wajib diisi.")
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      await revisiAnggaranApi.createPok({
+        id_pagu_asal: Number(pokAsalId),
+        id_pagu_tujuan: Number(pokTujuanId),
+        nominal_geser: nominal,
+        nomor_revisi: formNomorRevisi.trim(),
+        tanggal_revisi: formTanggalRevisi,
+        alasan_revisi: formAlasanRevisi.trim(),
+      })
+      setSuccessMessage("Pergeseran POK (zero-sum) berhasil dieksekusi dan tercatat di audit trail!")
+      setTimeout(() => setSuccessMessage(null), 4000)
+      closeModal()
+      await fetchData()
+    } catch (e: any) {
+      setError(e.message || "Gagal mengeksekusi pergeseran POK")
     } finally {
       setSubmitting(false)
     }
@@ -476,13 +566,23 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   <Plus className="h-4 w-4" /> Tambah Pagu
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={openAddRevisi}
-                  className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer shadow-md hover:opacity-95"
-                >
-                  <Plus className="h-4 w-4" /> Tambah Revisi DIPA
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openAddPok}
+                    disabled={paguList.length < 2}
+                    className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold cursor-pointer disabled:opacity-40 ${isDark ? "border-white/15 bg-[#0f172a] text-white hover:bg-[#1e293b]" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"}`}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 text-red-600" /> Pergeseran POK (Zero-Sum)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openAddRevisi}
+                    className="btn-kpu-red flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer shadow-md hover:opacity-95"
+                  >
+                    <Plus className="h-4 w-4" /> Tambah Revisi DIPA
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -525,19 +625,25 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
         {activeTab === "pagu" && (
           <select
             value={selectedSubbagian}
-            onChange={(event) => setSelectedSubbagian(event.target.value)}
+            onChange={(event) => {
+              setSelectedSubbagian(event.target.value)
+              setCurrentPage(1)
+            }}
             className={`${inputClass} md:w-52 cursor-pointer`}
           >
             <option>Semua Subbagian</option>
-            {SUBBAGIAN_OPTIONS.map((item) => <option key={item}>{item}</option>)}
+            {bagianList.map((b) => <option key={b.id_bagian} value={b.nama_bagian}>{b.nama_bagian}</option>)}
           </select>
         )}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={activeTab === "pagu" ? "Cari kode, nama akun, atau bagian..." : "Cari no. revisi, alasan, atau nama operator..."}
+            onChange={(event) => {
+              setSearchQuery(event.target.value)
+              setCurrentPage(1)
+            }}
+            placeholder={activeTab === "pagu" ? "Cari kode, nama akun, atau bagian..." : "Cari no. revisi, kode akun, alasan, atau nama operator..."}
             className={`${inputClass} pl-9`}
           />
         </div>
@@ -576,7 +682,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                         <TableCell className={`max-w-[220px] text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{item.nama_akun}</TableCell>
                         <TableCell className={`text-xs font-semibold ${isDark ? "text-gray-300" : "text-slate-600"}`}>{item.nama_bagian || "-"}</TableCell>
                         <TableCell className={`whitespace-nowrap text-xs font-semibold ${isDark ? "text-gray-400" : "text-slate-500"}`}>{formatRupiah(item.pagu_awal)}</TableCell>
-                        <TableCell className={`whitespace-nowrap text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{formatRupiah(item.pagu_aktif)}</TableCell>
+                        <TableCell className={`whitespace-nowrap text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                          {formatRupiah(item.pagu_aktif)}
+                          {Number(item.pagu_blokir || 0) > 0 && (
+                            <span className="block text-[10px] font-semibold text-amber-500">
+                              Blokir: {formatRupiah(item.pagu_blokir)}
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.total_realisasi_verified)}</TableCell>
                         <TableCell className={`whitespace-nowrap text-xs font-bold ${Number(item.sisa_anggaran) < 0 ? "text-rose-500" : isDark ? "text-red-400" : "text-red-600"}`}>{formatRupiah(item.sisa_anggaran)}</TableCell>
                         <TableCell><div className="flex min-w-[105px] items-center justify-center gap-2"><div className={`h-2 flex-1 overflow-hidden rounded-full ${isDark ? "bg-slate-800" : "bg-slate-200"}`}><div className="h-full rounded-full bg-red-600" style={{ width: `${Math.min(percentage, 100)}%` }} /></div><span className="text-[11px] font-bold text-red-600 dark:text-red-400">{percentage}%</span></div></TableCell>
@@ -673,18 +786,22 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
             </div>
             <Table>
               <TableHeader><TableRow className={isDark ? "bg-[#0a0f1d]" : "bg-slate-50"}>
-                {['NO. REVISI', 'TANGGAL', 'PAGU SEBELUM', 'PAGU SESUDAH', 'PERUBAHAN NETTO', 'ALASAN REVISI', 'DIEKSEKUSI OLEH'].map((head) => (
+                {['NO. REVISI', 'AKUN / MAK', 'TANGGAL', 'PAGU SEBELUM', 'PAGU SESUDAH', 'PERUBAHAN NETTO', 'ALASAN REVISI', 'DIEKSEKUSI OLEH'].map((head) => (
                   <TableHead key={head} className={`text-[11px] font-extrabold ${isDark ? "text-gray-400" : "text-slate-600"}`}>{head}</TableHead>
                 ))}
               </TableRow></TableHeader>
               <TableBody>
                 {filteredRevisi.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="py-10 text-center text-xs text-slate-500">Belum ada riwayat revisi anggaran pada tahun ini.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="py-10 text-center text-xs text-slate-500">Belum ada riwayat revisi anggaran pada tahun ini.</TableCell></TableRow>
                 ) : filteredRevisi.map((item) => {
                   const difference = Number(item.perubahan_netto) || 0
                   return (
                     <TableRow key={item.id_revisi}>
                       <TableCell className="whitespace-nowrap font-mono text-xs font-bold text-red-600 dark:text-red-400">{item.nomor_revisi}</TableCell>
+                      <TableCell className="text-xs">
+                        <span className="font-mono font-bold text-slate-900 dark:text-white block">{item.kode_akun || `Pagu #${item.id_pagu}`}</span>
+                        {item.nama_akun && <span className="text-[10px] text-slate-500 dark:text-gray-400">{item.nama_akun}</span>}
+                      </TableCell>
                       <TableCell className={`whitespace-nowrap text-xs ${isDark ? "text-gray-300" : "text-slate-600"}`}>{item.tanggal_revisi}</TableCell>
                       <TableCell className={`whitespace-nowrap text-xs font-semibold ${isDark ? "text-gray-200" : "text-slate-700"}`}>{formatRupiah(item.pagu_sebelum)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs font-bold text-red-600 dark:text-red-400">{formatRupiah(item.pagu_sesudah)}</TableCell>
@@ -746,7 +863,7 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                       <div className="flex justify-between items-center gap-2 pt-1 border-t border-amber-500/20">
                         <span className="text-slate-500 dark:text-slate-400">Nominal Pagu Awal:</span>
                         <strong className="text-base font-extrabold text-red-600 dark:text-red-400">
-                          {formatRupiah(Number(formPaguAwal.replace(/\D/g, "")) || 0)}
+                          {formatRupiah(parseCurrencyValue(formPaguAwal))}
                         </strong>
                       </div>
                       {(formNomorSK || formTanggalSK) && (
@@ -815,9 +932,9 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   <input
                     required
                     type="text"
-                    inputMode="numeric"
-                    value={formatThousand(formPaguAwal)}
-                    onChange={(e) => setFormPaguAwal(e.target.value.replace(/\D/g, ""))}
+                    inputMode="decimal"
+                    value={formatCurrencyInput(formPaguAwal)}
+                    onChange={(e) => setFormPaguAwal(sanitizeCurrencyInput(e.target.value))}
                     placeholder="Contoh: 50.000.000"
                     className={inputClass}
                   />
@@ -854,6 +971,38 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                     className={inputClass}
                   />
                 </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-1 font-semibold">
+                  Pagu Blokir / Self-Blocking (Rp)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formatCurrencyInput(formPaguBlokir)}
+                    onChange={(e) => setFormPaguBlokir(sanitizeCurrencyInput(e.target.value))}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1 font-semibold">
+                    RPD Triwulan I
+                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd1)} onChange={(e) => setFormRpd1(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                  </label>
+                  <label className="space-y-1 font-semibold">
+                    RPD Triwulan II
+                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd2)} onChange={(e) => setFormRpd2(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                  </label>
+                  <label className="space-y-1 font-semibold">
+                    RPD Triwulan III
+                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd3)} onChange={(e) => setFormRpd3(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                  </label>
+                  <label className="space-y-1 font-semibold">
+                    RPD Triwulan IV
+                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd4)} onChange={(e) => setFormRpd4(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                  </label>
+                </div>
               </div>
 
               <label className="block space-y-1 font-semibold">
@@ -964,9 +1113,9 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   <input
                     required
                     type="text"
-                    inputMode="numeric"
-                    value={formatThousand(formPaguBaru)}
-                    onChange={(e) => setFormPaguBaru(e.target.value.replace(/\D/g, ""))}
+                    inputMode="decimal"
+                    value={formatCurrencyInput(formPaguBaru)}
+                    onChange={(e) => setFormPaguBaru(sanitizeCurrencyInput(e.target.value))}
                     placeholder="0"
                     className={inputClass}
                   />
@@ -990,8 +1139,8 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
               <div className={`rounded-xl border p-3 ${isDark ? "border-red-500/20 bg-red-950/20" : "border-red-200 bg-red-50"}`}>
                 <span className="text-slate-500">Perubahan Netto: </span>
-                <strong className={(Number(formPaguBaru.replace(/\D/g, "")) || 0) - formPaguSebelum >= 0 ? "text-emerald-500" : "text-rose-500"}>
-                  {(Number(formPaguBaru.replace(/\D/g, "")) || 0) - formPaguSebelum >= 0 ? "+" : "−"}{formatRupiah(Math.abs((Number(formPaguBaru.replace(/\D/g, "")) || 0) - formPaguSebelum))}
+                <strong className={parseCurrencyValue(formPaguBaru) - formPaguSebelum >= 0 ? "text-emerald-500" : "text-rose-500"}>
+                  {parseCurrencyValue(formPaguBaru) - formPaguSebelum >= 0 ? "+" : "−"}{formatRupiah(Math.abs(parseCurrencyValue(formPaguBaru) - formPaguSebelum))}
                 </strong>
               </div>
 
@@ -1011,6 +1160,88 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 >
                   {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {submitting ? "Menyimpan..." : "Eksekusi Revisi"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PERGESERAN POK (ZERO-SUM) */}
+      {modalType === "pok" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
+          <div className={`w-full max-w-lg overflow-hidden rounded-2xl border shadow-2xl ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
+            <div className={`flex items-center justify-between border-b p-4 ${isDark ? "border-white/10 bg-[#0a0f1d]" : "border-slate-200 bg-slate-50"}`}>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">TA {selectedTAYear} · Zero-Sum</p>
+                <h2 className="text-sm font-bold">Pergeseran POK Antar Pagu Anggaran</h2>
+              </div>
+              <button type="button" onClick={closeModal} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-500/15 hover:text-red-500 cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={submitPok} className="space-y-4 p-5 text-xs">
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="space-y-1 font-semibold">
+                  Nomor Revisi POK
+                  <input required value={formNomorRevisi} onChange={(e) => setFormNomorRevisi(e.target.value)} className={inputClass} />
+                </label>
+                <label className="space-y-1 font-semibold">
+                  Tanggal Pergeseran
+                  <input required type="date" value={formTanggalRevisi} onChange={(e) => setFormTanggalRevisi(e.target.value)} className={inputClass} />
+                </label>
+              </div>
+              <label className="block space-y-1 font-semibold">
+                Pagu Asal (Dikurangi)
+                <select required value={pokAsalId} onChange={(e) => setPokAsalId(Number(e.target.value))} className={inputClass}>
+                  <option value="">-- Pilih Pagu Asal --</option>
+                  {paguList.map((p) => (
+                    <option key={p.id_pagu} value={p.id_pagu}>
+                      {p.kode_akun} — {p.nama_akun} (Sisa Efektif: {formatRupiah(p.sisa_anggaran)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1 font-semibold">
+                Pagu Tujuan (Ditambah)
+                <select required value={pokTujuanId} onChange={(e) => setPokTujuanId(Number(e.target.value))} className={inputClass}>
+                  <option value="">-- Pilih Pagu Tujuan --</option>
+                  {paguList.map((p) => (
+                    <option key={p.id_pagu} value={p.id_pagu}>
+                      {p.kode_akun} — {p.nama_akun} (Pagu Aktif: {formatRupiah(p.pagu_aktif)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1 font-semibold">
+                Nominal Pergeseran (Rp)
+                <input
+                  required
+                  type="text"
+                  inputMode="decimal"
+                  value={formatCurrencyInput(pokNominal)}
+                  onChange={(e) => setPokNominal(sanitizeCurrencyInput(e.target.value))}
+                  placeholder="0"
+                  className={inputClass}
+                />
+              </label>
+              <label className="block space-y-1 font-semibold">
+                Alasan Pergeseran POK (Minimal 5 karakter)
+                <textarea required rows={3} value={formAlasanRevisi} onChange={(e) => setFormAlasanRevisi(e.target.value)} className={inputClass} />
+              </label>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={closeModal} disabled={submitting} className={`rounded-xl border px-4 py-2 font-bold cursor-pointer ${isDark ? "border-white/10 text-gray-300" : "border-slate-300 text-slate-700"}`}>
+                  Batal
+                </button>
+                <button type="submit" disabled={submitting} className="btn-kpu-red flex items-center gap-2 rounded-xl px-5 py-2 font-bold text-white cursor-pointer shadow-md">
+                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {submitting ? "Memproses..." : "Eksekusi Pergeseran POK"}
                 </button>
               </div>
             </form>

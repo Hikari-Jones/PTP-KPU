@@ -144,6 +144,12 @@ export interface PaguAnggaranResponse {
   id_akun_anggaran: number
   pagu_awal: number
   pagu_aktif: number
+  pagu_blokir?: number
+  pagu_efektif?: number
+  rpd_triwulan_1?: number
+  rpd_triwulan_2?: number
+  rpd_triwulan_3?: number
+  rpd_triwulan_4?: number
   nomor_sk?: string | null
   tanggal_sk?: string | null
   keterangan?: string | null
@@ -169,6 +175,11 @@ export interface RealisasiAnggaranCreatePayload {
   nomor_dokumen: string
   uraian_kegiatan: string
   jumlah_realisasi: number
+  mekanisme_bayar?: "UP" | "TUP" | "GUP" | "LS"
+  jenis_dokumen_bayar?: "SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi" | "SSPB"
+  nomor_sp2d?: string | null
+  penerima_pembayaran?: string | null
+  potongan_pajak?: number
   periode?: string | null
   bukti_file_path?: string | null
   bukti_file_nama?: string | null
@@ -186,6 +197,14 @@ export interface RealisasiAnggaranResponse {
   nomor_dokumen: string
   uraian_kegiatan: string
   jumlah_realisasi: number
+  mekanisme_bayar?: string
+  jenis_dokumen_bayar?: string
+  nomor_sp2d?: string | null
+  penerima_pembayaran?: string | null
+  potongan_pajak?: number
+  jumlah_netto?: number
+  is_koreksi?: boolean
+  koreksi_dari_id?: number | null
   status: "draft" | "submitted" | "verified" | "rejected"
   periode?: string | null
   bukti_file_path?: string | null
@@ -225,9 +244,13 @@ export interface DashboardSummaryResponse {
   tahun?: number | null
   status_tahun?: "draft" | "active" | "closed" | null
   id_akun_anggaran?: number | null
+  id_bagian?: number | null
   bulan?: number | null
   total_pagu_aktif: number
+  total_pagu_blokir?: number
+  total_pagu_efektif?: number
   total_realisasi_verified: number
+  total_realisasi_tahun?: number | null
   total_sisa_anggaran: number
   persentase_serapan: number
   total_transaksi_draft: number
@@ -235,6 +258,53 @@ export interface DashboardSummaryResponse {
   total_transaksi_verified: number
   total_transaksi_rejected: number
   monthly_recap: MonthlyRealizationItem[]
+}
+
+export interface TriwulanRpdItem {
+  triwulan: number
+  label: string
+  target_rpd: number
+  realisasi_verified: number
+  deviasi: number
+  deviasi_persen: number
+  capaian_persen: number
+}
+
+export interface TriwulanRpdResponse {
+  id_tahun_anggaran: number | null
+  tahun: number | null
+  total_pagu_aktif: number
+  total_pagu_blokir: number
+  total_pagu_efektif: number
+  triwulan: TriwulanRpdItem[]
+}
+
+export interface FinancialAuditLogItem {
+  id_log: number
+  id_pegawai?: number | null
+  nama_pegawai?: string | null
+  waktu_aksi?: string | null
+  aksi: string
+  nama_tabel: string
+  id_entitas: number
+  id_tahun_anggaran?: number | null
+  tahun?: number | null
+  nilai_sebelum?: Record<string, unknown> | null
+  nilai_sesudah?: Record<string, unknown> | null
+  alasan?: string | null
+}
+
+export interface HistoricalReportVersionItem {
+  id_version: number
+  id_tahun_anggaran: number
+  tahun: number
+  periode_laporan: string
+  nomor_versi: number
+  diterbitkan_oleh?: number | null
+  nama_penerbit?: string | null
+  waktu_terbit: string
+  alasan_koreksi?: string | null
+  snapshot_data: Record<string, unknown>
 }
 
 export interface MonthlyReportRowItem {
@@ -310,6 +380,9 @@ export interface RevisiAnggaranResponse {
   perubahan_netto: number
   alasan_revisi: string
   nama_pegawai?: string | null
+  kode_akun?: string | null
+  nama_akun?: string | null
+  nama_bagian?: string | null
   created_at: string
 }
 

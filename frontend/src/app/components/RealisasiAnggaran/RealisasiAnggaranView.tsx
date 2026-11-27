@@ -16,7 +16,11 @@ import {
   AlertCircle,
   Download,
   Edit2,
-  Trash2
+  Trash2,
+  RotateCcw,
+  ShieldCheck,
+  History,
+  X,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
@@ -27,7 +31,10 @@ import type {
   AkunAnggaranResponse,
   RealisasiAnggaranResponse,
   DashboardSummaryResponse,
-  MonthlyReportResponse
+  MonthlyReportResponse,
+  TriwulanRpdResponse,
+  FinancialAuditLogItem,
+  HistoricalReportVersionItem,
 } from "./types"
 import { TambahRealisasiModal } from "./TambahRealisasiModal"
 import { EditRealisasiModal } from "./EditRealisasiModal"
@@ -43,8 +50,9 @@ import {
   dashboardAnggaranApi
 } from "../../../services/api"
 import { exportRealisasiAnggaranToExcel } from "../../../services/excelReport"
+import { formatCurrencyInput, parseCurrencyValue, sanitizeCurrencyInput } from "../../../utils/currency"
 
-export type RealisasiSubTab = "ringkasan" | "transaksi" | "laporan" | "verifikasi"
+export type RealisasiSubTab = "ringkasan" | "transaksi" | "laporan" | "verifikasi" | "audit"
 
 interface Props {
   theme: "light" | "dark"
@@ -99,6 +107,18 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
 
   // Server-side Data
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null)
+  const [triwulanRpd, setTriwulanRpd] = useState<TriwulanRpdResponse | null>(null)
+  const [auditLogs, setAuditLogs] = useState<FinancialAuditLogItem[]>([])
+  const [reportVersions, setReportVersions] = useState<HistoricalReportVersionItem[]>([])
+  const [publishPeriode, setPublishPeriode] = useState("Triwulan I")
+  const [publishAlasan, setPublishAlasan] = useState("")
+  const [publishing, setPublishing] = useState(false)
+  const [koreksiTarget, setKoreksiTarget] = useState<RealisasiAnggaranResponse | null>(null)
+  const [koreksiNomor, setKoreksiNomor] = useState("")
+  const [koreksiTanggal, setKoreksiTanggal] = useState(new Date().toLocaleDateString("en-CA"))
+  const [koreksiNominal, setKoreksiNominal] = useState("")
+  const [koreksiAlasan, setKoreksiAlasan] = useState("")
+  const [savingKoreksi, setSavingKoreksi] = useState(false)
   const [realisasiList, setRealisasiList] = useState<RealisasiAnggaranResponse[]>([])
   const [report, setReport] = useState<MonthlyReportResponse | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
@@ -120,8 +140,8 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
         const [taRes, bagRes, akunRes, caps] = await Promise.all([
           tahunAnggaranApi.getAll({ limit: 100 }),
           bagianApi.getAll({ limit: 100 }),
-          akunAnggaranApi.getAll({ status: "active", limit: 500 }),
-          request<{user_id: number; can_review: boolean}>("/realisasi-anggaran/capabilities"),
+          akunAnggaranApi.getAll({ status: "active", limit: 500 }).catch(() => ({ total: 0, items: [] as AkunAnggaranResponse[] })),
+          request<{user_id: number; can_review: boolean}>("/realisasi-anggaran/capabilities").catch(() => ({ user_id: 0, can_review: false })),
         ])
 
         if (!isMounted) return
@@ -154,7 +174,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
     setError(null)
 
     try {
-      const [sumRes, realRes, repRes] = await Promise.all([
+      const [sumRes, realRes, repRes, rpdRes, auditRes, verRes] = await Promise.all([
         subTab === "ringkasan" ? dashboardAnggaranApi.getSummary({
           id_tahun_anggaran: selectedTahunId ?? undefined,
           id_bagian: selectedBagianId ?? undefined,
@@ -175,10 +195,22 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
           id_bagian: selectedBagianId ?? undefined,
           id_akun_anggaran: selectedAkunId ?? undefined,
         }) : Promise.resolve(null),
+        subTab === "ringkasan" ? dashboardAnggaranApi.getTriwulanRpd({
+          id_tahun_anggaran: selectedTahunId ?? undefined,
+          id_bagian: selectedBagianId ?? undefined,
+        }).catch(() => null) : Promise.resolve(null),
+        subTab === "audit" ? dashboardAnggaranApi.getAuditLogs({
+          id_tahun_anggaran: selectedTahunId ?? undefined,
+          limit: 100,
+        }).catch(() => ({ total: 0, items: [] as FinancialAuditLogItem[] })) : Promise.resolve(null),
+        subTab === "audit" && selectedTahunId ? dashboardAnggaranApi.getVersions(selectedTahunId).catch(() => []) : Promise.resolve(null),
       ])
 
       if (currentReqId === reqIdRef.current) {
         setSummary(sumRes)
+        setTriwulanRpd(rpdRes)
+        setAuditLogs(auditRes?.items || [])
+        setReportVersions(verRes || [])
         setRealisasiList(realRes?.items || [])
         setTotal(realRes?.total || 0)
         setReport(repRes)
@@ -211,13 +243,16 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
   const currentTa = tahunList.find((t) => t.id_tahun_anggaran === selectedTahunId)
   const displayYear = summary?.tahun ?? currentTa?.tahun ?? new Date().getFullYear()
 
-  // Monthly recap
+  // Monthly recap with adaptive Juta / Miliar Y-axis scale
   const monthlyRecap = summary?.monthly_recap || []
   const maxMonthlyRealisasi = Math.max(
     ...monthlyRecap.map((m) => Number(m.total_realisasi_verified) || 0),
     1
   )
-  const chartMaxMiliar = Math.max(Math.ceil((maxMonthlyRealisasi / 1_000_000_000) * 1.2), 5)
+  const useJutaScale = maxMonthlyRealisasi < 1_000_000_000
+  const scaleDivisor = useJutaScale ? 1_000_000 : 1_000_000_000
+  const scaleUnit = useJutaScale ? "Jt" : "M"
+  const chartMaxUnit = Math.max(Math.ceil((maxMonthlyRealisasi / scaleDivisor) * 1.2), 1)
 
   const selectClass = `rounded-xl border px-3 py-2 text-xs font-bold outline-none cursor-pointer transition-colors ${
     isDark
@@ -230,6 +265,56 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
     transaksi: "Daftar Transaksi Realisasi",
     laporan: "Laporan Realisasi Bulanan",
     verifikasi: "Verifikasi & Audit Realisasi",
+    audit: "Audit Keuangan & Versi Laporan Historis",
+  }
+
+  const handlePublishVersion = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedTahunId) return
+    setPublishing(true)
+    try {
+      await dashboardAnggaranApi.publishVersion({
+        id_tahun_anggaran: selectedTahunId,
+        periode_laporan: publishPeriode,
+        alasan: publishAlasan.trim() || undefined,
+      })
+      showToast("success", `Snapshot laporan ${publishPeriode} berhasil diterbitkan.`)
+      setPublishAlasan("")
+      await refetchData()
+    } catch (err: any) {
+      showToast("error", err.message || "Gagal menerbitkan versi laporan")
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const handleSubmitKoreksi = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!koreksiTarget) return
+    const nominal = parseCurrencyValue(koreksiNominal)
+    if (nominal <= 0) {
+      showToast("error", "Nominal koreksi/SSPB harus lebih besar dari 0.")
+      return
+    }
+    setSavingKoreksi(true)
+    try {
+      await realisasiAnggaranApi.createKoreksi(koreksiTarget.id_realisasi, {
+        nomor_dokumen: koreksiNomor.trim(),
+        tanggal_transaksi: koreksiTanggal,
+        nominal_koreksi: nominal,
+        alasan: koreksiAlasan.trim(),
+      })
+      showToast("success", `Koreksi/SSPB ${koreksiNomor.trim()} berhasil dicatat.`)
+      setKoreksiTarget(null)
+      setKoreksiNomor("")
+      setKoreksiNominal("")
+      setKoreksiAlasan("")
+      await refetchData()
+    } catch (err: any) {
+      showToast("error", err.message || "Gagal mencatat koreksi/SSPB")
+    } finally {
+      setSavingKoreksi(false)
+    }
   }
 
   // Full-dataset export to Excel handler with auto-batch pagination
@@ -441,18 +526,31 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
             ))}
           </select>
 
-          {/* Bukti dokumen (transaction lists only) */}
+          {/* Bukti dokumen & Search (transaction lists only) */}
           {["transaksi", "verifikasi"].includes(subTab) && (
-            <select
-              value={selectedBukti}
-              onChange={(e) => { setPage(0); setSelectedBukti(e.target.value as "" | "ada" | "tanpa") }}
-              className={selectClass}
-              aria-label="Filter Bukti Dokumen"
-            >
-              <option value="">Semua Bukti Dokumen</option>
-              <option value="ada">Ada Bukti Dokumen</option>
-              <option value="tanpa">Belum Ada Bukti</option>
-            </select>
+            <>
+              <select
+                value={selectedBukti}
+                onChange={(e) => { setPage(0); setSelectedBukti(e.target.value as "" | "ada" | "tanpa") }}
+                className={selectClass}
+                aria-label="Filter Bukti Dokumen"
+              >
+                <option value="">Semua Bukti Dokumen</option>
+                <option value="ada">Ada Bukti Dokumen</option>
+                <option value="tanpa">Belum Ada Bukti</option>
+              </select>
+              <div className="relative min-w-[200px] flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  aria-label="Cari transaksi realisasi"
+                  value={searchQuery}
+                  onChange={(e) => { setPage(0); setSearchQuery(e.target.value) }}
+                  placeholder="Cari no. dokumen, uraian, atau MAK..."
+                  className={`${selectClass} w-full pl-8 cursor-text font-medium`}
+                />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -489,6 +587,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                   </h2>
                   <p className={`text-[10px] font-bold mt-1 truncate ${isDark ? "text-gray-400" : "text-slate-600"}`}>
                     {formatRupiah(summary?.total_pagu_aktif ?? 0)}
+                    {Number(summary?.total_pagu_blokir ?? 0) > 0 && ` (Blokir ${formatRupiah(summary?.total_pagu_blokir ?? 0)})`}
                   </p>
                 </div>
                 <div className="w-14 h-14 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -588,19 +687,19 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
             </CardHeader>
             <CardContent className="pt-5 flex-1 flex flex-col gap-4 min-h-0">
               <div className={`relative flex-1 min-h-[320px] w-full overflow-hidden border rounded-xl ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-                <div className={`absolute left-3 top-7 bottom-11 w-8 flex flex-col justify-between text-[9px] font-semibold ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                <div className={`absolute left-3 top-7 bottom-11 w-10 flex flex-col justify-between text-[9px] font-semibold ${isDark ? "text-slate-500" : "text-slate-400"}`}>
                   {[
-                    `${chartMaxMiliar} M`,
-                    `${(chartMaxMiliar * 0.75).toFixed(1)} M`,
-                    `${(chartMaxMiliar * 0.5).toFixed(1)} M`,
-                    `${(chartMaxMiliar * 0.25).toFixed(1)} M`,
+                    `${chartMaxUnit} ${scaleUnit}`,
+                    `${(chartMaxUnit * 0.75).toFixed(1)} ${scaleUnit}`,
+                    `${(chartMaxUnit * 0.5).toFixed(1)} ${scaleUnit}`,
+                    `${(chartMaxUnit * 0.25).toFixed(1)} ${scaleUnit}`,
                     "0",
                   ].map((label) => (
                     <span key={label}>{label}</span>
                   ))}
                 </div>
 
-                <div className="absolute left-12 right-4 top-7 bottom-11">
+                <div className="absolute left-14 right-4 top-7 bottom-11">
                   {[0, 25, 50, 75, 100].map((position) => (
                     <div
                       key={position}
@@ -612,8 +711,8 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                   <div className="relative z-10 grid h-full grid-cols-12 items-end gap-1.5 sm:gap-2.5">
                     {monthlyRecap.map((item) => {
                       const realisasiNum = Number(item.total_realisasi_verified) || 0
-                      const realisasiMiliar = realisasiNum / 1_000_000_000
-                      const heightPct = Math.min((realisasiMiliar / chartMaxMiliar) * 100, 100)
+                      const realisasiUnit = realisasiNum / scaleDivisor
+                      const heightPct = Math.min((realisasiUnit / chartMaxUnit) * 100, 100)
                       const hasValue = realisasiNum > 0
 
                       return (
@@ -631,7 +730,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                             {hasValue && (
                               <div className="pointer-events-none absolute -top-12 left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-[9px] font-bold text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 flex flex-col items-center">
                                 <span>{item.nama_bulan}</span>
-                                <span className="text-red-400">Rp {realisasiMiliar.toFixed(2)} M</span>
+                                <span className="text-red-400">Rp {realisasiUnit.toFixed(2)} {scaleUnit}</span>
                               </div>
                             )}
                           </div>
@@ -641,7 +740,7 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                   </div>
                 </div>
 
-                <div className="absolute bottom-3 left-12 right-4 grid grid-cols-12 gap-1.5 sm:gap-2.5">
+                <div className="absolute bottom-3 left-14 right-4 grid grid-cols-12 gap-1.5 sm:gap-2.5">
                   {monthlyRecap.map((item) => (
                     <span
                       key={item.bulan}
@@ -656,6 +755,43 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               </div>
             </CardContent>
           </Card>
+
+          {/* Pemantauan RPD Halaman III DIPA per Triwulan */}
+          {triwulanRpd && triwulanRpd.triwulan.length > 0 && (
+            <Card className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+              <CardHeader className="pb-3 border-b border-slate-200 dark:border-slate-800 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className={`text-sm font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>
+                    Target RPD Halaman III DIPA vs Realisasi per Triwulan (IKPA)
+                  </CardTitle>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Pagu Efektif: {formatRupiah(triwulanRpd.total_pagu_efektif)} · Pagu Blokir: {formatRupiah(triwulanRpd.total_pagu_blokir)}
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {triwulanRpd.triwulan.map((q) => (
+                  <div key={q.triwulan} className={`rounded-xl border p-3.5 text-xs space-y-1.5 ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+                    <p className="font-bold text-red-600 dark:text-red-400">{q.label}</p>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target RPD</span>
+                      <span className="font-semibold">{formatRupiah(q.target_rpd)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Realisasi</span>
+                      <span className="font-bold">{formatRupiah(q.realisasi_verified)}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-200/70 dark:border-white/10">
+                      <span className="text-slate-500">Deviasi</span>
+                      <span className={`font-bold ${q.deviasi >= 0 ? "text-emerald-500" : "text-amber-500"}`}>
+                        {q.deviasi_persen.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -705,6 +841,10 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                       <TableRow key={item.id_realisasi} className={isDark ? "border-b border-white/10" : "border-b border-slate-100"}>
                         <TableCell className="text-xs font-bold text-red-600 dark:text-red-400">
                           {item.nomor_dokumen}
+                          <span className="block text-[10px] font-semibold text-slate-500">
+                            {item.mekanisme_bayar || "LS"} · {item.jenis_dokumen_bayar || "SP2D"}
+                            {item.is_koreksi ? " (SSPB)" : ""}
+                          </span>
                         </TableCell>
                         <TableCell className={`text-xs font-semibold whitespace-nowrap ${isDark ? "text-gray-300" : "text-black"}`}>
                           {item.tanggal_transaksi}
@@ -738,33 +878,56 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                         </TableCell>
                         {isRendatin && (
                           <TableCell className="text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setEditingItem(item)}
-                                className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 ${
-                                  isDark
-                                    ? "border-blue-900 bg-blue-950/60 text-blue-400 hover:bg-blue-900/60"
-                                    : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                                }`}
-                                title="Edit Transaksi Realisasi"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTransaction(item)}
-                                disabled={isDeleting === item.id_realisasi}
-                                className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 disabled:opacity-50 ${
-                                  isDark
-                                    ? "border-red-900 bg-red-950/60 text-red-400 hover:bg-red-900/60"
-                                    : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                                }`}
-                                title="Hapus Transaksi Realisasi"
-                              >
-                                <Trash2 className={`w-3.5 h-3.5 ${isDeleting === item.id_realisasi ? "animate-spin" : ""}`} />
-                              </button>
-                            </div>
+                            {item.status === "verified" ? (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingItem(item)}
+                                  className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 cursor-pointer ${
+                                    isDark
+                                      ? "border-blue-900 bg-blue-950/60 text-blue-400 hover:bg-blue-900/60"
+                                      : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                  }`}
+                                  title="Koreksi Transaksi Verified (RENDATIN)"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                {!item.is_koreksi && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setKoreksiTarget(item)
+                                      setKoreksiNomor(`SSPB-${item.id_realisasi}-${displayYear}`)
+                                      setKoreksiNominal("")
+                                      setKoreksiAlasan("")
+                                    }}
+                                    className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 cursor-pointer ${
+                                      isDark
+                                        ? "border-amber-900 bg-amber-950/60 text-amber-400 hover:bg-amber-900/60"
+                                        : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                    }`}
+                                    title="Catat Koreksi / SSPB Pengembalian Belanja"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTransaction(item)}
+                                  disabled={isDeleting === item.id_realisasi}
+                                  className={`p-1.5 rounded-lg border text-xs font-semibold transition-all hover:scale-105 disabled:opacity-50 cursor-pointer ${
+                                    isDark
+                                      ? "border-red-900 bg-red-950/60 text-red-400 hover:bg-red-900/60"
+                                      : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                  }`}
+                                  title="Hapus Transaksi Verified (RENDATIN)"
+                                >
+                                  <Trash2 className={`w-3.5 h-3.5 ${isDeleting === item.id_realisasi ? "animate-spin" : ""}`} />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">—</span>
+                            )}
                           </TableCell>
                         )}
                       </TableRow>
@@ -898,6 +1061,174 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               </Table>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. AUDIT KEUANGAN & VERSI LAPORAN HISTORIS */}
+      {/* ========================================================================= */}
+      {subTab === "audit" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <Card className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+              <CardHeader className="pb-3 border-b border-slate-200 dark:border-slate-800">
+                <CardTitle className={`text-sm font-bold my-0 flex items-center gap-2 ${isDark ? "text-white" : "text-black"}`}>
+                  <History className="w-4 h-4 text-red-600" /> Terbitkan Snapshot Versi Laporan
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <form onSubmit={handlePublishVersion} className="space-y-3 text-xs">
+                  <div className="space-y-1">
+                    <label className="font-bold block">Periode Laporan</label>
+                    <select className={`${selectClass} w-full`} value={publishPeriode} onChange={(e) => setPublishPeriode(e.target.value)}>
+                      <option value="Triwulan I">Triwulan I</option>
+                      <option value="Triwulan II">Triwulan II</option>
+                      <option value="Triwulan III">Triwulan III</option>
+                      <option value="Triwulan IV">Triwulan IV</option>
+                      <option value="Semester I">Semester I</option>
+                      <option value="Tahunan">Tahunan (Audited)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold block">Catatan / Alasan Penerbitan</label>
+                    <textarea
+                      rows={2}
+                      value={publishAlasan}
+                      onChange={(e) => setPublishAlasan(e.target.value)}
+                      placeholder="Contoh: Rilis resmi laporan triwulan pasca rekonsiliasi SAKTI"
+                      className={`${selectClass} w-full cursor-text font-medium`}
+                    />
+                  </div>
+                  <button type="submit" disabled={publishing || !selectedTahunId} className="btn-kpu-red w-full py-2 text-white font-bold rounded-xl cursor-pointer disabled:opacity-40">
+                    {publishing ? "Menerbitkan..." : "Terbitkan Versi Laporan"}
+                  </button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className={`xl:col-span-2 ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+              <CardHeader className="pb-3 border-b border-slate-200 dark:border-slate-800">
+                <CardTitle className={`text-sm font-bold my-0 ${isDark ? "text-white" : "text-black"}`}>
+                  Versi Laporan Historis Terbit ({reportVersions.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className={isDark ? "border-b border-white/20 bg-[#0a0e1a]" : "border-b border-slate-200 bg-slate-100"}>
+                      <TableHead className="text-[11px] font-extrabold">VERSI</TableHead>
+                      <TableHead className="text-[11px] font-extrabold">PERIODE</TableHead>
+                      <TableHead className="text-[11px] font-extrabold">PENERBIT</TableHead>
+                      <TableHead className="text-[11px] font-extrabold">WAKTU TERBIT</TableHead>
+                      <TableHead className="text-[11px] font-extrabold">CATATAN</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportVersions.length === 0 ? (
+                      <TableRow><TableCell colSpan={5} className="text-center py-6 text-xs text-slate-500">Belum ada versi laporan yang diterbitkan untuk tahun ini.</TableCell></TableRow>
+                    ) : reportVersions.map((v) => (
+                      <TableRow key={v.id_version}>
+                        <TableCell className="text-xs font-mono font-bold text-red-600 dark:text-red-400">v{v.nomor_versi}</TableCell>
+                        <TableCell className="text-xs font-bold">{v.periode_laporan}</TableCell>
+                        <TableCell className="text-xs">{v.nama_penerbit || "-"}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{new Date(v.waktu_terbit).toLocaleString("id-ID")}</TableCell>
+                        <TableCell className="text-xs text-slate-500">{v.alasan_koreksi || "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className={`${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl overflow-hidden`}>
+            <CardHeader className="pb-3 border-b border-slate-200 dark:border-slate-800">
+              <CardTitle className={`text-sm font-bold my-0 flex items-center gap-2 ${isDark ? "text-white" : "text-black"}`}>
+                <ShieldCheck className="w-4 h-4 text-red-600" /> Jejak Audit Keuangan Immutable ({auditLogs.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className={isDark ? "border-b border-white/20 bg-[#0a0e1a]" : "border-b border-slate-200 bg-slate-100"}>
+                    <TableHead className="text-[11px] font-extrabold">WAKTU</TableHead>
+                    <TableHead className="text-[11px] font-extrabold">AKSI</TableHead>
+                    <TableHead className="text-[11px] font-extrabold">TABEL / ID</TableHead>
+                    <TableHead className="text-[11px] font-extrabold">PELAKSANA</TableHead>
+                    <TableHead className="text-[11px] font-extrabold">ALASAN / RINGKASAN</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {auditLogs.length === 0 ? (
+                    <TableRow><TableCell colSpan={5} className="text-center py-6 text-xs text-slate-500">Belum ada catatan audit keuangan.</TableCell></TableRow>
+                  ) : auditLogs.map((log) => (
+                    <TableRow key={log.id_log}>
+                      <TableCell className="text-xs whitespace-nowrap">{log.waktu_aksi ? new Date(log.waktu_aksi).toLocaleString("id-ID") : "-"}</TableCell>
+                      <TableCell className="text-xs"><Badge variant="outline">{log.aksi}</Badge></TableCell>
+                      <TableCell className="text-xs font-mono">{log.nama_tabel} #{log.id_entitas}</TableCell>
+                      <TableCell className="text-xs font-semibold">{log.nama_pegawai || "-"}</TableCell>
+                      <TableCell className="text-xs text-slate-500 max-w-md truncate" title={log.alasan || ""}>{log.alasan || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* MODAL KOREKSI / SSPB */}
+      {koreksiTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+          <form
+            onSubmit={handleSubmitKoreksi}
+            className={`w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl text-xs ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}
+          >
+            <div className="flex items-center justify-between border-b pb-3 border-slate-200 dark:border-white/10">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">SSPB / Pengembalian Belanja</p>
+                <h3 className="text-sm font-bold">Koreksi atas {koreksiTarget.nomor_dokumen}</h3>
+              </div>
+              <button type="button" onClick={() => setKoreksiTarget(null)} className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Nominal transaksi asal: <strong>{formatRupiah(koreksiTarget.jumlah_realisasi)}</strong>. Transaksi koreksi akan dicatat sebagai pengurang permanen (SSPB) tanpa menghapus riwayat asli.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1 font-bold">
+                No. Dokumen SSPB *
+                <input required value={koreksiNomor} onChange={(e) => setKoreksiNomor(e.target.value)} className={`${selectClass} w-full cursor-text`} />
+              </label>
+              <label className="space-y-1 font-bold">
+                Tanggal SSPB *
+                <input required type="date" value={koreksiTanggal} onChange={(e) => setKoreksiTanggal(e.target.value)} className={`${selectClass} w-full`} />
+              </label>
+            </div>
+            <label className="block space-y-1 font-bold">
+              Nominal Pengembalian (Rp) *
+              <input
+                required
+                type="text"
+                inputMode="decimal"
+                value={formatCurrencyInput(koreksiNominal)}
+                onChange={(e) => setKoreksiNominal(sanitizeCurrencyInput(e.target.value))}
+                placeholder="0"
+                className={`${selectClass} w-full font-mono cursor-text`}
+              />
+            </label>
+            <label className="block space-y-1 font-bold">
+              Alasan Koreksi / SSPB *
+              <textarea required minLength={5} rows={3} value={koreksiAlasan} onChange={(e) => setKoreksiAlasan(e.target.value)} placeholder="Contoh: Setoran sisa perjalanan dinas ke kas negara melalui SSPB" className={`${selectClass} w-full cursor-text font-medium`} />
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setKoreksiTarget(null)} className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/10 font-bold cursor-pointer">Batal</button>
+              <button type="submit" disabled={savingKoreksi} className="btn-kpu-red px-4 py-2 rounded-xl text-white font-bold cursor-pointer disabled:opacity-40">
+                {savingKoreksi ? "Menyimpan..." : "Simpan SSPB"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

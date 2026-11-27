@@ -28,7 +28,19 @@ const extension = (name: string) => (name.match(/\.[^.]+$/)?.[0] ?? '').toLowerC
 const formatSize = (bytes: number) =>
   bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 
-export function ArsipBulkImport({ onImported }: { onImported: () => Promise<void> | void }) {
+export interface KlasifikasiOption {
+  id_klasifikasi: number
+  kode_klasifikasi: string
+  nama_klasifikasi: string
+}
+
+export function ArsipBulkImport({
+  onImported,
+  klasifikasiList = [],
+}: {
+  onImported: () => Promise<void> | void
+  klasifikasiList?: KlasifikasiOption[]
+}) {
   const inputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
   const [rows, setRows] = useState<Row[]>([])
@@ -40,6 +52,8 @@ export function ArsipBulkImport({ onImported }: { onImported: () => Promise<void
     event: '',
     tanggal_dokumen: today(),
     hak_akses: 'internal',
+    id_klasifikasi: '',
+    lokasi_fisik: '',
   })
 
   const done = rows.filter((r) => r.status === 'done').length
@@ -110,7 +124,11 @@ export function ArsipBulkImport({ onImported }: { onImported: () => Promise<void
       // If saving the archive record fails, the uploaded file is rolled back.
       await filesApi.uploadThen(row.file, 'arsip', (uploaded) =>
         request('/arsip/', 'POST', {
-          ...meta,
+          kategori: meta.kategori,
+          tanggal_dokumen: meta.tanggal_dokumen,
+          hak_akses: meta.hak_akses,
+          id_klasifikasi: meta.id_klasifikasi ? Number(meta.id_klasifikasi) : null,
+          lokasi_fisik: meta.lokasi_fisik.trim() || null,
           event: meta.event.trim() || null,
           nama_dokumen: row.nama_dokumen.trim(),
           nomor_dokumen: row.nomor_dokumen.trim(),
@@ -239,11 +257,28 @@ export function ArsipBulkImport({ onImported }: { onImported: () => Promise<void
             <input type="date" className={small} value={meta.tanggal_dokumen} disabled={running} onChange={(e) => setMeta({ ...meta, tanggal_dokumen: e.target.value })} />
           </label>
           <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Hak Akses *</span>
+            <span>Hak Akses SKKAAD *</span>
             <select className={small} value={meta.hak_akses} disabled={running} onChange={(e) => setMeta({ ...meta, hak_akses: e.target.value })}>
-              <option value="internal">Internal (Semua Pegawai)</option>
+              <option value="internal">Internal / Biasa (Semua Pegawai)</option>
               <option value="terbatas">Terbatas (Bagian Pengunggah & Admin)</option>
+              <option value="rahasia">Rahasia (Pemilik, Izin Khusus & Admin)</option>
+              <option value="sangat_rahasia">Sangat Rahasia (Tertutup Ketat)</option>
             </select>
+          </label>
+          <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
+            <span>Klasifikasi Arsip (Kep KPU 1257/2024)</span>
+            <select className={small} value={meta.id_klasifikasi} disabled={running} onChange={(e) => setMeta({ ...meta, id_klasifikasi: e.target.value })}>
+              <option value="">Tanpa Kode Klasifikasi</option>
+              {klasifikasiList.map((k) => (
+                <option key={k.id_klasifikasi} value={k.id_klasifikasi}>
+                  {k.kode_klasifikasi} — {k.nama_klasifikasi}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
+            <span>Lokasi Fisik (Opsional)</span>
+            <input className={small} value={meta.lokasi_fisik} disabled={running} placeholder="Lemari / Rak / Boks" onChange={(e) => setMeta({ ...meta, lokasi_fisik: e.target.value })} />
           </label>
           <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300 md:col-span-2">
             <span>Awalan Nomor Dokumen Otomatis</span>

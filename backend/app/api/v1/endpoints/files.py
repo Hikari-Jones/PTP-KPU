@@ -1,4 +1,6 @@
+import hashlib
 import re
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -81,6 +83,7 @@ async def upload_file(
     destination.parent.mkdir(parents=True, exist_ok=True)
     max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     file_size = 0
+    hasher = hashlib.sha256()
 
     try:
         with destination.open("wb") as output:
@@ -99,6 +102,7 @@ async def upload_file(
                             f"{settings.MAX_UPLOAD_SIZE_MB} MB"
                         ),
                     )
+                hasher.update(chunk)
                 output.write(chunk)
         if file_size == 0:
             raise HTTPException(status_code=422, detail="Berkas kosong tidak dapat diunggah")
@@ -117,6 +121,7 @@ async def upload_file(
         relative_path=relative_path.as_posix(),
         mime_type=MIME_BY_EXTENSION[extension],
         file_size=file_size,
+        sha256_hash=hasher.hexdigest(),
         category=category_name,
         uploaded_by=current_user.id_pegawai,
     )
@@ -133,6 +138,7 @@ async def upload_file(
         "filename": record.original_name,
         "mime_type": record.mime_type,
         "size": record.file_size,
+        "sha256_hash": record.sha256_hash,
         "category": record.category,
     }
 
@@ -146,33 +152,147 @@ async def download_file(
     record = await db.get(FileRecord, file_id)
     if not record:
         raise HTTPException(status_code=404, detail="Berkas tidak ditemukan")
+    from sqlalchemy import or_, select
+    from sqlalchemy.orm import selectinload
+    from app.models.schema import DokumenArsip, RealisasiAnggaran, SuratKeluar, SuratTugas, Disposisi
+    from app.models.operations import ArsipAccessGrant, ArsipAuditLog, WorkflowLetter
+
+    archive_docs = (await db.scalars(select(DokumenArsip).where(DokumenArsip.file_path == str(file_id)))).all()
+
     if not is_admin(current_user) and record.uploaded_by != current_user.id_pegawai:
-        from sqlalchemy import select
-        from app.models.schema import DokumenArsip
-        from app.models.operations import WorkflowLetter
-        from app.services.arsip import arsip
+        from app.core.auth import is_letter_manager, is_rendatin_or_keuangan
+        from app.core.authority import has_authority_async
+
         permitted = False
-        docs = (await db.scalars(select(DokumenArsip).where(DokumenArsip.file_path == str(file_id), DokumenArsip.status_hapus == False))).all()
-        for doc in docs:
+        has_secret_auth = await has_authority_async(
+            db, settings.AUTHORITY_GRANTS, current_user.id_pegawai, "access_secret_archive"
+        )
+        today = date.today()
+        # 1. Archive documents (never let WorkflowLetter mirrors grant colleague access!)
+        for doc in archive_docs:
+            if doc.status_hapus:
+                if current_user.id_pegawai in (doc.id_pegawai, doc.dihapus_oleh):
+                    permitted = True
+                continue
+            if doc.ref_tipe == "workflow_letter":
+                continue  # Governed strictly by WorkflowLetter owner/assignee/participant check below
             owner = await db.get(Pegawai, doc.id_pegawai)
-            if doc.hak_akses in ('internal', 'publik') or (doc.hak_akses == 'terbatas' and owner and current_user.id_bagian is not None and owner.id_bagian == current_user.id_bagian):
+            if doc.hak_akses in ("biasa", "internal", "publik") or has_secret_auth:
                 permitted = True
+            elif (
+                doc.hak_akses == "terbatas"
+                and owner
+                and current_user.id_bagian is not None
+                and owner.id_bagian == current_user.id_bagian
+            ):
+                permitted = True
+            else:
+                explicit_grant = await db.scalar(
+                    select(ArsipAccessGrant.id).where(
+                        ArsipAccessGrant.id_dokumen == doc.id_dokumen,
+                        ArsipAccessGrant.id_pegawai == current_user.id_pegawai,
+                        or_(
+                            ArsipAccessGrant.valid_until.is_(None),
+                            ArsipAccessGrant.valid_until >= today,
+                        ),
+                    ).limit(1)
+                )
+                if explicit_grant:
+                    permitted = True
+
+        # 2. Workflow letters: strictly owner, current assignee, or prior participant
         letters = (await db.scalars(select(WorkflowLetter).where(WorkflowLetter.file_id == file_id))).all()
-        if any(current_user.id_pegawai in (x.owner_id, x.assignee_id) for x in letters): permitted = True
-        from app.models.schema import RealisasiAnggaran
-        from app.core.authority import has_authority
-        if has_authority(settings.AUTHORITY_GRANTS, current_user.id_pegawai, 'verify_budget'):
-            linked = await db.scalar(select(RealisasiAnggaran.id_realisasi).where(
-                RealisasiAnggaran.bukti_file_path == f'/api/v1/files/{file_id}').limit(1))
-            permitted = permitted or linked is not None
-        if not permitted: raise HTTPException(403, 'Akses berkas ditolak')
+        if any(
+            current_user.id_pegawai in (x.owner_id, x.assignee_id)
+            or current_user.id_pegawai in (x.participant_ids or [])
+            for x in letters
+        ):
+            permitted = True
+
+        # 2b. SuratKeluar attachment & SuratTugas laporan
+        if not permitted:
+            sks = (await db.scalars(select(SuratKeluar).where(SuratKeluar.file_id == file_id))).all()
+            for sk in sks:
+                if is_letter_manager(current_user) or sk.id_pegawai == current_user.id_pegawai:
+                    permitted = True
+                    break
+                disp = await db.scalar(
+                    select(Disposisi.id_disposisi).where(
+                        Disposisi.id_surat_keluar == sk.id_surat_keluar,
+                        Disposisi.id_pegawai == current_user.id_pegawai,
+                    ).limit(1)
+                )
+                if disp:
+                    permitted = True
+                    break
+        if not permitted:
+            sts = (
+                await db.scalars(
+                    select(SuratTugas)
+                    .options(selectinload(SuratTugas.surat_keluar), selectinload(SuratTugas.pelaksana))
+                    .where(SuratTugas.laporan_file_id == file_id)
+                )
+            ).all()
+            for st in sts:
+                if (
+                    is_letter_manager(current_user)
+                    or (st.surat_keluar and st.surat_keluar.id_pegawai == current_user.id_pegawai)
+                    or any(p.id_pegawai == current_user.id_pegawai for p in st.pelaksana)
+                ):
+                    permitted = True
+                    break
+
+        # 3. Budget realization proofs: Finance/RENDATIN, verify_budget grantee, or owning section
+        if not permitted:
+            txs = (
+                await db.scalars(
+                    select(RealisasiAnggaran)
+                    .options(selectinload(RealisasiAnggaran.akun_anggaran))
+                    .where(RealisasiAnggaran.bukti_file_path == f"/api/v1/files/{file_id}")
+                )
+            ).all()
+            if txs:
+                if (
+                    is_rendatin_or_keuangan(current_user)
+                    or await has_authority_async(db, settings.AUTHORITY_GRANTS, current_user.id_pegawai, "verify_budget")
+                    or any(
+                        tx.akun_anggaran
+                        and current_user.id_bagian is not None
+                        and tx.akun_anggaran.id_bagian == current_user.id_bagian
+                        for tx in txs
+                    )
+                ):
+                    permitted = True
+
+        if not permitted:
+            raise HTTPException(403, "Akses berkas ditolak")
     path = (STORAGE_ROOT / record.relative_path).resolve()
     if STORAGE_ROOT not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Berkas fisik tidak ditemukan")
+
+    if archive_docs:
+        try:
+            for adoc in archive_docs:
+                db.add(
+                    ArsipAuditLog(
+                        id_dokumen=adoc.id_dokumen,
+                        nomor_dokumen=adoc.nomor_dokumen,
+                        nama_dokumen=adoc.nama_dokumen,
+                        aksi="download",
+                        actor_id=current_user.id_pegawai,
+                        actor_nama=current_user.nama,
+                        detail=f"Unduh berkas {record.original_name}",
+                    )
+                )
+            await db.commit()
+        except Exception:  # noqa: BLE001
+            await db.rollback()
+
     return FileResponse(
         path,
         media_type=media_type_for(record.original_name),
         filename=record.original_name,
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 

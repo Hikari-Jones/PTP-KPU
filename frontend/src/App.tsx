@@ -147,6 +147,21 @@ function MainLayout() {
           return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
         }
         return <InputRealisasiView theme={theme} />
+      case "realization-transaksi":
+        if (!canViewBudget) return <DashboardView theme={theme} />
+        return <RealisasiAnggaranView theme={theme} subTab="transaksi" onNavigate={(tab) => setActiveMenu(tab)} />
+      case "realization-verifikasi":
+        if (!canViewBudget) return <DashboardView theme={theme} />
+        if (!isRendatinOrKeuangan) {
+          return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
+        }
+        return <RealisasiAnggaranView theme={theme} subTab="verifikasi" onNavigate={(tab) => setActiveMenu(tab)} />
+      case "realization-audit":
+        if (!canViewBudget) return <DashboardView theme={theme} />
+        if (!isRendatinOrKeuangan) {
+          return <RealisasiAnggaranView theme={theme} subTab="ringkasan" onNavigate={(tab) => setActiveMenu(tab)} />
+        }
+        return <RealisasiAnggaranView theme={theme} subTab="audit" onNavigate={(tab) => setActiveMenu(tab)} />
       case "realization-reports":
         if (!canViewBudget) return <DashboardView theme={theme} />
         return <LaporanBulananView theme={theme} />

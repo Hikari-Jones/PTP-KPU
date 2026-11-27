@@ -46,8 +46,14 @@ export interface SuratKeluar {
   perihal: string;
   tujuan_surat: string;
   isi_surat?: string;
+  tembusan?: string;
+  penandatangan_nama?: string;
+  penandatangan_jabatan?: string;
+  atas_nama?: string;
+  file_id?: number;
+  content_sha256?: string;
   file_surat?: string;
-  status: 'draft' | 'disetujui' | 'terbit' | 'diarsipkan';
+  status: 'draft' | 'diajukan' | 'revisi' | 'disetujui' | 'terbit' | 'diarsipkan';
   tanggal_surat: string;
   tanggal_terbit?: string;
   created_at: string;
@@ -69,10 +75,14 @@ export interface SuratTugas {
   id_surat_keluar: number;
   nomor_tugas: string;
   maksud_tugas: string;
+  dasar_tugas?: string;
   tempat_tugas: string;
   tanggal_mulai: string;
   tanggal_selesai: string;
   beban_anggaran?: string;
+  id_pagu?: number;
+  laporan_file_id?: number;
+  status_surat?: string;
   surat_keluar?: SuratKeluar;
   pelaksana: PelaksanaTugas[];
 }

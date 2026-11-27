@@ -16,10 +16,16 @@ import {
   Lock,
   Inbox,
   Users,
+  Pencil,
+  Trash2,
+  Archive,
+  RotateCcw,
+  Upload,
+  ShieldCheck,
 } from "lucide-react"
 import type { SuratKeluar, KodeKlasifikasiArsip, JenisSurat } from "../../../types"
 import { request, download, message } from "../../../services/operations"
-import { createKlasifikasi } from "../../../services/api"
+import { createKlasifikasi, filesApi } from "../../../services/api"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Badge } from "../ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
@@ -40,11 +46,36 @@ interface SuratTugas {
   id_surat_keluar: number | null
   nomor_tugas: string | null
   maksud_tugas: string
+  dasar_tugas?: string | null
   tempat_tugas: string | null
   tanggal_mulai: string
   tanggal_selesai: string
   beban_anggaran: string | null
+  id_pagu?: number | null
+  laporan_file_id?: number | null
+  status_surat?: string | null
   pelaksana?: { id_pegawai: number; nama: string | null; peran_tugas: string }[]
+}
+
+interface RiwayatSuratItem {
+  id_riwayat: number
+  id_pegawai: number
+  nama_pegawai: string
+  status_lama: string | null
+  status_baru: string
+  catatan: string | null
+  waktu: string | null
+}
+
+interface KonflikTugasItem {
+  id_pegawai: number
+  nama_pegawai: string
+  id_surat_tugas: number
+  nomor_tugas: string
+  maksud_tugas: string
+  tempat_tugas: string
+  tanggal_mulai: string
+  tanggal_selesai: string
 }
 
 interface PegawaiOption {
@@ -56,6 +87,8 @@ interface PegawaiOption {
 interface PenerbitanStatus {
   official_issuance_enabled: boolean
   has_numbering_authority: boolean
+  has_signing_authority?: boolean
+  is_letter_manager?: boolean
 }
 
 const BEBAN_ANGGARAN = ["DIPA KPU Provinsi Sulawesi Utara", "Non-DIPA"]
@@ -85,12 +118,16 @@ interface Department {
 /** The list endpoint returns at most this many rows per request. */
 const PAGE_LIMIT = 100
 
-const STATUS_LABEL: Record<string, { label: string; variant: "draft" | "success" | "terkirim" | "secondary" }> = {
+const STATUS_LABEL: Record<string, { label: string; variant: "draft" | "success" | "terkirim" | "secondary" | "info" | "warning" }> = {
   draft: { label: "Draft", variant: "draft" },
+  diajukan: { label: "Diajukan", variant: "info" },
+  revisi: { label: "Perlu Revisi", variant: "warning" },
   disetujui: { label: "Disetujui", variant: "terkirim" },
   terbit: { label: "Terbit", variant: "success" },
   diarsipkan: { label: "Diarsipkan", variant: "secondary" },
 }
+
+const PERAN_TUGAS_OPTIONS = ["Ketua Tim", "Wakil Ketua", "Sekretaris Tim", "Anggota", "Pelaksana", "Pendamping"]
 
 /** Form options for the "sifat surat" field (letter urgency class). */
 const SIFAT_SURAT = ["Biasa", "Penting", "Segera", "Rahasia"]
@@ -136,6 +173,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
   const [showTugasModal, setShowTugasModal] = useState(false)
   const blankTugas = {
     maksud_tugas: "",
+    dasar_tugas: "",
     tempat_tugas: "",
     tanggal_mulai: new Date().toLocaleDateString("en-CA"),
     tanggal_selesai: new Date().toLocaleDateString("en-CA"),
@@ -145,10 +183,15 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     pelaksana: [] as number[],
   }
   const [tugasForm, setTugasForm] = useState(blankTugas)
+  const [pelaksanaRoles, setPelaksanaRoles] = useState<Record<number, string>>({})
+  const [tugasKonflik, setTugasKonflik] = useState<KonflikTugasItem[]>([])
   const [pelaksanaSearch, setPelaksanaSearch] = useState("")
   // Document detail views (open to every account; read-only accounts get no edit actions)
   const [detailSurat, setDetailSurat] = useState<SuratKeluar | null>(null)
+  const [detailRiwayat, setDetailRiwayat] = useState<RiwayatSuratItem[]>([])
+  const [reviewNote, setReviewNote] = useState("")
   const [detailTugas, setDetailTugas] = useState<SuratTugas | null>(null)
+  const [laporanFile, setLaporanFile] = useState<File | null>(null)
   // Surat Tugas filters
   const [tugasSearch, setTugasSearch] = useState("")
   const [tugasBeban, setTugasBeban] = useState("")
@@ -163,7 +206,9 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
 
   const [searchQuery, setSearchQuery] = useState("")
   const [showDraftModal, setShowDraftModal] = useState(false)
+  const [editingSuratId, setEditingSuratId] = useState<number | null>(null)
   const [showKlasifikasiModal, setShowKlasifikasiModal] = useState(false)
+  const [editingKlasifikasiId, setEditingKlasifikasiId] = useState<number | null>(null)
   const [isSubmittingKlasifikasi, setIsSubmittingKlasifikasi] = useState(false)
   const [klasifikasiForm, setKlasifikasiForm] = useState({
     kode_klasifikasi: "",
@@ -183,6 +228,10 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     tujuan_surat: "",
     isi_surat: "",
     lampiran: "",
+    tembusan: "",
+    atas_nama: "",
+    penandatangan_jabatan: "",
+    penandatangan_nama: "",
     tanggal_surat: new Date().toLocaleDateString("en-CA"),
   }
   const [form, setForm] = useState(blankForm)
@@ -341,8 +390,34 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     )
   })
 
-  const openSuratDetail = (s: SuratKeluar) => setDetailSurat(s)
-  const openTugasDetail = (t: SuratTugas) => setDetailTugas(t)
+  const openSuratDetail = (s: SuratKeluar) => {
+    setDetailSurat(s)
+    setReviewNote("")
+    setDetailRiwayat([])
+    request<RiwayatSuratItem[]>(`/surat-keluar/${s.id_surat_keluar}/riwayat`)
+      .then(setDetailRiwayat)
+      .catch(() => setDetailRiwayat([]))
+  }
+  const openTugasDetail = (t: SuratTugas) => {
+    setDetailTugas(t)
+    setLaporanFile(null)
+  }
+
+  // Live schedule conflict check whenever pelaksana or dates change in Surat Tugas modal
+  useEffect(() => {
+    if (!showTugasModal || tugasForm.pelaksana.length === 0 || !tugasForm.tanggal_mulai || !tugasForm.tanggal_selesai || tugasForm.tanggal_selesai < tugasForm.tanggal_mulai) {
+      setTugasKonflik([])
+      return
+    }
+    const qs = new URLSearchParams({
+      pelaksana: tugasForm.pelaksana.join(","),
+      tanggal_mulai: tugasForm.tanggal_mulai,
+      tanggal_selesai: tugasForm.tanggal_selesai,
+    })
+    request<{ konflik: KonflikTugasItem[] }>(`/surat-tugas/cek-konflik?${qs}`)
+      .then((res) => setTugasKonflik(res.konflik || []))
+      .catch(() => setTugasKonflik([]))
+  }, [showTugasModal, tugasForm.pelaksana, tugasForm.tanggal_mulai, tugasForm.tanggal_selesai])
   const rowKeys = (open: () => void) => ({
     role: "button" as const,
     tabIndex: 0,
@@ -369,7 +444,12 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     departments.find((d) => d.nama_bagian.toLowerCase() === (currentUser?.subbagian ?? "").toLowerCase())?.id_bagian ??
     null
 
+  const canReviewSurat = Boolean(
+    isAdmin || penerbitan?.is_letter_manager || penerbitan?.has_signing_authority || penerbitan?.has_numbering_authority
+  )
+
   const openDraftModal = () => {
+    setEditingSuratId(null)
     setForm({
       ...blankForm,
       id_klasifikasi: klasifikasiList[0] ? String(klasifikasiList[0].id_klasifikasi) : "",
@@ -379,11 +459,33 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     setShowDraftModal(true)
   }
 
+  const openEditDraftModal = (s: SuratKeluar) => {
+    setEditingSuratId(s.id_surat_keluar)
+    setForm({
+      id_klasifikasi: String(s.id_klasifikasi),
+      id_jenis_surat: String(s.id_jenis_surat),
+      id_bagian: String(s.id_bagian),
+      sifat_surat: s.sifat_surat || SIFAT_SURAT[0],
+      perihal: s.perihal,
+      tujuan_surat: s.tujuan_surat,
+      isi_surat: s.isi_surat || "",
+      lampiran: s.lampiran || "",
+      tembusan: s.tembusan || "",
+      atas_nama: s.atas_nama || "",
+      penandatangan_jabatan: s.penandatangan_jabatan || "",
+      penandatangan_nama: s.penandatangan_nama || "",
+      tanggal_surat: s.tanggal_surat,
+    })
+    setShowDraftModal(true)
+  }
+
   const openTugasModal = () => {
     setTugasForm({
       ...blankTugas,
       id_klasifikasi: klasifikasiList[0] ? String(klasifikasiList[0].id_klasifikasi) : "",
     })
+    setPelaksanaRoles({})
+    setTugasKonflik([])
     setPelaksanaSearch("")
     setShowTugasModal(true)
   }
@@ -416,18 +518,47 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     try {
       const created = await request<SuratTugas>("/surat-tugas", "POST", {
         maksud_tugas: tugasForm.maksud_tugas.trim(),
+        dasar_tugas: tugasForm.dasar_tugas.trim() || null,
         tempat_tugas: tugasForm.tempat_tugas.trim(),
         tanggal_mulai: tugasForm.tanggal_mulai,
         tanggal_selesai: tugasForm.tanggal_selesai,
         beban_anggaran: tugasForm.beban_anggaran,
         id_klasifikasi: Number(tugasForm.id_klasifikasi),
         id_bagian: tugasForm.id_bagian ? Number(tugasForm.id_bagian) : null,
-        pelaksana: tugasForm.pelaksana,
+        pelaksana_detail: tugasForm.pelaksana.map((id) => ({
+          id_pegawai: id,
+          peran_tugas: pelaksanaRoles[id] || "Pelaksana",
+        })),
       })
       setSuratTugas((list) => [created, ...(list ?? [])])
       setShowTugasModal(false)
+      request<SuratKeluar[]>(`/surat-keluar?limit=${PAGE_LIMIT}`)
+        .then((letters) => {
+          setSuratList(letters)
+          setHasMoreSurat(letters.length === PAGE_LIMIT)
+        })
+        .catch(() => {})
     } catch {
       // The global notification already shows the server's message.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleUploadLaporanTugas = async (tugas: SuratTugas) => {
+    if (!laporanFile) return
+    setBusy(true)
+    try {
+      await filesApi.uploadThen(laporanFile, "surat", async (uploaded) => {
+        const updated = await request<SuratTugas>(`/surat-tugas/${tugas.id_surat_tugas}/laporan`, "PATCH", {
+          file_id: uploaded.file_id,
+        })
+        setSuratTugas((list) => (list ?? []).map((t) => (t.id_surat_tugas === tugas.id_surat_tugas ? updated : t)))
+        setDetailTugas(updated)
+        setLaporanFile(null)
+      })
+    } catch {
+      // Global toast shows server detail
     } finally {
       setBusy(false)
     }
@@ -445,7 +576,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     }
     setBusy(true)
     try {
-      const created = await request<SuratKeluar>("/surat-keluar/draft", "POST", {
+      const payload = {
         id_klasifikasi: Number(form.id_klasifikasi),
         id_jenis_surat: Number(form.id_jenis_surat),
         id_bagian: Number(form.id_bagian),
@@ -454,10 +585,22 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
         tujuan_surat: form.tujuan_surat.trim(),
         isi_surat: form.isi_surat.trim() || null,
         lampiran: form.lampiran.trim() || null,
+        tembusan: form.tembusan.trim() || null,
+        atas_nama: form.atas_nama.trim() || null,
+        penandatangan_jabatan: form.penandatangan_jabatan.trim() || null,
+        penandatangan_nama: form.penandatangan_nama.trim() || null,
         tanggal_surat: form.tanggal_surat,
-      })
-      setSuratList((list) => [created, ...list])
+      }
+      if (editingSuratId !== null) {
+        const updated = await request<SuratKeluar>(`/surat-keluar/${editingSuratId}`, "PUT", payload)
+        setSuratList((list) => list.map((s) => (s.id_surat_keluar === editingSuratId ? updated : s)))
+        if (detailSurat?.id_surat_keluar === editingSuratId) setDetailSurat(updated)
+      } else {
+        const created = await request<SuratKeluar>("/surat-keluar/draft", "POST", payload)
+        setSuratList((list) => [created, ...list])
+      }
       setShowDraftModal(false)
+      setEditingSuratId(null)
     } catch {
       // The global notification already shows the server's message.
     } finally {
@@ -465,22 +608,51 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
     }
   }
 
-  const handleFinalize = async (id: number) => {
+  const handleLifecycleAction = async (
+    id: number,
+    action: "ajukan" | "revisi" | "setujui" | "finalisasi" | "arsipkan",
+    catatan?: string
+  ) => {
     setBusy(true)
     try {
-      const updated = await request<Partial<SuratKeluar>>(`/surat-keluar/${id}/finalisasi`, "POST", {})
+      const updated = await request<Partial<SuratKeluar>>(
+        `/surat-keluar/${id}/${action}`,
+        "POST",
+        catatan?.trim() ? { catatan: catatan.trim() } : {}
+      )
       setSuratList((list) => list.map((s) => (s.id_surat_keluar === id ? { ...s, ...updated } : s)))
+      if (detailSurat?.id_surat_keluar === id) {
+        setDetailSurat((prev) => (prev ? { ...prev, ...updated } : prev))
+        request<RiwayatSuratItem[]>(`/surat-keluar/${id}/riwayat`)
+          .then(setDetailRiwayat)
+          .catch(() => {})
+      }
+      setReviewNote("")
     } catch {
-      // Server explains why (e.g. official issuance not enabled).
+      // Server explains why
     } finally {
       setBusy(false)
     }
   }
 
-  const handleExport = async (s: SuratKeluar) => {
+  const handleDeleteDraft = async (id: number) => {
+    if (!window.confirm("Hapus draf surat keluar ini?")) return
     setBusy(true)
     try {
-      await download(`/surat-keluar/${s.id_surat_keluar}/export?format=pdf`, `surat-${s.id_surat_keluar}.pdf`)
+      await request(`/surat-keluar/${id}`, "DELETE")
+      setSuratList((list) => list.filter((s) => s.id_surat_keluar !== id))
+      if (detailSurat?.id_surat_keluar === id) setDetailSurat(null)
+    } catch {
+      // Global toast shows error
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleExport = async (s: SuratKeluar, fmt: "pdf" | "docx" = "pdf") => {
+    setBusy(true)
+    try {
+      await download(`/surat-keluar/${s.id_surat_keluar}/export?format=${fmt}`, `surat-${s.id_surat_keluar}.${fmt}`)
     } catch (e) {
       notify("error", message(e))
     } finally {
@@ -546,27 +718,70 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
         <TableCell><Badge variant={status.variant}>{status.label}</Badge></TableCell>
         {withActions && (
           <TableCell className="whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-            {s.status === "draft" && isAdmin && !readOnly && (
-              <button
-                type="button"
-                disabled={busy || issuanceLocked}
-                title={issuanceLocked ? issuanceLockReason : "Terbitkan nomor surat resmi"}
-                onClick={() => handleFinalize(s.id_surat_keluar)}
-                className="btn-kpu-red px-3 py-1.5 text-white text-[11px] font-bold rounded-lg inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {issuanceLocked ? <Lock className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />} Terbitkan Nomor
-              </button>
-            )}
-            {s.status === "terbit" && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => handleExport(s)}
-                className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
-              >
-                <Download className="w-3.5 h-3.5" /> PDF
-              </button>
-            )}
+            <div className="flex items-center gap-1.5">
+              {(s.status === "draft" || s.status === "revisi") && !readOnly && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => openEditDraftModal(s)}
+                    title="Edit draf"
+                    className={`p-1.5 rounded-lg border cursor-pointer disabled:opacity-40 ${isDark ? "border-white/10 text-gray-200 hover:bg-white/5" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleLifecycleAction(s.id_surat_keluar, "ajukan")}
+                    className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-slate-800 text-white hover:bg-slate-900 inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                  >
+                    <Send className="w-3 h-3" /> Ajukan
+                  </button>
+                </>
+              )}
+              {s.status === "diajukan" && canReviewSurat && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleLifecycleAction(s.id_surat_keluar, "setujui")}
+                  className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3 h-3" /> Setujui
+                </button>
+              )}
+              {(s.status === "draft" || s.status === "disetujui") && canReviewSurat && !readOnly && (
+                <button
+                  type="button"
+                  disabled={busy || issuanceLocked}
+                  title={issuanceLocked ? issuanceLockReason : "Terbitkan nomor surat resmi"}
+                  onClick={() => void handleLifecycleAction(s.id_surat_keluar, "finalisasi")}
+                  className="btn-kpu-red px-2.5 py-1.5 text-white text-[11px] font-bold rounded-lg inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {issuanceLocked ? <Lock className="w-3 h-3" /> : <Send className="w-3 h-3" />} Terbitkan
+                </button>
+              )}
+              {(s.status === "terbit" || s.status === "diarsipkan") && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleExport(s, "pdf")}
+                    className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                  >
+                    <Download className="w-3 h-3" /> PDF
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleExport(s, "docx")}
+                    className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                  >
+                    <Download className="w-3 h-3" /> DOCX
+                  </button>
+                </>
+              )}
+            </div>
           </TableCell>
         )}
       </TableRow>
@@ -932,7 +1147,19 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </span>
               <button
                 type="button"
-                onClick={() => setShowKlasifikasiModal(true)}
+                onClick={() => {
+                  setEditingKlasifikasiId(null)
+                  setKlasifikasiForm({
+                    kode_klasifikasi: "",
+                    nama_klasifikasi: "",
+                    kategori_utama: "Penyelenggaraan Pemilu",
+                    deskripsi: "",
+                    retensi_aktif_tahun: 2,
+                    retensi_inaktif_tahun: 5,
+                    hak_akses: "Terbatas",
+                  })
+                  setShowKlasifikasiModal(true)
+                }}
                 className="btn-kpu-red px-3.5 py-1.5 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -981,11 +1208,12 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                   <TableHead className={headCell}>Kategori</TableHead>
                   <TableHead className={headCell}>Retensi Aktif / Inaktif</TableHead>
                   <TableHead className={headCell}>Hak Akses</TableHead>
+                  {isAdmin && <TableHead className={headCell}>Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredKlasifikasi.length === 0
-                  ? emptyRow(5, klasFiltersActive ? "Tidak ada kode yang cocok dengan filter." : "Data master klasifikasi belum tersedia di server.")
+                  ? emptyRow(isAdmin ? 6 : 5, klasFiltersActive ? "Tidak ada kode yang cocok dengan filter." : "Data master klasifikasi belum tersedia di server.")
                   : filteredKlasifikasi.map((k) => (
                       <TableRow key={k.id_klasifikasi} className={isDark ? "border-b border-white/20" : "border-b border-slate-100"}>
                         <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{k.kode_klasifikasi}</TableCell>
@@ -993,6 +1221,48 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                         <TableCell className="text-xs">{k.kategori_utama}</TableCell>
                         <TableCell className="text-xs">{k.retensi_aktif_tahun} th / {k.retensi_inaktif_tahun} th</TableCell>
                         <TableCell><Badge variant="outline">{k.hak_akses}</Badge></TableCell>
+                        {isAdmin && (
+                          <TableCell className="whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                title="Ubah kode klasifikasi"
+                                onClick={() => {
+                                  setEditingKlasifikasiId(k.id_klasifikasi)
+                                  setKlasifikasiForm({
+                                    kode_klasifikasi: k.kode_klasifikasi,
+                                    nama_klasifikasi: k.nama_klasifikasi,
+                                    kategori_utama: k.kategori_utama,
+                                    deskripsi: k.deskripsi || "",
+                                    retensi_aktif_tahun: k.retensi_aktif_tahun,
+                                    retensi_inaktif_tahun: k.retensi_inaktif_tahun,
+                                    hak_akses: k.hak_akses,
+                                  })
+                                  setShowKlasifikasiModal(true)
+                                }}
+                                className={`p-1.5 rounded-lg border cursor-pointer ${isDark ? "border-white/10 text-gray-200 hover:bg-white/5" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Hapus kode klasifikasi"
+                                onClick={async () => {
+                                  if (!window.confirm(`Hapus kode klasifikasi ${k.kode_klasifikasi}?`)) return
+                                  try {
+                                    await request(`/klasifikasi/${k.id_klasifikasi}`, "DELETE")
+                                    setKlasifikasiList((prev) => prev.filter((x) => x.id_klasifikasi !== k.id_klasifikasi))
+                                  } catch {
+                                    // Toast displays conflict if still referenced
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
               </TableBody>
@@ -1054,6 +1324,12 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 {row("Klasifikasi", klas ? `${klas.kode_klasifikasi} — ${klas.nama_klasifikasi}` : null)}
                 {row("Bagian Pengirim", departments.find((d) => d.id_bagian === s.id_bagian)?.nama_bagian)}
                 {row("Lampiran", s.lampiran)}
+                {row("Tembusan", s.tembusan)}
+                {row(
+                  "Penandatangan",
+                  [s.atas_nama, s.penandatangan_jabatan, s.penandatangan_nama].filter(Boolean).join(" — ") || null
+                )}
+                {s.content_sha256 && row("Sidik Integritas (SHA-256)", s.content_sha256.slice(0, 24) + "…")}
               </dl>
 
               <div className="space-y-1.5">
@@ -1063,23 +1339,127 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 </div>
               </div>
 
+              {/* Catatan pemeriksaan / paraf jika relevan */}
+              {((s.status === "diajukan" && canReviewSurat) || ((s.status === "draft" || s.status === "revisi") && !readOnly)) && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold">Catatan Pemeriksaan / Pengajuan</label>
+                  <input
+                    className={field}
+                    placeholder="Opsional: catatan paraf, revisi, atau pengajuan…"
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* Riwayat status surat */}
+              {detailRiwayat.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-bold flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-red-600" /> Riwayat Status &amp; Paraf ({detailRiwayat.length})
+                  </p>
+                  <ul className={`rounded-xl border divide-y text-xs max-h-40 overflow-y-auto ${isDark ? "border-white/10 divide-white/5" : "border-slate-200 divide-slate-100"}`}>
+                    {detailRiwayat.map((r) => (
+                      <li key={r.id_riwayat} className="px-3 py-2 flex items-start justify-between gap-2">
+                        <div>
+                          <span className="font-bold">{r.status_lama ? `${r.status_lama} → ${r.status_baru}` : r.status_baru}</span>
+                          {r.catatan && <p className="text-[11px] text-slate-500">{r.catatan}</p>}
+                        </div>
+                        <div className="text-right text-[10px] text-slate-500 shrink-0">
+                          <p className="font-semibold">{r.nama_pegawai}</p>
+                          <p>{r.waktu ? new Date(r.waktu).toLocaleString("id-ID") : ""}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="flex flex-wrap justify-end gap-2 pt-2">
-                {s.status === "terbit" && (
+                {(s.status === "draft" || s.status === "revisi") && !readOnly && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openEditDraftModal(s)}
+                      className={`px-3.5 py-2 text-xs font-bold rounded-xl border inline-flex items-center gap-1.5 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleDeleteDraft(s.id_surat_keluar)}
+                      className="px-3.5 py-2 text-xs font-bold rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/10 inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Hapus
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleLifecycleAction(s.id_surat_keluar, "ajukan", reviewNote)}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 text-white hover:bg-slate-900 inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Ajukan Pemeriksaan
+                    </button>
+                  </>
+                )}
+                {s.status === "diajukan" && canReviewSurat && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleLifecycleAction(s.id_surat_keluar, "revisi", reviewNote)}
+                      className="px-3.5 py-2 text-xs font-bold rounded-xl border border-amber-500/40 text-amber-600 dark:text-amber-400 inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Kembalikan Revisi
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleLifecycleAction(s.id_surat_keluar, "setujui", reviewNote)}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Setujui / Paraf
+                    </button>
+                  </>
+                )}
+                {(s.status === "terbit" || s.status === "diarsipkan") && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleExport(s, "pdf")}
+                      className={`px-3.5 py-2 text-xs font-bold rounded-xl border inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                    >
+                      <Download className="w-3.5 h-3.5" /> PDF
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleExport(s, "docx")}
+                      className={`px-3.5 py-2 text-xs font-bold rounded-xl border inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                    >
+                      <Download className="w-3.5 h-3.5" /> DOCX
+                    </button>
+                  </>
+                )}
+                {s.status === "terbit" && !readOnly && (
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => handleExport(s)}
-                    className={`px-4 py-2 text-xs font-bold rounded-xl border inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                    onClick={() => void handleLifecycleAction(s.id_surat_keluar, "arsipkan")}
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-700 text-white hover:bg-slate-800 inline-flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5" /> Unduh PDF
+                    <Archive className="w-3.5 h-3.5" /> Arsipkan
                   </button>
                 )}
-                {s.status === "draft" && isAdmin && !readOnly && (
+                {(s.status === "draft" || s.status === "disetujui") && canReviewSurat && !readOnly && (
                   <button
                     type="button"
                     disabled={busy || issuanceLocked}
                     title={issuanceLocked ? issuanceLockReason : "Terbitkan nomor surat resmi"}
-                    onClick={() => handleFinalize(s.id_surat_keluar)}
+                    onClick={() => void handleLifecycleAction(s.id_surat_keluar, "finalisasi", reviewNote)}
                     className="btn-kpu-red px-4 py-2 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {issuanceLocked ? <Lock className="w-3.5 h-3.5" /> : <Send className="w-3.5 h-3.5" />} Terbitkan Nomor
@@ -1131,9 +1511,11 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
 
             <dl className={`text-xs divide-y ${isDark ? "divide-white/10" : "divide-slate-100"}`}>
               {([
+                ["Dasar Tugas", detailTugas.dasar_tugas],
                 ["Tempat / Lokasi", detailTugas.tempat_tugas],
                 ["Periode", `${formatDate(detailTugas.tanggal_mulai)} – ${formatDate(detailTugas.tanggal_selesai)}`],
                 ["Beban Anggaran", detailTugas.beban_anggaran],
+                ["Status Surat", detailTugas.status_surat ? (STATUS_LABEL[detailTugas.status_surat]?.label ?? detailTugas.status_surat) : null],
               ] as const).map(([label, value]) => (
                 <div key={label} className="grid grid-cols-3 gap-2 py-1.5">
                   <dt className="text-slate-500 font-semibold">{label}</dt>
@@ -1141,6 +1523,40 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 </div>
               ))}
             </dl>
+
+            <div className="space-y-2 pt-1">
+              <p className="text-xs font-bold flex items-center gap-1.5">
+                <Upload className="w-3.5 h-3.5 text-slate-400" /> Laporan Pelaksanaan Tugas
+              </p>
+              {detailTugas.laporan_file_id ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void download(`/files/${detailTugas.laporan_file_id}`, `laporan-tugas-${detailTugas.id_surat_tugas}`)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer ${isDark ? "border-white/10 text-white" : "border-slate-300 text-slate-800"}`}
+                >
+                  <Download className="w-3.5 h-3.5" /> Unduh Laporan Tugas
+                </button>
+              ) : (
+                <p className="text-xs italic text-slate-500">Belum ada berkas laporan pelaksanaan tugas.</p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => setLaporanFile(e.target.files?.[0] ?? null)}
+                  className={`${field} !w-auto text-xs`}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !laporanFile}
+                  onClick={() => void handleUploadLaporanTugas(detailTugas)}
+                  className="btn-kpu-red px-3.5 py-2 text-white text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer"
+                >
+                  {detailTugas.laporan_file_id ? "Ganti Laporan" : "Unggah Laporan"}
+                </button>
+              </div>
+            </div>
 
             <div className="space-y-1.5">
               <p className="text-xs font-bold flex items-center gap-1.5">
@@ -1181,7 +1597,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             className={`w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-2xl border p-6 space-y-4 shadow-2xl ${isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold">Buat Draft Surat Keluar</h2>
+              <h2 className="text-base font-bold">{editingSuratId !== null ? "Edit Draft Surat Keluar" : "Buat Draft Surat Keluar"}</h2>
               <button type="button" aria-label="Tutup" onClick={() => setShowDraftModal(false)} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
@@ -1253,6 +1669,22 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 <span>Isi Surat</span>
                 <textarea rows={5} className={field} value={form.isi_surat} onChange={(e) => setForm({ ...form, isi_surat: e.target.value })} />
               </label>
+              <label className="space-y-1.5">
+                <span>Atas Nama (a.n. / u.b. / Plt.)</span>
+                <input className={field} placeholder="Contoh: a.n." value={form.atas_nama} onChange={(e) => setForm({ ...form, atas_nama: e.target.value })} />
+              </label>
+              <label className="space-y-1.5">
+                <span>Jabatan Penandatangan</span>
+                <input className={field} placeholder="Contoh: Sekretaris KPU Provinsi Sulawesi Utara" value={form.penandatangan_jabatan} onChange={(e) => setForm({ ...form, penandatangan_jabatan: e.target.value })} />
+              </label>
+              <label className="space-y-1.5">
+                <span>Nama Penandatangan</span>
+                <input className={field} placeholder="Nama lengkap pejabat penandatangan" value={form.penandatangan_nama} onChange={(e) => setForm({ ...form, penandatangan_nama: e.target.value })} />
+              </label>
+              <label className="space-y-1.5">
+                <span>Tembusan</span>
+                <textarea rows={2} className={field} placeholder="1. Ketua KPU Provinsi Sulawesi Utara&#10;2. Arsip" value={form.tembusan} onChange={(e) => setForm({ ...form, tembusan: e.target.value })} />
+              </label>
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowDraftModal(false)} className={`px-4 py-2 rounded-xl border text-xs font-bold cursor-pointer ${isDark ? "border-white/10" : "border-slate-300"}`}>
@@ -1288,6 +1720,10 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               <label className="space-y-1.5 md:col-span-2">
                 <span>Maksud Penugasan *</span>
                 <textarea required rows={3} className={field} value={tugasForm.maksud_tugas} onChange={(e) => setTugasForm({ ...tugasForm, maksud_tugas: e.target.value })} placeholder="Contoh: Melaksanakan supervisi pemutakhiran data pemilih" />
+              </label>
+              <label className="space-y-1.5 md:col-span-2">
+                <span>Dasar Penugasan</span>
+                <input className={field} value={tugasForm.dasar_tugas} onChange={(e) => setTugasForm({ ...tugasForm, dasar_tugas: e.target.value })} placeholder="Contoh: Undangan KPU RI Nomor 12/2026" />
               </label>
               <label className="space-y-1.5 md:col-span-2">
                 <span>Tempat / Lokasi Tugas *</span>
@@ -1336,14 +1772,43 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 <div className={`max-h-44 overflow-y-auto rounded-xl border divide-y ${isDark ? "border-white/10 divide-white/5" : "border-slate-200 divide-slate-100"}`}>
                   {pegawaiList
                     .filter((p) => p.is_active !== false && p.nama.toLowerCase().includes(pelaksanaSearch.toLowerCase()))
-                    .map((p) => (
-                      <label key={p.id_pegawai} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5">
-                        <input type="checkbox" checked={tugasForm.pelaksana.includes(p.id_pegawai)} onChange={() => togglePelaksana(p.id_pegawai)} />
-                        <span className="font-medium">{p.nama}</span>
-                      </label>
-                    ))}
+                    .map((p) => {
+                      const checked = tugasForm.pelaksana.includes(p.id_pegawai)
+                      return (
+                        <div key={p.id_pegawai} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-100 dark:hover:bg-white/5">
+                          <label className="flex items-center gap-2 cursor-pointer flex-1">
+                            <input type="checkbox" checked={checked} onChange={() => togglePelaksana(p.id_pegawai)} />
+                            <span className="font-medium">{p.nama}</span>
+                          </label>
+                          {checked && (
+                            <select
+                              aria-label={`Peran ${p.nama}`}
+                              value={pelaksanaRoles[p.id_pegawai] || "Pelaksana"}
+                              onChange={(e) => setPelaksanaRoles((prev) => ({ ...prev, [p.id_pegawai]: e.target.value }))}
+                              className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${isDark ? "bg-[#0f172a] border-white/15 text-white" : "bg-white border-slate-300 text-slate-800"}`}
+                            >
+                              {PERAN_TUGAS_OPTIONS.map((role) => (
+                                <option key={role} value={role}>{role}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )
+                    })}
                   {pegawaiList.length === 0 && <p className="px-3 py-4 text-center text-slate-500">Data pegawai belum tersedia.</p>}
                 </div>
+                {tugasKonflik.length > 0 && (
+                  <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] text-amber-700 dark:text-amber-300 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Peringatan Bentrok Jadwal Penugasan ({tugasKonflik.length})
+                    </p>
+                    {tugasKonflik.map((k, idx) => (
+                      <p key={idx}>
+                        • <strong>{k.nama_pegawai}</strong> sudah ditugaskan ({k.nomor_tugas}: {k.maksud_tugas}) pada {k.tanggal_mulai} s.d. {k.tanggal_selesai}.
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -1370,8 +1835,20 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               }
               try {
                 setIsSubmittingKlasifikasi(true)
-                await createKlasifikasi(klasifikasiForm)
+                if (editingKlasifikasiId !== null) {
+                  await request(`/klasifikasi/${editingKlasifikasiId}`, "PUT", {
+                    nama_klasifikasi: klasifikasiForm.nama_klasifikasi,
+                    kategori_utama: klasifikasiForm.kategori_utama,
+                    deskripsi: klasifikasiForm.deskripsi || null,
+                    retensi_aktif_tahun: klasifikasiForm.retensi_aktif_tahun,
+                    retensi_inaktif_tahun: klasifikasiForm.retensi_inaktif_tahun,
+                    hak_akses: klasifikasiForm.hak_akses,
+                  })
+                } else {
+                  await createKlasifikasi(klasifikasiForm)
+                }
                 setShowKlasifikasiModal(false)
+                setEditingKlasifikasiId(null)
                 setKlasifikasiForm({
                   kode_klasifikasi: "",
                   nama_klasifikasi: "",
@@ -1395,7 +1872,7 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
               <h2 className="text-base font-bold flex items-center gap-2">
                 <Database className="w-5 h-5 text-red-600" />
-                Tambah Kode Klasifikasi Arsip
+                {editingKlasifikasiId !== null ? "Ubah Kode Klasifikasi Arsip" : "Tambah Kode Klasifikasi Arsip"}
               </h2>
               <button
                 type="button"

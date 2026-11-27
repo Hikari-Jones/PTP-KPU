@@ -46,7 +46,21 @@ ALLOWED_TABLES = {
 }
 
 # Columns that must never reach the model, whatever the query looks like.
-BLOCKED_COLUMNS = {"password", "session_version", "file_path", "path_file", "bukti_file_path", "relative_path", "stored_name"}
+BLOCKED_COLUMNS = {
+    "password",
+    "session_version",
+    "file_path",
+    "path_file",
+    "bukti_file_path",
+    "bukti_file_nama",
+    "relative_path",
+    "stored_name",
+    "hapus_alasan",
+    "hapus_catatan_admin",
+    "extracted_text",
+    "participant_tokens",
+    "legal_hold_alasan",
+}
 
 _BLOCKED_WORDS = re.compile(
     r"\b(load_file|outfile|dumpfile|sleep|benchmark|get_lock|release_lock|"
@@ -58,22 +72,23 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 # Compact description of the schema given to the model.
 SCHEMA_DOC = """\
-workflow_letter(id PK, kind ['masuk','keluar'], subject [perihal], sender, recipient, number [nomor surat], content [isi surat], date DATE, status ['draft','submitted','revision','approved','registered','assigned','completed','archived'], owner_id FK pegawai, assignee_id FK pegawai NULL, version)
+workflow_letter(id PK, kind ['masuk','keluar'], subject [perihal], sender, recipient, number [nomor surat], nomor_agenda, sifat_surat, batas_waktu DATE, id_klasifikasi FK kode_klasifikasi_arsip, content [isi surat], date DATE, status ['draft','submitted','revision','approved','registered','assigned','completed','archived'], owner_id FK pegawai, assignee_id FK pegawai NULL, version)
 bagian(id_bagian PK, kode_bagian, nama_bagian)
 pegawai(id_pegawai PK, id_bagian FK bagian, nama, nip, jabatan, role)
 kode_klasifikasi_arsip(id_klasifikasi PK, kode_klasifikasi, nama_klasifikasi, kategori_utama, deskripsi, retensi_aktif_tahun, retensi_inaktif_tahun, hak_akses)
 jenis_surat(id_jenis_surat PK, kode_jenis, nama_jenis, format_nomor)
-surat_keluar(id_surat_keluar PK, id_pegawai FK pegawai [pembuat], id_bagian FK bagian, id_klasifikasi FK kode_klasifikasi_arsip, id_jenis_surat FK jenis_surat, nomor_surat, nomor_urut, tahun, bulan_romawi, sifat_surat, lampiran, perihal, tujuan_surat, isi_surat, status ['draft','terbit',...], tanggal_surat DATE, tanggal_terbit DATETIME, created_at)
-surat_tugas(id_surat_tugas PK, id_surat_keluar FK surat_keluar, nomor_tugas, maksud_tugas, tempat_tugas, tanggal_mulai DATE, tanggal_selesai DATE, beban_anggaran)
+penomoran_sequence(id_sequence PK, tahun, id_jenis_surat FK jenis_surat, id_bagian FK bagian, last_number)
+surat_keluar(id_surat_keluar PK, id_pegawai FK pegawai [pembuat], id_bagian FK bagian, id_klasifikasi FK kode_klasifikasi_arsip, id_jenis_surat FK jenis_surat, nomor_surat, nomor_urut, tahun, bulan_romawi, sifat_surat, lampiran, perihal, tujuan_surat, isi_surat, tembusan, penandatangan_nama, penandatangan_jabatan, status ['draft','menunggu_persetujuan','revisi','disetujui','terbit','diarsipkan'], tanggal_surat DATE, tanggal_terbit DATETIME, created_at)
+surat_tugas(id_surat_tugas PK, id_surat_keluar FK surat_keluar, nomor_tugas, dasar_tugas, maksud_tugas, tempat_tugas, tanggal_mulai DATE, tanggal_selesai DATE, beban_anggaran, id_pagu FK pagu_anggaran)
 surat_tugas_pelaksana(id_pelaksana PK, id_surat_tugas FK surat_tugas, id_pegawai FK pegawai, peran_tugas)
 riwayat_status_surat(id_riwayat PK, id_surat_keluar FK surat_keluar, id_pegawai FK pegawai, status_lama, status_baru, catatan, waktu DATETIME)
 disposisi(id_disposisi PK, id_surat_keluar FK surat_keluar, id_pegawai FK pegawai [penerima], instruksi, tanggal_disposisi DATE)
-dokumen_arsip(id_dokumen PK, id_surat_keluar FK surat_keluar NULL, id_klasifikasi FK kode_klasifikasi_arsip, id_pegawai FK pegawai [pengunggah], nama_dokumen, nomor_dokumen, kategori, event, tanggal_dokumen DATE, ukuran_file, hak_akses, status_hapus [0=aktif, 1=di tempat sampah], sumber_modul ['arsip','surat','realisasi'], sub_kategori [Surat Masuk/Surat Keluar/Surat Tugas atau akun], created_at)
+dokumen_arsip(id_dokumen PK, id_surat_keluar FK surat_keluar NULL, id_klasifikasi FK kode_klasifikasi_arsip, id_pegawai FK pegawai [pengunggah], nama_dokumen, nomor_dokumen, kategori, event, tanggal_dokumen DATE, ukuran_file, hak_akses ['biasa','internal','publik','terbatas','rahasia','sangat_rahasia'], status_retensi ['aktif','inaktif','siap_susut','disusutkan'], nasib_akhir ['musnah','permanen','dinilai_kembali'], tanggal_retensi_aktif DATE, tanggal_retensi_inaktif DATE, arsip_vital, legal_hold, lokasi_fisik, nomor_berkas, versi_dokumen, status_hapus [0=aktif, 1=di tempat sampah], sumber_modul ['arsip','surat','realisasi'], sub_kategori [Surat Masuk/Surat Keluar/Surat Tugas atau akun], created_at)
 tahun_anggaran(id_tahun_anggaran PK, tahun, status ['draft','active','closed'], tanggal_mulai, tanggal_selesai, deskripsi)
 akun_anggaran(id_akun_anggaran PK, id_bagian FK bagian, kode_akun, nama_akun, total_pagu, jenis_belanja, program, sub_program, status ['active','inactive'])
-pagu_anggaran(id_pagu PK, id_tahun_anggaran FK tahun_anggaran, tahun [tahun anggaran, mis. 2026], id_akun_anggaran FK akun_anggaran, pagu_awal, pagu_aktif [pagu yang berlaku sekarang], nomor_sk, tanggal_sk, keterangan)
-revisi_anggaran(id_revisi PK, id_pagu FK pagu_anggaran, id_pegawai FK pegawai, nomor_revisi, tanggal_revisi DATE, pagu_sebelum, pagu_sesudah, alasan_revisi)
-realisasi_anggaran(id_realisasi PK, id_pagu FK pagu_anggaran, tahun [tahun anggaran, mis. 2026], id_akun_anggaran FK akun_anggaran, id_pegawai FK pegawai [penginput], id_verifier FK pegawai, tanggal_transaksi DATE, nomor_dokumen, uraian_kegiatan, jumlah_realisasi, status ['draft','submitted','verified','rejected'], periode, catatan_verifikasi, verified_at)"""
+pagu_anggaran(id_pagu PK, id_tahun_anggaran FK tahun_anggaran, tahun [tahun anggaran, mis. 2026], id_akun_anggaran FK akun_anggaran, pagu_awal, pagu_aktif [pagu yang berlaku sekarang], pagu_blokir [pagu diblokir/self-blocking], rpd_triwulan_1, rpd_triwulan_2, rpd_triwulan_3, rpd_triwulan_4, nomor_sk, tanggal_sk, keterangan)
+revisi_anggaran(id_revisi PK, id_pagu FK pagu_anggaran, id_pegawai FK pegawai, nomor_revisi, jenis_revisi ['DIPA','POK'], batch_kode, tanggal_revisi DATE, pagu_sebelum, pagu_sesudah, alasan_revisi)
+realisasi_anggaran(id_realisasi PK, id_pagu FK pagu_anggaran, tahun [tahun anggaran, mis. 2026], id_akun_anggaran FK akun_anggaran, id_pegawai FK pegawai [penginput], id_verifier FK pegawai, tanggal_transaksi DATE, nomor_dokumen, uraian_kegiatan, jumlah_realisasi, mekanisme_bayar ['UP','TUP','GUP','LS'], jenis_dokumen_bayar ['SPBy','SPP','SPM','SP2D','Kuitansi','SSPB'], nomor_sp2d, penerima_pembayaran, potongan_pajak, is_koreksi, status ['draft','submitted','verified','rejected'], periode, catatan_verifikasi, verified_at)"""
 
 
 class QueryRejected(ValueError):
@@ -191,12 +206,13 @@ def _scoped_relation(name: str, user) -> str:
                  f"{_WITH_TAHUN[name]} LEFT JOIN `tahun_anggaran` t ON t.`id_tahun_anggaran` = {_TAHUN_KEY[name]}")
     if is_admin(user):
         return query
+    from app.core.auth import is_rendatin_or_keuangan
     # IDs originate from the authenticated database user, never the prompt.
     uid = int(user.id_pegawai)
     letters = (f"SELECT id_surat_keluar FROM surat_keluar WHERE id_pegawai = {uid} "
                f"OR id_surat_keluar IN (SELECT id_surat_keluar FROM disposisi WHERE id_pegawai = {uid})")
     if name == "workflow_letter":
-        return query + f" WHERE owner_id = {uid} OR assignee_id = {uid}"
+        return query + f" WHERE owner_id = {uid} OR assignee_id = {uid} OR participant_tokens LIKE '%,{uid},%'"
     if name == "surat_keluar":
         return query + f" WHERE id_surat_keluar IN ({letters})"
     if name in {"surat_tugas", "riwayat_status_surat", "disposisi"}:
@@ -204,11 +220,27 @@ def _scoped_relation(name: str, user) -> str:
     if name == "surat_tugas_pelaksana":
         return query + f" WHERE id_surat_tugas IN (SELECT id_surat_tugas FROM surat_tugas WHERE id_surat_keluar IN ({letters}))"
     if name == "dokumen_arsip":
-        allowed = f"hak_akses IN ('internal', 'publik') OR id_pegawai = {uid}"
+        # Strict 4-tier SKKAAD scoping: rahasia & sangat_rahasia owned by others are never exposed to KIRANA AI
+        allowed = f"hak_akses IN ('biasa', 'internal', 'publik') OR id_pegawai = {uid}"
         if user.id_bagian is not None:
-            allowed += (" OR (hak_akses = 'terbatas' AND id_pegawai IN "
-                        f"(SELECT id_pegawai FROM pegawai WHERE id_bagian = {int(user.id_bagian)}))")
-        return query + f" WHERE ({allowed})"
+            allowed += (
+                " OR (hak_akses = 'terbatas' AND (ref_tipe IS NULL OR ref_tipe != 'workflow_letter') "
+                f"AND id_pegawai IN (SELECT id_pegawai FROM pegawai WHERE id_bagian = {int(user.id_bagian)}))"
+            )
+        return query + f" WHERE (status_hapus = 0 OR status_hapus IS NULL) AND ({allowed})"
+    if name in {"akun_anggaran", "pagu_anggaran", "realisasi_anggaran", "revisi_anggaran"} and not is_rendatin_or_keuangan(user):
+        if user.id_bagian is None:
+            return query + " WHERE 1 = 0"
+        bid = int(user.id_bagian)
+        if name == "akun_anggaran":
+            return query + f" WHERE id_bagian = {bid}"
+        if name in {"pagu_anggaran", "realisasi_anggaran"}:
+            return query + f" WHERE x.id_akun_anggaran IN (SELECT id_akun_anggaran FROM akun_anggaran WHERE id_bagian = {bid})"
+        if name == "revisi_anggaran":
+            return query + (
+                " WHERE id_pagu IN (SELECT id_pagu FROM pagu_anggaran WHERE id_akun_anggaran IN "
+                f"(SELECT id_akun_anggaran FROM akun_anggaran WHERE id_bagian = {bid}))"
+            )
     return query
 
 

@@ -11,21 +11,22 @@ from app.core.auth import (
     is_rendatin_or_keuangan,
     get_effective_subbagian_id,
 )
-from app.models.schema import Pegawai
+from app.models.schema import Pegawai, RealisasiAnggaran
 from app.schemas.anggaran import (
     RealisasiAnggaranCreateDraft,
     RealisasiAnggaranUpdateDraft,
     RealisasiAnggaranVerify,
     RealisasiAnggaranReject,
+    RealisasiKoreksiCreate,
     RealisasiAnggaranResponse,
     RealisasiAnggaranListResponse,
 )
 from app.services.anggaran import realisasi_anggaran
 
-from app.core.authority import has_authority
+from app.core.authority import has_authority_async
 from app.core.config import settings
 
-from app.services.arsip_sync import safe_sync
+from app.services.arsip_sync import safe_sync, remove_sync
 router = APIRouter()
 
 async def require_budget_operator(user: Pegawai = Depends(get_current_user)):
@@ -36,15 +37,23 @@ async def require_budget_operator(user: Pegawai = Depends(get_current_user)):
         )
     return user
 
-async def require_budget_reviewer(user: Pegawai = Depends(get_current_user)):
-    if not has_authority(settings.AUTHORITY_GRANTS, user.id_pegawai, "verify_budget"):
+async def require_budget_reviewer(
+    db: AsyncSession = Depends(get_db),
+    user: Pegawai = Depends(get_current_user),
+):
+    if not await has_authority_async(db, settings.AUTHORITY_GRANTS, user.id_pegawai, "verify_budget"):
         raise HTTPException(403, "Penugasan pemeriksa anggaran aktif belum dikonfigurasi")
     return user
 
 @router.get("/capabilities")
-async def capabilities(user: Pegawai = Depends(get_current_user)):
-    return {"user_id": user.id_pegawai, "can_review": has_authority(
-        settings.AUTHORITY_GRANTS, user.id_pegawai, "verify_budget")}
+async def capabilities(
+    db: AsyncSession = Depends(get_db),
+    user: Pegawai = Depends(get_current_user),
+):
+    return {
+        "user_id": user.id_pegawai,
+        "can_review": await has_authority_async(db, settings.AUTHORITY_GRANTS, user.id_pegawai, "verify_budget"),
+    }
 
 
 
@@ -130,7 +139,7 @@ async def create_realisasi(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(require_budget_operator),
 ) -> Any:
-    db_obj = await realisasi_anggaran.create_realisasi_direct(
+    db_obj = await realisasi_anggaran.create_draft(
         db,
         obj_in=realisasi_in,
         id_pegawai=current_user.id_pegawai,
@@ -170,8 +179,8 @@ def require_rendatin_user(user: Pegawai) -> None:
 @router.put(
     "/{id_realisasi}",
     response_model=RealisasiAnggaranResponse,
-    summary="Update Transaksi Realisasi (Khusus RENDATIN)",
-    description="Memperbarui data transaksi realisasi verified secara atomik oleh Subbagian RENDATIN (BAG-02). Melakukan validasi pagu dengan SELECT ... FOR UPDATE.",
+    summary="Update Transaksi Realisasi",
+    description="Memperbarui draft/rejected oleh operator pembuat, atau transaksi verified oleh Subbagian RENDATIN (BAG-02) dengan row-level locking.",
 )
 async def update_realisasi_rendatin_endpoint(
     id_realisasi: int,
@@ -179,19 +188,39 @@ async def update_realisasi_rendatin_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
-    # 1. Enforce RENDATIN strict authorization
-    require_rendatin_user(current_user)
+    existing = await db.get(RealisasiAnggaran, id_realisasi)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
+        )
 
-    # 2. Execute atomic update with concurrency protection
-    db_obj = await realisasi_anggaran.update_realisasi_rendatin(
-        db,
-        id_realisasi=id_realisasi,
-        obj_in=realisasi_in,
-        user=current_user,
-    )
+    if existing.status in ("draft", "rejected"):
+        db_obj = await realisasi_anggaran.update_draft(
+            db,
+            id_realisasi=id_realisasi,
+            obj_in=realisasi_in,
+            current_user_id=current_user.id_pegawai,
+        )
+    elif existing.status == "verified":
+        require_rendatin_user(current_user)
+        db_obj = await realisasi_anggaran.update_realisasi_rendatin(
+            db,
+            id_realisasi=id_realisasi,
+            obj_in=realisasi_in,
+            user=current_user,
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transaksi berstatus '{existing.status}' tidak dapat diubah saat ini",
+        )
+
     tx_id = db_obj.id_realisasi
-    await safe_sync(db, "realisasi", tx_id)
-    # Reload with relationships: the response needs pagu/akun/bagian loaded eagerly.
+    if db_obj.bukti_file_path:
+        await safe_sync(db, "realisasi", tx_id)
+    else:
+        await remove_sync(db, "realisasi", tx_id)
     db_obj = await realisasi_anggaran.get_detail(db, tx_id)
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
@@ -199,22 +228,37 @@ async def update_realisasi_rendatin_endpoint(
 @router.delete(
     "/{id_realisasi}",
     response_model=RealisasiAnggaranResponse,
-    summary="Hapus Transaksi Realisasi (Khusus RENDATIN)",
-    description="Menghapus transaksi realisasi verified secara atomik oleh Subbagian RENDATIN (BAG-02). Saldo pagu aktif otomatis pulih.",
+    summary="Hapus Transaksi Realisasi",
+    description="Menghapus transaksi draft oleh operator pembuat atau transaksi verified secara atomik oleh Subbagian RENDATIN (BAG-02). Saldo pagu aktif otomatis pulih.",
 )
 async def delete_realisasi_rendatin_endpoint(
     id_realisasi: int,
     db: AsyncSession = Depends(get_db),
     current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
-    # 1. Enforce RENDATIN strict authorization
-    require_rendatin_user(current_user)
+    existing = await db.get(RealisasiAnggaran, id_realisasi)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
+        )
 
-    # 2. Execute atomic deletion
-    return await realisasi_anggaran.delete_realisasi_rendatin(
-        db,
-        id_realisasi=id_realisasi,
-        user=current_user,
+    if existing.status == "draft":
+        return await realisasi_anggaran.delete_draft(
+            db,
+            id_realisasi=id_realisasi,
+            current_user_id=current_user.id_pegawai,
+        )
+    if existing.status == "verified":
+        require_rendatin_user(current_user)
+        return await realisasi_anggaran.delete_realisasi_rendatin(
+            db,
+            id_realisasi=id_realisasi,
+            user=current_user,
+        )
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"Transaksi berstatus '{existing.status}' tidak dapat dihapus",
     )
 
 
@@ -282,12 +326,66 @@ async def reject_realisasi_action(
     )
     return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
 
+@router.post(
+    "/{id_realisasi}/koreksi",
+    response_model=RealisasiAnggaranResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Catat Koreksi / SSPB Pengembalian Belanja",
+    description="Mencatat transaksi penyesuaian / SSPB negatif terhadap realisasi verified tanpa menghapus jejak audit historis.",
+)
+async def create_koreksi_sspb(
+    id_realisasi: int,
+    koreksi_in: RealisasiKoreksiCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_budget_operator),
+) -> Any:
+    db_obj = await realisasi_anggaran.create_koreksi(
+        db,
+        id_realisasi_asal=id_realisasi,
+        obj_in=koreksi_in,
+        user=current_user,
+    )
+    return await realisasi_anggaran.enrich_realisasi_response(db, db_obj)
+
+
 @router.get("/{id_realisasi}/history")
 async def budget_history(id_realisasi: int, db: AsyncSession = Depends(get_db),
                          user: Pegawai = Depends(get_current_user)):
     from sqlalchemy import select
     from app.models.operations import BudgetEvent
+
+    tx = await realisasi_anggaran.get_detail(db, id_realisasi)
+    if tx is not None:
+        if not is_rendatin_or_keuangan(user):
+            bagian_id = tx.akun_anggaran.id_bagian if tx.akun_anggaran else None
+            if bagian_id != user.id_bagian:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Akses ditolak: Anda tidak berwenang melihat riwayat transaksi subbagian lain",
+                )
+    elif not is_rendatin_or_keuangan(user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transaksi realisasi dengan ID {id_realisasi} tidak ditemukan",
+        )
+
     rows = (await db.scalars(select(BudgetEvent).where(
         BudgetEvent.realization_id == id_realisasi).order_by(BudgetEvent.id))).all()
-    return [{"id": row.id, "actor_id": row.actor_id, "action": row.action,
-             "recorded_at": row.recorded_at.isoformat() + "Z", "snapshot": row.snapshot} for row in rows]
+    actor_ids = {row.actor_id for row in rows if row.actor_id}
+    actor_names = {}
+    if actor_ids:
+        actor_rows = (await db.execute(
+            select(Pegawai.id_pegawai, Pegawai.nama).where(Pegawai.id_pegawai.in_(actor_ids))
+        )).all()
+        actor_names = {aid: name for aid, name in actor_rows}
+    return [
+        {
+            "id": row.id,
+            "actor_id": row.actor_id,
+            "actor_nama": actor_names.get(row.actor_id),
+            "action": row.action,
+            "recorded_at": row.recorded_at.isoformat() + "Z",
+            "snapshot": row.snapshot,
+        }
+        for row in rows
+    ]

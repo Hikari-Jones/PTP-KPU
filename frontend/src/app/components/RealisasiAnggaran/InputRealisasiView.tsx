@@ -11,6 +11,12 @@ import {
   tahunAnggaranApi,
   filesApi,
 } from "../../../services/api"
+import {
+  formatCurrencyInput,
+  formatRupiah,
+  parseCurrencyValue,
+  sanitizeCurrencyInput,
+} from "../../../utils/currency"
 import type { PaguAnggaranResponse, TahunAnggaranResponse, FileUploadResponse } from "./types"
 
 export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
@@ -27,16 +33,14 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
   )
   const [uraian, setUraian] = useState("")
   const [jumlah, setJumlah] = useState("")
-
-  const formatThousand = (val: string | number) => {
-    const raw = String(val).replace(/\D/g, "")
-    if (!raw) return ""
-    return new Intl.NumberFormat("id-ID").format(Number(raw))
-  }
+  const [mekanismeBayar, setMekanismeBayar] = useState<"UP" | "TUP" | "GUP" | "LS">("LS")
+  const [jenisDokumenBayar, setJenisDokumenBayar] = useState<"SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi">("SP2D")
+  const [nomorSp2d, setNomorSp2d] = useState("")
+  const [penerimaPembayaran, setPenerimaPembayaran] = useState("")
+  const [potonganPajak, setPotonganPajak] = useState("")
 
   const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, "")
-    setJumlah(raw)
+    setJumlah(sanitizeCurrencyInput(e.target.value))
   }
   const [periode, setPeriode] = useState(new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" }))
   const [fileName, setFileName] = useState("")
@@ -96,10 +100,10 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
 
   const selectedPagu = paguList.find((p) => p.id_pagu === selectedPaguId)
   const remaining = selectedPagu ? Number(selectedPagu.sisa_anggaran) || 0 : 0
-  const numericAmount = Number(jumlah) || 0
+  const numericAmount = parseCurrencyValue(jumlah)
+  const numericPajak = parseCurrencyValue(potonganPajak)
+  const numericNetto = Math.max(0, numericAmount - numericPajak)
   const isOverBudget = Boolean(selectedPagu && numericAmount > remaining)
-
-  const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").format(Math.round(value))}`
 
   const inputClass = `w-full rounded-xl border px-3 py-2.5 text-xs font-semibold outline-none transition-colors ${
     isDark
@@ -179,6 +183,11 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
       return
     }
 
+    if (numericPajak >= numericAmount) {
+      setMessage({ type: "error", text: "Potongan pajak harus lebih kecil dari nominal bruto realisasi." })
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const res = await realisasiAnggaranApi.createDraft({
@@ -187,6 +196,11 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
         nomor_dokumen: nomorDokumen.trim(),
         uraian_kegiatan: uraian.trim(),
         jumlah_realisasi: numericAmount,
+        mekanisme_bayar: mekanismeBayar,
+        jenis_dokumen_bayar: jenisDokumenBayar,
+        nomor_sp2d: nomorSp2d.trim() || null,
+        penerima_pembayaran: penerimaPembayaran.trim() || null,
+        potongan_pajak: numericPajak,
         periode,
         bukti_file_path: uploadedFileData ? `/api/v1/files/${uploadedFileData.file_id}` : null,
         bukti_file_nama: uploadedFileData ? uploadedFileData.filename : null,
@@ -196,13 +210,16 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
 
       setMessage({
         type: "success",
-        text: `Realisasi ${res.nomor_dokumen} berhasil disimpan langsung sah (Status: ${res.status}).`,
+        text: `Draft realisasi ${res.nomor_dokumen} berhasil disimpan (Status: ${res.status}). Ajukan transaksi pada menu Daftar Transaksi untuk pemeriksaan terpisah.`,
       })
 
       // Reset form
       setNomorDokumen("")
       setUraian("")
       setJumlah("")
+      setNomorSp2d("")
+      setPenerimaPembayaran("")
+      setPotonganPajak("")
       setFileName("")
       setSelectedFile(null)
       setUploadedFileData(null)
@@ -385,13 +402,95 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               </div>
               <Input
                 type="text"
-                inputMode="numeric"
+                inputMode="decimal"
                 placeholder="0"
-                value={formatThousand(jumlah)}
+                value={formatCurrencyInput(jumlah)}
                 onChange={handleJumlahChange}
                 disabled={isSubmitting}
                 className={`${inputClass} font-mono ${isOverBudget ? "border-red-500 text-red-500" : ""}`}
               />
+            </div>
+          </div>
+
+          {/* Baris 3b: Mekanisme Pembayaran, Rantai Dokumen & Pajak (PMK 62/2023) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Mekanisme Bayar
+              </label>
+              <select
+                value={mekanismeBayar}
+                onChange={(e) => setMekanismeBayar(e.target.value as "UP" | "TUP" | "GUP" | "LS")}
+                disabled={isSubmitting}
+                className={inputClass}
+              >
+                <option value="LS">LS (Langsung)</option>
+                <option value="UP">UP (Uang Persediaan)</option>
+                <option value="TUP">TUP (Tambahan UP)</option>
+                <option value="GUP">GUP (Ganti UP)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Jenis Dokumen
+              </label>
+              <select
+                value={jenisDokumenBayar}
+                onChange={(e) => setJenisDokumenBayar(e.target.value as "SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi")}
+                disabled={isSubmitting}
+                className={inputClass}
+              >
+                <option value="SP2D">SP2D</option>
+                <option value="SPM">SPM</option>
+                <option value="SPP">SPP</option>
+                <option value="SPBy">SPBy</option>
+                <option value="Kuitansi">Kuitansi</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Nomor SP2D (Opsional)
+              </label>
+              <Input
+                type="text"
+                placeholder="No. SP2D KPPN"
+                value={nomorSp2d}
+                onChange={(e) => setNomorSp2d(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Penerima / Rekanan
+              </label>
+              <Input
+                type="text"
+                placeholder="Nama penyedia / bendahara"
+                value={penerimaPembayaran}
+                onChange={(e) => setPenerimaPembayaran(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Potongan Pajak (Rp)
+              </label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={formatCurrencyInput(potonganPajak)}
+                onChange={(e) => setPotonganPajak(sanitizeCurrencyInput(e.target.value))}
+                disabled={isSubmitting}
+                className={`${inputClass} font-mono`}
+              />
+              {numericAmount > 0 && (
+                <p className="text-[10px] font-bold text-slate-500">
+                  Netto dibayarkan: {formatRupiah(numericNetto)}
+                </p>
+              )}
             </div>
           </div>
 
