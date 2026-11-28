@@ -135,6 +135,41 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result[-1]['used_database'])
         self.assertIs(query.call_args.kwargs['user'], USER)
 
+    def test_topic_switch_drops_stale_history_while_preserving_followups(self):
+        anggaran_history = [
+            {'role': 'user', 'content': 'Berapa total pagu aktif dan realisasi anggaran 2026?'},
+            {'role': 'assistant', 'content': 'Total pagu aktif Rp 500.000.000, realisasi Rp 120.000.000.'},
+        ]
+        # Switching domain (Anggaran -> Surat) clears stale history
+        self.assertEqual(
+            kirana_agent._select_relevant_history('Tampilkan 5 surat keluar terbaru', anggaran_history),
+            [],
+        )
+        # Switching from Anggaran to unrelated general topic clears stale history
+        self.assertEqual(
+            kirana_agent._select_relevant_history('Apa itu inflasi ekonomi?', anggaran_history),
+            [],
+        )
+        # Fresh standalone same-domain query clears history so 3B calls query_database cleanly
+        self.assertEqual(
+            kirana_agent._select_relevant_history('Berapa sisa pagu belanja barang?', anggaran_history),
+            [],
+        )
+        # Genuine follow-up with reference cue preserves history
+        self.assertEqual(
+            len(kirana_agent._select_relevant_history('Rincikan anggaran tersebut per akun', anggaran_history)),
+            2,
+        )
+        # Draft revision follow-up preserves previous draft history
+        draft_history = [
+            {'role': 'user', 'content': 'Buatkan draf nota dinas pengadaan ATK'},
+            {'role': 'assistant', 'content': 'NOTA DINAS\nNomor: [nomor]'},
+        ]
+        self.assertEqual(
+            len(kirana_agent._select_relevant_history('Ubah sifat surat menjadi Penting', draft_history)),
+            2,
+        )
+
 
 class ScopedDatabaseTests(unittest.TestCase):
     def setUp(self):

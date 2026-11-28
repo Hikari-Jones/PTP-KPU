@@ -25,8 +25,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
 from app.services import kirana_db
 
 MAX_TOOL_ROUNDS = 3  # queries per question (lets the model fix a failed query)
-MAX_HISTORY_MESSAGES = 12
-MAX_HISTORY_CHARS = 2000  # per past message
+MAX_HISTORY_MESSAGES = 6
+MAX_HISTORY_CHARS = 900  # per past message (keeps 3B context focused on current turn)
 
 TOOL_OPEN, TOOL_CLOSE = "<tool_call>", "</tool_call>"
 
@@ -66,6 +66,7 @@ Cara menjawab:
 - Tulis nominal uang sebagai Rupiah dengan pemisah ribuan, contoh Rp 1.250.000.
 - Jangan pernah mengarang data. Angka, nama, nomor surat, dan isi dokumen hanya boleh berasal dari hasil query_database. Jika hasilnya kosong atau query gagal, katakan apa adanya.
 - Jika pertanyaan membutuhkan data sistem, LANGSUNG panggil query_database tanpa kalimat pembuka seperti "mohon tunggu". Jangan pernah menulis SQL atau tanda seperti [hasil query] di dalam jawaban; jalankan query-nya, lalu jawab dengan hasilnya.
+- Setiap pertanyaan baru yang membutuhkan data sistem WAJIB memanggil query_database baru, meskipun percakapan sebelumnya sudah membahas topik lain. Jangan pernah menyalin, menebak, atau mencampur angka/nama dari topik sebelumnya.
 - Semua draf dan saran AI perlu pemeriksaan manusia; bukan keputusan resmi.
 - Data yang tersedia dibatasi oleh hak akses pengguna.
 - Anda hanya bisa membaca data. Permintaan mengubah atau menghapus data ditolak dengan sopan dan diarahkan ke modul terkait di aplikasi.
@@ -155,6 +156,84 @@ _DATA_REQUEST = re.compile(r"\b(rekap|daftar|jumlah|berapa|total|statistik|lapor
 
 def _is_draft_request(message: str) -> bool:
     return bool(_DRAFT_REQUEST.search(message or "")) and not _DATA_REQUEST.search(message or "")
+
+
+_DOMAIN_PATTERNS = {
+    "surat": re.compile(
+        r"\b(surat|nota\s+dinas|disposisi|undangan|perihal|alur\s+persuratan|nomor\s+surat|pengirim|penerima)\b",
+        re.IGNORECASE,
+    ),
+    "anggaran": re.compile(
+        r"\b(anggaran|pagu|realisasi|dipa|pok|rpd|triwulan|akun\s+anggaran|belanja|revisi\s+anggaran|serapan|rupiah|blokir|tahun\s+anggaran)\b",
+        re.IGNORECASE,
+    ),
+    "arsip": re.compile(
+        r"\b(arsip|dokumen|berkas|klasifikasi|retensi|jra|penyusutan|alih\s+media|skkaad|rahasia)\b",
+        re.IGNORECASE,
+    ),
+    "pegawai": re.compile(
+        r"\b(pegawai|nip|staf|staff|karyawan|subbagian|bagian|jabatan|kasubbag|sekretaris|admin|pengguna|user)\b",
+        re.IGNORECASE,
+    ),
+}
+
+_FOLLOWUP_CUE = re.compile(
+    r"\b((?:yang|hal|data|surat|draf|draft|berkas|dokumen|angka|bagian|akun|pagu)\s+itu|"
+    r"tersebut|tadi|sebelumnya|di\s+atas|barusan|ubah|ganti|revisi|perbaiki|"
+    r"tambahkan|tambah|kurangi|hapus|singkat|ringkas|perpanjang|rincikan|detailnya|"
+    r"jelaskan\s+(lagi|lebih)|lanjut(kan)?|coba\s+lagi|versi|format\s+ulang|"
+    r"yang\s+(sama|tadi))\b",
+    re.IGNORECASE,
+)
+
+_DATA_DOMAIN_QUERY = re.compile(
+    r"\b(berapa|jumlah|total|rekap|daftar|tampilkan|lihat|cari|cek|siapa|"
+    r"apa\s+saja|terbaru|terakhir|status|sisa|persentase|statistik|laporan)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_domains(text: str) -> set[str]:
+    if not text:
+        return set()
+    return {name for name, pat in _DOMAIN_PATTERNS.items() if pat.search(text)}
+
+
+def _select_relevant_history(
+    message: str,
+    history: Optional[Sequence[Dict[str, Any]]],
+) -> List[Dict[str, str]]:
+    """Keep recent turns only when the new message genuinely continues the topic.
+
+    Small local models (3B) anchor strongly on earlier turns and skip tool calls or
+    hallucinate when the user switches topics inside the same chat thread.
+    """
+    cleaned = _clean_history(history)
+    if not cleaned:
+        return []
+
+    if _FOLLOWUP_CUE.search(message or ""):
+        return cleaned
+
+    words = re.findall(r"\w+", message or "")
+    new_domains = _detect_domains(message)
+    recent_text = " ".join(turn["content"] for turn in cleaned[-2:])
+    prev_domains = _detect_domains(recent_text)
+
+    # Clear switch between distinct PTP-KPU domains (e.g. Anggaran -> Surat).
+    if new_domains and prev_domains and not (new_domains & prev_domains):
+        return []
+
+    # Switch between a specific PTP-KPU domain and an unrelated general topic.
+    if len(words) >= 3 and bool(new_domains) != bool(prev_domains):
+        return []
+
+    # Fresh standalone database lookup without follow-up references: start clean so
+    # the 3B model calls query_database instead of imitating prior plain-text turns.
+    if len(words) >= 4 and _DATA_DOMAIN_QUERY.search(message or "") and new_domains:
+        return []
+
+    return cleaned
 
 
 def build_system_prompt(context: Optional[str] = None) -> str:
@@ -291,13 +370,17 @@ async def run_agent(
     # Drafting needs no data; small models still tend to look up names they see in
     # the request, so the request is marked and any database call is redirected.
     draft_mode = _is_draft_request(message)
+    relevant_history = _select_relevant_history(message, history)
     user_content = message
     if draft_mode:
         user_content += ("\n\n(Catatan sistem: ini permintaan penyusunan draf. Tulis drafnya langsung "
                          "dengan tanda kurung siku untuk data yang belum diketahui; jangan memanggil query_database.)")
+    elif relevant_history and _DATA_DOMAIN_QUERY.search(message or ""):
+        user_content += ("\n\n(Catatan sistem: fokus HANYA pada pertanyaan terbaru ini. Jika butuh data sistem, "
+                         "WAJIB panggil query_database baru dan jangan mengarang atau menyalin data dari topik sebelumnya.)")
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": build_system_prompt(context)},
-        *_clean_history(history),
+        *relevant_history,
         {"role": "user", "content": user_content},
     ]
     used_database = False
