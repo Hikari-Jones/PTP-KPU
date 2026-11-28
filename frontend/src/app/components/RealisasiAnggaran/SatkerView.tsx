@@ -4,6 +4,7 @@ import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, 
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { Badge } from "../ui/badge"
+import { CharLimit } from "../ui/CharLimit"
 import { fetchSatker, createSatker, type SatkerData } from "../../../services/api"
 import { useAuth } from "../../context/AuthContext"
 import { showToast } from "../../../services/activity"
@@ -274,18 +275,24 @@ export function SatkerView({ theme, onNavigate }: Props) {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Cari Satker atau Kode..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className={`w-full pl-9 pr-4 py-2 text-xs rounded-xl border font-medium outline-none transition-colors ${
-              isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
-            }`}
-          />
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+        <div className="w-full sm:w-80 space-y-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              maxLength={150}
+              placeholder="Cari Satker atau Kode..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={`w-full pl-9 pr-4 py-2 text-xs rounded-xl border font-medium outline-none transition-colors ${
+                isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+              }`}
+            />
+          </div>
+          <div className="flex justify-end">
+            <CharLimit value={searchTerm} max={150} />
+          </div>
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
@@ -405,11 +412,15 @@ export function SatkerView({ theme, onNavigate }: Props) {
             <form onSubmit={handleCreateSatker} className="mt-4 space-y-4 text-xs font-semibold">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
-                    Kode Satker *
-                  </label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Kode Satker *
+                    </label>
+                    <CharLimit value={formData.kode_satker} max={50} />
+                  </div>
                   <input
                     required
+                    maxLength={50}
                     placeholder="Contoh: 652817"
                     value={formData.kode_satker}
                     onChange={(e) => setFormData({ ...formData, kode_satker: e.target.value })}
@@ -436,11 +447,15 @@ export function SatkerView({ theme, onNavigate }: Props) {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
-                  Nama Satuan Kerja *
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Nama Satuan Kerja *
+                  </label>
+                  <CharLimit value={formData.nama_satker} max={255} />
+                </div>
                 <input
                   required
+                  maxLength={255}
                   placeholder="Contoh: KPU Kabupaten Kepulauan Baru"
                   value={formData.nama_satker}
                   onChange={(e) => setFormData({ ...formData, nama_satker: e.target.value })}
@@ -451,11 +466,15 @@ export function SatkerView({ theme, onNavigate }: Props) {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
-                  Alamat Kantor *
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Alamat Kantor *
+                  </label>
+                  <CharLimit value={formData.alamat} max={500} />
+                </div>
                 <input
                   required
+                  maxLength={500}
                   placeholder="Contoh: Jl. Trans Sulawesi No. 10"
                   value={formData.alamat}
                   onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}

@@ -22,6 +22,7 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Badge } from "../ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
+import { CharLimit } from "../ui/CharLimit"
 import { useAuth } from "../../context/AuthContext"
 import { tahunAnggaranApi } from "../../../services/api"
 import type {
@@ -374,24 +375,30 @@ export function TahunAnggaranView({ theme }: Props) {
       </div>
 
       {/* Search, Filter & Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[240px]">
-            <Search className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? "text-gray-400" : "text-slate-500"}`} />
-            <input
-              type="text"
-              placeholder="Cari tahun anggaran..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value)
-                setCurrentPage(1)
-              }}
-              className={`w-full pl-9 pr-3 py-2 text-xs rounded-xl border outline-none font-medium transition-colors ${
-                isDark
-                  ? "bg-[#0f172a] border-white/10 text-white placeholder-gray-500 focus:border-red-500"
-                  : "bg-white border-slate-200 text-black placeholder-slate-400 focus:border-red-500 shadow-xs"
-              }`}
-            />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-[240px] space-y-1">
+            <div className="relative">
+              <Search className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? "text-gray-400" : "text-slate-500"}`} />
+              <input
+                type="text"
+                maxLength={150}
+                placeholder="Cari tahun anggaran..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setCurrentPage(1)
+                }}
+                className={`w-full pl-9 pr-3 py-2 text-xs rounded-xl border outline-none font-medium transition-colors ${
+                  isDark
+                    ? "bg-[#0f172a] border-white/10 text-white placeholder-gray-500 focus:border-red-500"
+                    : "bg-white border-slate-200 text-black placeholder-slate-400 focus:border-red-500 shadow-xs"
+                }`}
+              />
+            </div>
+            <div className="flex justify-end">
+              <CharLimit value={searchQuery} max={150} />
+            </div>
           </div>
 
           <select
@@ -835,9 +842,13 @@ export function TahunAnggaranView({ theme }: Props) {
               </div>
 
               <div>
-                <label className="block font-semibold mb-1">Deskripsi / Keterangan</label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block font-semibold">Deskripsi / Keterangan</label>
+                  <CharLimit value={formDeskripsi} max={1000} />
+                </div>
                 <textarea
                   rows={3}
+                  maxLength={1000}
                   value={formDeskripsi}
                   onChange={(e) => setFormDeskripsi(e.target.value)}
                   placeholder="Keterangan tahun anggaran..."
@@ -934,11 +945,15 @@ export function TahunAnggaranView({ theme }: Props) {
               </div>
 
               <div>
-                <label className="block font-semibold mb-1 text-slate-300 dark:text-slate-300">
-                  Alasan Aktivasi (Opsional / Audit Log):
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block font-semibold text-slate-300 dark:text-slate-300">
+                    Alasan Aktivasi (Opsional / Audit Log):
+                  </label>
+                  <CharLimit value={activateReason} max={500} />
+                </div>
                 <input
                   type="text"
+                  maxLength={500}
                   value={activateReason}
                   onChange={(e) => setActivateReason(e.target.value)}
                   placeholder="Contoh: Mulai tahun anggaran baru / Koreksi operasional"

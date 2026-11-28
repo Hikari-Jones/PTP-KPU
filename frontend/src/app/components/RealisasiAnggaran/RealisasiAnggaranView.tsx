@@ -25,6 +25,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { Badge } from "../ui/badge"
+import { CharLimit } from "../ui/CharLimit"
 import type {
   TahunAnggaranResponse,
   BagianResponse,
@@ -539,16 +540,22 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                 <option value="ada">Ada Bukti Dokumen</option>
                 <option value="tanpa">Belum Ada Bukti</option>
               </select>
-              <div className="relative min-w-[200px] flex-1">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  aria-label="Cari transaksi realisasi"
-                  value={searchQuery}
-                  onChange={(e) => { setPage(0); setSearchQuery(e.target.value) }}
-                  placeholder="Cari no. dokumen, uraian, atau MAK..."
-                  className={`${selectClass} w-full pl-8 cursor-text font-medium`}
-                />
+              <div className="min-w-[200px] flex-1 space-y-1">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    maxLength={150}
+                    aria-label="Cari transaksi realisasi"
+                    value={searchQuery}
+                    onChange={(e) => { setPage(0); setSearchQuery(e.target.value) }}
+                    placeholder="Cari no. dokumen, uraian, atau MAK..."
+                    className={`${selectClass} w-full pl-8 cursor-text font-medium`}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <CharLimit value={searchQuery} max={150} />
+                </div>
               </div>
             </>
           )}
@@ -1090,9 +1097,13 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="font-bold block">Catatan / Alasan Penerbitan</label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="font-bold block">Catatan / Alasan Penerbitan</label>
+                      <CharLimit value={publishAlasan} max={500} />
+                    </div>
                     <textarea
                       rows={2}
+                      maxLength={500}
                       value={publishAlasan}
                       onChange={(e) => setPublishAlasan(e.target.value)}
                       placeholder="Contoh: Rilis resmi laporan triwulan pasca rekonsiliasi SAKTI"
@@ -1198,8 +1209,11 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
             </p>
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1 font-bold">
-                No. Dokumen SSPB *
-                <input required value={koreksiNomor} onChange={(e) => setKoreksiNomor(e.target.value)} className={`${selectClass} w-full cursor-text`} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>No. Dokumen SSPB *</span>
+                  <CharLimit value={koreksiNomor} max={100} />
+                </span>
+                <input required maxLength={100} value={koreksiNomor} onChange={(e) => setKoreksiNomor(e.target.value)} className={`${selectClass} w-full cursor-text`} />
               </label>
               <label className="space-y-1 font-bold">
                 Tanggal SSPB *
@@ -1207,11 +1221,15 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               </label>
             </div>
             <label className="block space-y-1 font-bold">
-              Nominal Pengembalian (Rp) *
+              <span className="flex items-center justify-between gap-2">
+                <span>Nominal Pengembalian (Rp) *</span>
+                <CharLimit value={formatCurrencyInput(koreksiNominal)} max={22} />
+              </span>
               <input
                 required
                 type="text"
                 inputMode="decimal"
+                maxLength={22}
                 value={formatCurrencyInput(koreksiNominal)}
                 onChange={(e) => setKoreksiNominal(sanitizeCurrencyInput(e.target.value))}
                 placeholder="0"
@@ -1219,8 +1237,11 @@ export function RealisasiAnggaranView({ theme, subTab = "ringkasan", onNavigate 
               />
             </label>
             <label className="block space-y-1 font-bold">
-              Alasan Koreksi / SSPB *
-              <textarea required minLength={5} rows={3} value={koreksiAlasan} onChange={(e) => setKoreksiAlasan(e.target.value)} placeholder="Contoh: Setoran sisa perjalanan dinas ke kas negara melalui SSPB" className={`${selectClass} w-full cursor-text font-medium`} />
+              <span className="flex items-center justify-between gap-2">
+                <span>Alasan Koreksi / SSPB *</span>
+                <CharLimit value={koreksiAlasan} max={1000} />
+              </span>
+              <textarea required minLength={5} maxLength={1000} rows={3} value={koreksiAlasan} onChange={(e) => setKoreksiAlasan(e.target.value)} placeholder="Contoh: Setoran sisa perjalanan dinas ke kas negara melalui SSPB" className={`${selectClass} w-full cursor-text font-medium`} />
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setKoreksiTarget(null)} className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/10 font-bold cursor-pointer">Batal</button>

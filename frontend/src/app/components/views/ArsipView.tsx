@@ -4,11 +4,12 @@ import { filesApi } from '../../../services/api'
 import { showToast as notify } from '../../../services/activity'
 import { useAuth } from '../../context/AuthContext'
 import { Workspace, field, button, useOperation, SkeletonTable } from '../ui/operations'
+import { CharLimit } from '../ui/CharLimit'
 import { ArsipBulkImport, type KlasifikasiOption } from './ArsipBulkImport'
 import {
   Search, Trash2, Archive as ArchiveIcon, UploadCloud, Download, RotateCcw,
   Loader2, Filter, RefreshCw, X, Eye, ExternalLink, Pencil, ShieldAlert,
-  ShieldCheck, Lock, History, Layers, KeyRound, FileCheck2,
+  ShieldCheck, Lock, Layers, KeyRound, FileCheck2,
 } from 'lucide-react'
 
 interface Archive {
@@ -62,14 +63,6 @@ interface AccessGrantItem {
   nama_pegawai?: string | null
   alasan?: string | null
   valid_until?: string | null
-  created_at: string
-}
-
-interface AuditLogItem {
-  id: number
-  aksi: string
-  actor_nama?: string | null
-  detail?: string | null
   created_at: string
 }
 
@@ -153,8 +146,10 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string; contentType: string; text?: string; filePath: string } | null>(null)
 
-  // Modals: Edit Metadata, Version History, SKKAAD Access Grants, Audit Log
+  // Modal Edit terpadu (Metadata + Riwayat Versi + Izin Akses SKKAAD)
   const [editDoc, setEditDoc] = useState<Archive | null>(null)
+  const [editTab, setEditTab] = useState<'metadata' | 'versi' | 'izin'>('metadata')
+  const editDialogRef = useRef<HTMLDialogElement | null>(null)
   const [editForm, setEditForm] = useState({
     nama_dokumen: '',
     nomor_dokumen: '',
@@ -169,19 +164,15 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
     legal_hold: false,
     legal_hold_alasan: '',
   })
-  const [versionDoc, setVersionDoc] = useState<Archive | null>(null)
   const [versions, setVersions] = useState<Archive[]>([])
   const [versionFile, setVersionFile] = useState<File | null>(null)
   const [versionNote, setVersionNote] = useState('')
+  const versionInputRef = useRef<HTMLInputElement | null>(null)
 
-  const [grantDoc, setGrantDoc] = useState<Archive | null>(null)
   const [grants, setGrants] = useState<AccessGrantItem[]>([])
   const [grantPegawaiId, setGrantPegawaiId] = useState('')
   const [grantAlasan, setGrantAlasan] = useState('')
   const [grantValidUntil, setGrantValidUntil] = useState('')
-
-  const [auditDoc, setAuditDoc] = useState<Archive | null>(null)
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([])
 
   const closePreview = () => {
     if (previewDoc?.url) URL.revokeObjectURL(previewDoc.url)
@@ -233,8 +224,27 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
     load().catch((e) => setError(message(e)))
   }, [trash, page, sumber, subKategori, tahun, retensiFilter, aksesFilter, reloadKey, onlyRequests])
 
-  const openEditModal = (doc: Archive) => {
+  const loadVersionsForDoc = async (docId: number) => {
+    try {
+      const list = await request<Archive[]>(`/arsip/${docId}/versi`)
+      setVersions(list)
+    } catch (e) {
+      notify('error', message(e))
+    }
+  }
+
+  const loadGrantsForDoc = async (docId: number) => {
+    try {
+      const list = await request<AccessGrantItem[]>(`/arsip/${docId}/access-grants`)
+      setGrants(list)
+    } catch (e) {
+      notify('error', message(e))
+    }
+  }
+
+  const openEditModal = (doc: Archive, initialTab: 'metadata' | 'versi' | 'izin' = 'metadata') => {
     setEditDoc(doc)
+    setEditTab(initialTab)
     setEditForm({
       nama_dokumen: doc.nama_dokumen,
       nomor_dokumen: doc.nomor_dokumen,
@@ -249,42 +259,33 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
       legal_hold: Boolean(doc.legal_hold),
       legal_hold_alasan: doc.legal_hold_alasan || '',
     })
-  }
-
-  const openVersionsModal = async (doc: Archive) => {
-    setVersionDoc(doc)
+    setVersions([])
     setVersionFile(null)
     setVersionNote('')
-    try {
-      const list = await request<Archive[]>(`/arsip/${doc.id_dokumen}/versi`)
-      setVersions(list)
-    } catch (e) {
-      notify('error', message(e))
-    }
-  }
-
-  const openGrantsModal = async (doc: Archive) => {
-    setGrantDoc(doc)
+    setGrants([])
     setGrantPegawaiId('')
     setGrantAlasan('')
     setGrantValidUntil('')
-    try {
-      const list = await request<AccessGrantItem[]>(`/arsip/${doc.id_dokumen}/access-grants`)
-      setGrants(list)
-    } catch (e) {
-      notify('error', message(e))
-    }
+    void loadVersionsForDoc(doc.id_dokumen)
+    void loadGrantsForDoc(doc.id_dokumen)
   }
 
-  const openAuditModal = async (doc: Archive) => {
-    setAuditDoc(doc)
-    try {
-      const list = await request<AuditLogItem[]>(`/arsip/${doc.id_dokumen}/audit-log`)
-      setAuditLogs(list)
-    } catch (e) {
-      notify('error', message(e))
+  const closeEditModal = () => {
+    if (editDialogRef.current?.open) {
+      editDialogRef.current.close()
     }
+    setEditDoc(null)
   }
+
+  useEffect(() => {
+    const dlg = editDialogRef.current
+    if (!dlg) return
+    if (editDoc && !dlg.open) {
+      dlg.showModal()
+    } else if (!editDoc && dlg.open) {
+      dlg.close()
+    }
+  }, [editDoc])
 
   const sumberOptions = [...new Set(['surat', 'realisasi', 'arsip', ...options.sumber_modul])]
   const subOptions = sumber ? options.sub_kategori[sumber] ?? [] : []
@@ -310,13 +311,13 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
     'btn-kpu-red px-3 py-1.5 text-white font-medium text-xs rounded-lg inline-flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shrink-0 shadow-2xs'
 
   const formFields = [
-    { key: 'nama_dokumen', label: 'Nama Dokumen', type: 'text', placeholder: 'Masukkan nama dokumen', required: true },
-    { key: 'nomor_dokumen', label: 'Nomor Dokumen', type: 'text', placeholder: 'Contoh: 001/KPU/2026', required: true },
-    { key: 'kategori', label: 'Kategori Dokumen', type: 'text', placeholder: 'Laporan, Surat, SK, dll.', required: true },
-    { key: 'event', label: 'Kegiatan / Event', type: 'text', placeholder: 'Nama kegiatan (opsional)', required: false },
-    { key: 'tanggal_dokumen', label: 'Tanggal Dokumen', type: 'date', placeholder: '', required: true },
-    { key: 'lokasi_fisik', label: 'Lokasi Fisik (Opsional)', type: 'text', placeholder: 'Lemari B / Rak 2 / Boks 04', required: false },
-    { key: 'nomor_berkas', label: 'Nomor Berkas (Opsional)', type: 'text', placeholder: 'BRK-2026-01', required: false },
+    { key: 'nama_dokumen', label: 'Nama Dokumen', type: 'text', placeholder: 'Masukkan nama dokumen', required: true, maxLength: 255 },
+    { key: 'nomor_dokumen', label: 'Nomor Dokumen', type: 'text', placeholder: 'Contoh: 001/KPU/2026', required: true, maxLength: 100 },
+    { key: 'kategori', label: 'Kategori Dokumen', type: 'text', placeholder: 'Laporan, Surat, SK, dll.', required: true, maxLength: 100 },
+    { key: 'event', label: 'Kegiatan / Event', type: 'text', placeholder: 'Nama kegiatan (opsional)', required: false, maxLength: 200 },
+    { key: 'tanggal_dokumen', label: 'Tanggal Dokumen', type: 'date', placeholder: '', required: true, maxLength: undefined },
+    { key: 'lokasi_fisik', label: 'Lokasi Fisik (Opsional)', type: 'text', placeholder: 'Lemari B / Rak 2 / Boks 04', required: false, maxLength: 150 },
+    { key: 'nomor_berkas', label: 'Nomor Berkas (Opsional)', type: 'text', placeholder: 'BRK-2026-01', required: false, maxLength: 80 },
   ] as const
 
   return (
@@ -333,10 +334,11 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
       )}
 
       {/* Bar Pencarian & Tombol Aksi */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-2">
+        <div className="relative flex-1 space-y-1">
           <input
             aria-label="Cari arsip"
+            maxLength={150}
             className={fieldCompact}
             placeholder="Cari judul, nomor dokumen, lokasi fisik, atau isi teks PDF/DOCX..."
             value={search}
@@ -345,6 +347,9 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
               if (e.key === 'Enter') triggerSearch()
             }}
           />
+          <div className="flex justify-end">
+            <CharLimit value={search} max={150} />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button className={buttonCompact} disabled={busy} onClick={triggerSearch}>
@@ -556,14 +561,18 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
             }}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {formFields.map(({ key, label, type, placeholder, required }) => (
+              {formFields.map(({ key, label, type, placeholder, required, maxLength }) => (
                 <div key={key} className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {label} {required && <span className="text-red-500">*</span>}
-                  </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {label} {required && <span className="text-red-500">*</span>}
+                    </label>
+                    {maxLength && <CharLimit value={form[key]} max={maxLength} />}
+                  </div>
                   <input
                     required={required}
                     type={type}
+                    maxLength={maxLength}
                     className={field}
                     placeholder={placeholder}
                     value={form[key]}
@@ -630,8 +639,12 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
 
             {isAdmin && form.legal_hold && (
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-amber-700 dark:text-amber-300">Alasan Legal Hold</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-amber-700 dark:text-amber-300">Alasan Legal Hold</label>
+                  <CharLimit value={form.legal_hold_alasan} max={255} />
+                </div>
                 <input
+                  maxLength={255}
                   className={field}
                   placeholder="Contoh: Pemeriksaan BPK / Sengketa PHPU MK"
                   value={form.legal_hold_alasan}
@@ -762,78 +775,43 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   {x.file_path && /^\d+$/.test(x.file_path) && (
-                    <>
-                      <button
-                        className={`${button} !px-2.5 !py-1.5 !text-xs`}
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            const res = await fetchFilePreview(`/files/${x.file_path}`)
-                            setPreviewDoc({
-                              title: x.nama_dokumen,
-                              url: res.url,
-                              contentType: res.contentType,
-                              text: res.text,
-                              filePath: x.file_path!,
-                            })
+                    <button
+                      type="button"
+                      className={`${button} !px-2.5 !py-1.5 !text-xs`}
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          const res = await fetchFilePreview(`/files/${x.file_path}`)
+                          setPreviewDoc({
+                            title: x.nama_dokumen,
+                            url: res.url,
+                            contentType: res.contentType,
+                            text: res.text,
+                            filePath: x.file_path!,
                           })
-                        }
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Buka</span>
-                      </button>
-                      <button
-                        className={`${button} !px-2.5 !py-1.5 !text-xs !bg-slate-600 hover:!bg-slate-700`}
-                        disabled={busy}
-                        onClick={() => void run(() => download(`/files/${x.file_path}`, x.nama_dokumen))}
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Unduh</span>
-                      </button>
-                    </>
+                        })
+                      }
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Buka</span>
+                    </button>
                   )}
 
                   {!trash && canManage && (
-                    <>
-                      <button
-                        className={`${button} !px-2.5 !py-1.5 !text-xs !bg-slate-700 hover:!bg-slate-800`}
-                        disabled={busy}
-                        onClick={() => openEditModal(x)}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        className={`${button} !px-2.5 !py-1.5 !text-xs !bg-indigo-600 hover:!bg-indigo-700`}
-                        disabled={busy}
-                        onClick={() => void openVersionsModal(x)}
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>Versi</span>
-                      </button>
-                      {['terbatas', 'rahasia', 'sangat_rahasia'].includes(x.hak_akses) && (
-                        <button
-                          className={`${button} !px-2.5 !py-1.5 !text-xs !bg-amber-600 hover:!bg-amber-700`}
-                          disabled={busy}
-                          onClick={() => void openGrantsModal(x)}
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          <span>Izin Akses</span>
-                        </button>
-                      )}
-                    </>
+                    <button
+                      type="button"
+                      className={`${button} !px-2.5 !py-1.5 !text-xs !bg-slate-700 hover:!bg-slate-800`}
+                      disabled={busy}
+                      title="Edit metadata, riwayat versi, dan izin akses dokumen"
+                      onClick={() => openEditModal(x, 'metadata')}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
                   )}
 
                   <button
-                    className={`${button} !px-2.5 !py-1.5 !text-xs !bg-slate-600 hover:!bg-slate-700`}
-                    disabled={busy}
-                    onClick={() => void openAuditModal(x)}
-                  >
-                    <History className="w-3.5 h-3.5" />
-                    <span>Audit</span>
-                  </button>
-
-                  <button
+                    type="button"
                     className={`${button} !px-2.5 !py-1.5 !text-xs !bg-slate-700 hover:!bg-slate-800`}
                     disabled={busy}
                     onClick={() =>
@@ -941,9 +919,12 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
                       })
                     }}
                   >
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Alasan hapus permanen *
-                    </label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Alasan hapus permanen *
+                      </label>
+                      <CharLimit value={requestReason} max={255} />
+                    </div>
                     <textarea
                       autoFocus
                       rows={2}
@@ -978,9 +959,12 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
                       })
                     }}
                   >
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Catatan penolakan *
-                    </label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Catatan penolakan *
+                      </label>
+                      <CharLimit value={rejectNote} max={255} />
+                    </div>
                     <textarea
                       autoFocus
                       rows={2}
@@ -1016,237 +1000,376 @@ export function ArsipView({ theme }: { theme: 'light' | 'dark' }) {
         </button>
       </div>
 
-      {/* Modal Edit Metadata */}
-      {editDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <form
-            className={`w-full max-w-2xl rounded-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${
-              isDark ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
-            }`}
-            onSubmit={(e) => {
-              e.preventDefault()
-              void run(async () => {
-                const payload: Record<string, unknown> = {
-                  nama_dokumen: editForm.nama_dokumen,
-                  nomor_dokumen: editForm.nomor_dokumen,
-                  kategori: editForm.kategori,
-                  event: editForm.event.trim() || null,
-                  tanggal_dokumen: editForm.tanggal_dokumen,
-                  id_klasifikasi: editForm.id_klasifikasi ? Number(editForm.id_klasifikasi) : null,
-                  lokasi_fisik: editForm.lokasi_fisik.trim() || null,
-                  nomor_berkas: editForm.nomor_berkas.trim() || null,
-                  arsip_vital: editForm.arsip_vital,
-                }
-                if (!editDoc.ref_tipe) payload.hak_akses = editForm.hak_akses
-                if (isAdmin) {
-                  payload.legal_hold = editForm.legal_hold
-                  payload.legal_hold_alasan = editForm.legal_hold ? editForm.legal_hold_alasan.trim() || null : null
-                }
-                await request(`/arsip/${editDoc.id_dokumen}`, 'PUT', payload)
-                setEditDoc(null)
-                notify('success', 'Metadata arsip diperbarui')
-                await load()
-              })
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold">Edit Metadata Arsip</h3>
-              <button type="button" onClick={() => setEditDoc(null)} className="p-1 rounded hover:bg-red-500/20"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <label className="space-y-1"><span>Nama Dokumen *</span><input required className={field} value={editForm.nama_dokumen} onChange={(e) => setEditForm({ ...editForm, nama_dokumen: e.target.value })} /></label>
-              <label className="space-y-1"><span>Nomor Dokumen *</span><input required className={field} value={editForm.nomor_dokumen} onChange={(e) => setEditForm({ ...editForm, nomor_dokumen: e.target.value })} /></label>
-              <label className="space-y-1"><span>Kategori *</span><input required className={field} value={editForm.kategori} onChange={(e) => setEditForm({ ...editForm, kategori: e.target.value })} /></label>
-              <label className="space-y-1"><span>Tanggal Dokumen *</span><input type="date" required className={field} value={editForm.tanggal_dokumen} onChange={(e) => setEditForm({ ...editForm, tanggal_dokumen: e.target.value })} /></label>
-              <label className="space-y-1">
-                <span>Kode Klasifikasi (JRA)</span>
-                <select className={field} value={editForm.id_klasifikasi} onChange={(e) => setEditForm({ ...editForm, id_klasifikasi: e.target.value })}>
-                  <option value="">Tanpa Klasifikasi</option>
-                  {klasifikasiList.map((k) => (
-                    <option key={k.id_klasifikasi} value={k.id_klasifikasi}>{k.kode_klasifikasi} — {k.nama_klasifikasi}</option>
-                  ))}
-                </select>
-              </label>
-              {!editDoc.ref_tipe && (
-                <label className="space-y-1">
-                  <span>Hak Akses SKKAAD</span>
-                  <select className={field} value={editForm.hak_akses} onChange={(e) => setEditForm({ ...editForm, hak_akses: e.target.value })}>
-                    <option value="internal">Internal / Biasa</option>
-                    <option value="terbatas">Terbatas</option>
-                    <option value="rahasia">Rahasia</option>
-                    <option value="sangat_rahasia">Sangat Rahasia</option>
-                  </select>
-                </label>
-              )}
-              <label className="space-y-1"><span>Lokasi Fisik</span><input className={field} value={editForm.lokasi_fisik} onChange={(e) => setEditForm({ ...editForm, lokasi_fisik: e.target.value })} /></label>
-              <label className="space-y-1"><span>Nomor Berkas</span><input className={field} value={editForm.nomor_berkas} onChange={(e) => setEditForm({ ...editForm, nomor_berkas: e.target.value })} /></label>
-            </div>
-            <div className="flex flex-wrap gap-4 text-xs">
-              <label className="inline-flex items-center gap-2 font-semibold cursor-pointer">
-                <input type="checkbox" checked={editForm.arsip_vital} onChange={(e) => setEditForm({ ...editForm, arsip_vital: e.target.checked })} />
-                Arsip Vital
-              </label>
-              {isAdmin && (
-                <label className="inline-flex items-center gap-2 font-semibold text-amber-600 dark:text-amber-300 cursor-pointer">
-                  <input type="checkbox" checked={editForm.legal_hold} onChange={(e) => setEditForm({ ...editForm, legal_hold: e.target.checked })} />
-                  Legal Hold
-                </label>
-              )}
-            </div>
-            {isAdmin && editForm.legal_hold && (
-              <input className={field} placeholder="Alasan Legal Hold" value={editForm.legal_hold_alasan} onChange={(e) => setEditForm({ ...editForm, legal_hold_alasan: e.target.value })} />
-            )}
-            <div className="flex justify-end gap-2">
-              <button type="button" className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-white/15" onClick={() => setEditDoc(null)}>Batal</button>
-              <button className={button} disabled={busy}>Simpan Perubahan</button>
-            </div>
-          </form>
-        </div>
-      )}
+      {/* Modal Terpadu Edit Arsip (Metadata + Riwayat Versi + Izin Akses SKKAAD) */}
+      <dialog
+        ref={editDialogRef}
+        aria-labelledby="arsip-edit-title"
+        onCancel={(e) => {
+          e.preventDefault()
+          closeEditModal()
+        }}
+        className={`m-auto w-[min(42rem,calc(100vw-2rem))] rounded-2xl border p-0 max-h-[90vh] overflow-hidden shadow-2xl ${
+          isDark ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
+        }`}
+      >
+        {editDoc && (
+          <div className="flex flex-col max-h-[90vh]">
+            <div className={`px-5 pt-4 pb-3 border-b space-y-3 shrink-0 ${isDark ? 'border-white/10 bg-[#0a0f1d]' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 id="arsip-edit-title" className="text-sm font-bold truncate">
+                    Kelola Arsip · {editDoc.nama_dokumen}
+                  </h1>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
+                    {editDoc.nomor_dokumen}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  aria-label="Tutup dialog edit arsip"
+                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-500 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-      {/* Modal Kelola Versi Dokumen */}
-      {versionDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className={`w-full max-w-xl rounded-2xl border p-5 space-y-4 max-h-[85vh] overflow-y-auto ${isDark ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold">Riwayat Versi · {versionDoc.nama_dokumen}</h3>
-              <button type="button" onClick={() => setVersionDoc(null)} className="p-1 rounded hover:bg-red-500/20"><X className="w-4 h-4" /></button>
+              <div
+                role="tablist"
+                aria-label="Bagian pengelolaan arsip"
+                className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-white/10 -mb-3"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  id="arsip-tab-metadata"
+                  aria-selected={editTab === 'metadata'}
+                  onClick={() => setEditTab('metadata')}
+                  className={`flex-none px-3 py-2 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    editTab === 'metadata'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Edit Metadata</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="arsip-tab-versi"
+                  aria-selected={editTab === 'versi'}
+                  onClick={() => {
+                    setEditTab('versi')
+                    void loadVersionsForDoc(editDoc.id_dokumen)
+                  }}
+                  className={`flex-none px-3 py-2 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    editTab === 'versi'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Versi ({versions.length || (editDoc.versi_dokumen ?? 1)})</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="arsip-tab-izin"
+                  aria-selected={editTab === 'izin'}
+                  onClick={() => {
+                    setEditTab('izin')
+                    void loadGrantsForDoc(editDoc.id_dokumen)
+                  }}
+                  className={`flex-none px-3 py-2 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    editTab === 'izin'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Izin Akses ({grants.length})</span>
+                </button>
+              </div>
             </div>
-            <form
-              className="space-y-2 p-3 rounded-xl border border-slate-200 dark:border-white/10 text-xs"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!versionFile) { notify('error', 'Pilih berkas revisi'); return }
-                void run(async () => {
-                  await filesApi.uploadThen(versionFile, 'arsip', (up) =>
-                    request(`/arsip/${versionDoc.id_dokumen}/versi`, 'POST', {
-                      file_path: String(up.file_id),
-                      catatan_versi: versionNote.trim() || null,
+
+            <div className="p-5 overflow-y-auto flex-1">
+              {/* TAB 1: METADATA */}
+              <div role="tabpanel" aria-labelledby="arsip-tab-metadata" hidden={editTab !== 'metadata'}>
+                <form
+                  className="space-y-4"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void run(async () => {
+                      const payload: Record<string, unknown> = {
+                        nama_dokumen: editForm.nama_dokumen,
+                        nomor_dokumen: editForm.nomor_dokumen,
+                        kategori: editForm.kategori,
+                        event: editForm.event.trim() || null,
+                        tanggal_dokumen: editForm.tanggal_dokumen,
+                        id_klasifikasi: editForm.id_klasifikasi ? Number(editForm.id_klasifikasi) : null,
+                        lokasi_fisik: editForm.lokasi_fisik.trim() || null,
+                        nomor_berkas: editForm.nomor_berkas.trim() || null,
+                        arsip_vital: editForm.arsip_vital,
+                      }
+                      if (!editDoc.ref_tipe) payload.hak_akses = editForm.hak_akses
+                      if (isAdmin) {
+                        payload.legal_hold = editForm.legal_hold
+                        payload.legal_hold_alasan = editForm.legal_hold ? editForm.legal_hold_alasan.trim() || null : null
+                      }
+                      await request(`/arsip/${editDoc.id_dokumen}`, 'PUT', payload)
+                      setEditDoc({ ...editDoc, hak_akses: editForm.hak_akses, nama_dokumen: editForm.nama_dokumen, nomor_dokumen: editForm.nomor_dokumen })
+                      notify('success', 'Metadata arsip diperbarui')
+                      await load()
                     })
-                  )
-                  notify('success', 'Versi baru berhasil diunggah')
-                  await openVersionsModal(versionDoc)
-                  await load()
-                })
-              }}
-            >
-              <p className="font-semibold">Unggah Versi Revisi Baru</p>
-              <input type="file" required className={field} onChange={(e) => setVersionFile(e.target.files?.[0] || null)} />
-              <input className={field} placeholder="Catatan revisi (opsional)" value={versionNote} onChange={(e) => setVersionNote(e.target.value)} />
-              <button className={buttonCompact} disabled={busy}>Unggah Versi Baru</button>
-            </form>
-            <div className="space-y-2 text-xs">
-              {versions.map((v) => (
-                <div key={v.id_dokumen} className="p-3 rounded-lg border border-slate-200 dark:border-white/10 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-bold">Versi v{v.versi_dokumen ?? 1} · {v.tanggal_dokumen}</p>
-                    <p className="text-[11px] text-slate-500 font-mono">{v.sha256_hash ? `SHA-256: ${v.sha256_hash.slice(0, 16)}…` : 'Tanpa hash'}</p>
+                  }}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="edit-nama-dok" className="font-semibold">Nama Dokumen *</label>
+                        <CharLimit value={editForm.nama_dokumen} max={255} />
+                      </div>
+                      <input id="edit-nama-dok" required maxLength={255} className={field} value={editForm.nama_dokumen} onChange={(e) => setEditForm({ ...editForm, nama_dokumen: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="edit-nomor-dok" className="font-semibold">Nomor Dokumen *</label>
+                        <CharLimit value={editForm.nomor_dokumen} max={100} />
+                      </div>
+                      <input id="edit-nomor-dok" required maxLength={100} className={field} value={editForm.nomor_dokumen} onChange={(e) => setEditForm({ ...editForm, nomor_dokumen: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="edit-kategori-dok" className="font-semibold">Kategori *</label>
+                        <CharLimit value={editForm.kategori} max={100} />
+                      </div>
+                      <input id="edit-kategori-dok" required maxLength={100} className={field} value={editForm.kategori} onChange={(e) => setEditForm({ ...editForm, kategori: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="edit-tgl-dok" className="block font-semibold">Tanggal Dokumen *</label>
+                      <input id="edit-tgl-dok" type="date" required className={field} value={editForm.tanggal_dokumen} onChange={(e) => setEditForm({ ...editForm, tanggal_dokumen: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="edit-klas-dok" className="block font-semibold">Kode Klasifikasi (JRA)</label>
+                      <select id="edit-klas-dok" className={field} value={editForm.id_klasifikasi} onChange={(e) => setEditForm({ ...editForm, id_klasifikasi: e.target.value })}>
+                        <option value="">Tanpa Klasifikasi</option>
+                        {klasifikasiList.map((k) => (
+                          <option key={k.id_klasifikasi} value={k.id_klasifikasi}>{k.kode_klasifikasi} — {k.nama_klasifikasi}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {!editDoc.ref_tipe && (
+                      <div className="space-y-1">
+                        <label htmlFor="edit-akses-dok" className="block font-semibold">Hak Akses SKKAAD</label>
+                        <select id="edit-akses-dok" className={field} value={editForm.hak_akses} onChange={(e) => setEditForm({ ...editForm, hak_akses: e.target.value })}>
+                          <option value="internal">Internal / Biasa</option>
+                          <option value="terbatas">Terbatas</option>
+                          <option value="rahasia">Rahasia</option>
+                          <option value="sangat_rahasia">Sangat Rahasia</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="edit-lokasi-dok" className="font-semibold">Lokasi Fisik</label>
+                        <CharLimit value={editForm.lokasi_fisik} max={150} />
+                      </div>
+                      <input id="edit-lokasi-dok" maxLength={150} className={field} value={editForm.lokasi_fisik} onChange={(e) => setEditForm({ ...editForm, lokasi_fisik: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="edit-berkas-dok" className="font-semibold">Nomor Berkas</label>
+                        <CharLimit value={editForm.nomor_berkas} max={80} />
+                      </div>
+                      <input id="edit-berkas-dok" maxLength={80} className={field} value={editForm.nomor_berkas} onChange={(e) => setEditForm({ ...editForm, nomor_berkas: e.target.value })} />
+                    </div>
                   </div>
-                  {v.file_path && /^\d+$/.test(v.file_path) && (
-                    <button className={buttonCompact} onClick={() => void run(() => download(`/files/${v.file_path}`, `${v.nama_dokumen}_v${v.versi_dokumen ?? 1}`))}>
-                      <Download className="w-3.5 h-3.5" /> Unduh
-                    </button>
+                  <div className="flex flex-wrap gap-4 text-xs">
+                    <label className="inline-flex items-center gap-2 font-semibold cursor-pointer">
+                      <input type="checkbox" checked={editForm.arsip_vital} onChange={(e) => setEditForm({ ...editForm, arsip_vital: e.target.checked })} />
+                      Arsip Vital
+                    </label>
+                    {isAdmin && (
+                      <label className="inline-flex items-center gap-2 font-semibold text-amber-600 dark:text-amber-300 cursor-pointer">
+                        <input type="checkbox" checked={editForm.legal_hold} onChange={(e) => setEditForm({ ...editForm, legal_hold: e.target.checked })} />
+                        Legal Hold
+                      </label>
+                    )}
+                  </div>
+                  {isAdmin && editForm.legal_hold && (
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <label htmlFor="edit-legal-hold" className="font-semibold text-amber-600 dark:text-amber-300">Alasan Legal Hold</label>
+                        <CharLimit value={editForm.legal_hold_alasan} max={255} />
+                      </div>
+                      <input id="edit-legal-hold" maxLength={255} className={field} placeholder="Alasan Legal Hold" value={editForm.legal_hold_alasan} onChange={(e) => setEditForm({ ...editForm, legal_hold_alasan: e.target.value })} />
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button type="button" className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-white/15 cursor-pointer" onClick={closeEditModal}>Tutup</button>
+                    <button type="submit" className={button} disabled={busy}>Simpan Perubahan</button>
+                  </div>
+                </form>
+              </div>
+
+              {/* TAB 2: RIWAYAT VERSI */}
+              <div role="tabpanel" aria-labelledby="arsip-tab-versi" hidden={editTab !== 'versi'} className="space-y-4">
+                <form
+                  className="space-y-2.5 p-3.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (!versionFile) { notify('error', 'Pilih berkas revisi'); return }
+                    void run(async () => {
+                      await filesApi.uploadThen(versionFile, 'arsip', (up) =>
+                        request(`/arsip/${editDoc.id_dokumen}/versi`, 'POST', {
+                          file_path: String(up.file_id),
+                          catatan_versi: versionNote.trim() || null,
+                        })
+                      )
+                      notify('success', 'Versi baru berhasil diunggah')
+                      setVersionFile(null)
+                      setVersionNote('')
+                      if (versionInputRef.current) versionInputRef.current.value = ''
+                      await loadVersionsForDoc(editDoc.id_dokumen)
+                      await load()
+                    })
+                  }}
+                >
+                  <p className="font-semibold">Unggah Versi Revisi Baru</p>
+                  <input ref={versionInputRef} type="file" required className={field} onChange={(e) => setVersionFile(e.target.files?.[0] || null)} />
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor="versi-note" className="font-medium text-slate-600 dark:text-slate-300">Catatan revisi (opsional)</label>
+                      <CharLimit value={versionNote} max={255} />
+                    </div>
+                    <input id="versi-note" maxLength={255} className={field} placeholder="Catatan revisi (opsional)" value={versionNote} onChange={(e) => setVersionNote(e.target.value)} />
+                  </div>
+                  <button type="submit" className={buttonCompact} disabled={busy}>Unggah Versi Baru</button>
+                </form>
+                <div className="space-y-2 text-xs">
+                  {versions.length === 0 ? (
+                    <p className="text-slate-500 text-center py-3">Belum ada riwayat versi tersimpan.</p>
+                  ) : (
+                    versions.map((v) => (
+                      <div key={v.id_dokumen} className="p-3 rounded-lg border border-slate-200 dark:border-white/10 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-bold">Versi v{v.versi_dokumen ?? 1} · {v.tanggal_dokumen}</p>
+                          <p className="text-[11px] text-slate-500 font-mono">{v.sha256_hash ? `SHA-256: ${v.sha256_hash.slice(0, 16)}…` : 'Tanpa hash'}</p>
+                        </div>
+                        {v.file_path && /^\d+$/.test(v.file_path) && (
+                          <button
+                            type="button"
+                            className={buttonCompact}
+                            onClick={() =>
+                              void run(async () => {
+                                const res = await fetchFilePreview(`/files/${v.file_path}`)
+                                closeEditModal()
+                                setPreviewDoc({
+                                  title: `${v.nama_dokumen}_v${v.versi_dokumen ?? 1}`,
+                                  url: res.url,
+                                  contentType: res.contentType,
+                                  text: res.text,
+                                  filePath: v.file_path!,
+                                })
+                              })
+                            }
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Buka
+                          </button>
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Izin Akses SKKAAD */}
-      {grantDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className={`w-full max-w-xl rounded-2xl border p-5 space-y-4 max-h-[85vh] overflow-y-auto ${isDark ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-500" /> Izin Akses Khusus SKKAAD</h3>
-              <button type="button" onClick={() => setGrantDoc(null)} className="p-1 rounded hover:bg-red-500/20"><X className="w-4 h-4" /></button>
-            </div>
-            <form
-              className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-xl border border-slate-200 dark:border-white/10 text-xs"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!grantPegawaiId) return
-                void run(async () => {
-                  await request(`/arsip/${grantDoc.id_dokumen}/access-grants`, 'POST', {
-                    id_pegawai: Number(grantPegawaiId),
-                    alasan: grantAlasan.trim() || null,
-                    valid_until: grantValidUntil || null,
-                  })
-                  notify('success', 'Izin akses khusus diberikan')
-                  await openGrantsModal(grantDoc)
-                })
-              }}
-            >
-              <select required className={field} value={grantPegawaiId} onChange={(e) => setGrantPegawaiId(e.target.value)}>
-                <option value="">Pilih Pegawai...</option>
-                {pegawaiList.map((p) => (
-                  <option key={p.id_pegawai} value={p.id_pegawai}>{p.nama} ({p.nip})</option>
-                ))}
-              </select>
-              <input type="date" className={field} value={grantValidUntil} onChange={(e) => setGrantValidUntil(e.target.value)} title="Berlaku hingga (opsional)" />
-              <input className={`${field} sm:col-span-2`} placeholder="Alasan pemberian akses (opsional)" value={grantAlasan} onChange={(e) => setGrantAlasan(e.target.value)} />
-              <div className="sm:col-span-2">
-                <button className={buttonCompact} disabled={busy}>Berikan Izin Akses</button>
               </div>
-            </form>
-            <div className="space-y-2 text-xs">
-              {grants.length === 0 ? (
-                <p className="text-slate-500 text-center py-3">Belum ada pegawai lain yang diberi izin khusus.</p>
-              ) : (
-                grants.map((g) => (
-                  <div key={g.id} className="p-3 rounded-lg border border-slate-200 dark:border-white/10 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="font-bold">{g.nama_pegawai || `Pegawai #${g.id_pegawai}`}</p>
-                      <p className="text-[11px] text-slate-500">
-                        {g.alasan || 'Tanpa keterangan'} · Berlaku s.d. {g.valid_until || 'Tidak terbatas'}
-                      </p>
-                    </div>
-                    <button
-                      className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
-                      onClick={() =>
-                        void run(async () => {
-                          await request(`/arsip/${grantDoc.id_dokumen}/access-grants/${g.id}`, 'DELETE')
-                          await openGrantsModal(grantDoc)
-                        })
-                      }
-                    >
-                      Cabut
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Modal Log Audit Dokumen */}
-      {auditDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className={`w-full max-w-xl rounded-2xl border p-5 space-y-3 max-h-[85vh] overflow-y-auto ${isDark ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold">Jejak Audit · {auditDoc.nama_dokumen}</h3>
-              <button type="button" onClick={() => setAuditDoc(null)} className="p-1 rounded hover:bg-red-500/20"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="space-y-2 text-xs">
-              {auditLogs.length === 0 ? (
-                <p className="text-slate-500 text-center py-4">Belum ada catatan audit.</p>
-              ) : (
-                auditLogs.map((log) => (
-                  <div key={log.id} className="p-2.5 rounded-lg border border-slate-200 dark:border-white/10">
-                    <div className="flex justify-between gap-2">
-                      <span className="font-bold uppercase text-[10px] text-red-600 dark:text-red-400">{log.aksi}</span>
-                      <span className="text-[10px] text-slate-400">{new Date(log.created_at).toLocaleString('id-ID')}</span>
-                    </div>
-                    <p className="font-medium mt-0.5">{log.actor_nama || 'Sistem'} — {log.detail || '-'}</p>
+              {/* TAB 3: IZIN AKSES SKKAAD */}
+              <div role="tabpanel" aria-labelledby="arsip-tab-izin" hidden={editTab !== 'izin'} className="space-y-4">
+                {!['terbatas', 'rahasia', 'sangat_rahasia'].includes(editDoc.hak_akses) &&
+                 !['terbatas', 'rahasia', 'sangat_rahasia'].includes(editForm.hak_akses) ? (
+                  <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs space-y-1.5">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                      <ShieldAlert className="w-4 h-4" /> Dokumen Berstatus Internal / Biasa
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-300">
+                      Dokumen ini saat ini dapat diakses oleh seluruh pegawai. Untuk membatasi akses dan memberikan izin khusus per pegawai, ubah <strong>Hak Akses SKKAAD</strong> ke <em>Terbatas</em>, <em>Rahasia</em>, atau <em>Sangat Rahasia</em> pada tab <strong>Edit Metadata</strong> terlebih dahulu.
+                    </p>
                   </div>
-                ))
-              )}
+                ) : (
+                  <>
+                    <form
+                      className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        if (!grantPegawaiId) return
+                        void run(async () => {
+                          await request(`/arsip/${editDoc.id_dokumen}/access-grants`, 'POST', {
+                            id_pegawai: Number(grantPegawaiId),
+                            alasan: grantAlasan.trim() || null,
+                            valid_until: grantValidUntil || null,
+                          })
+                          setGrantPegawaiId('')
+                          setGrantAlasan('')
+                          setGrantValidUntil('')
+                          notify('success', 'Izin akses khusus diberikan')
+                          await loadGrantsForDoc(editDoc.id_dokumen)
+                        })
+                      }}
+                    >
+                      <select required className={field} value={grantPegawaiId} onChange={(e) => setGrantPegawaiId(e.target.value)}>
+                        <option value="">Pilih Pegawai...</option>
+                        {pegawaiList.map((p) => (
+                          <option key={p.id_pegawai} value={p.id_pegawai}>{p.nama} ({p.nip})</option>
+                        ))}
+                      </select>
+                      <input type="date" className={field} value={grantValidUntil} onChange={(e) => setGrantValidUntil(e.target.value)} title="Berlaku hingga (opsional)" />
+                      <div className="sm:col-span-2 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <label htmlFor="grant-alasan" className="font-medium text-slate-600 dark:text-slate-300">Alasan pemberian akses (opsional)</label>
+                          <CharLimit value={grantAlasan} max={255} />
+                        </div>
+                        <input id="grant-alasan" maxLength={255} className={field} placeholder="Alasan pemberian akses (opsional)" value={grantAlasan} onChange={(e) => setGrantAlasan(e.target.value)} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <button type="submit" className={buttonCompact} disabled={busy}>Berikan Izin Akses</button>
+                      </div>
+                    </form>
+                    <div className="space-y-2 text-xs">
+                      {grants.length === 0 ? (
+                        <p className="text-slate-500 text-center py-3">Belum ada pegawai lain yang diberi izin khusus.</p>
+                      ) : (
+                        grants.map((g) => (
+                          <div key={g.id} className="p-3 rounded-lg border border-slate-200 dark:border-white/10 flex items-center justify-between gap-2">
+                            <div>
+                              <p className="font-bold">{g.nama_pegawai || `Pegawai #${g.id_pegawai}`}</p>
+                              <p className="text-[11px] text-slate-500">
+                                {g.alasan || 'Tanpa keterangan'} · Berlaku s.d. {g.valid_until || 'Tidak terbatas'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
+                              onClick={() =>
+                                void run(async () => {
+                                  await request(`/arsip/${editDoc.id_dokumen}/access-grants/${g.id}`, 'DELETE')
+                                  await loadGrantsForDoc(editDoc.id_dokumen)
+                                })
+                              }
+                            >
+                              Cabut
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </dialog>
 
       {/* Pratinjau Berkas */}
       {previewDoc && (

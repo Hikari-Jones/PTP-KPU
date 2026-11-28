@@ -7,3 +7,26 @@
 }
 @import "./styles/workspace.css";
 
+/* Native modal dialog scroll containment (modern-web-guidance: dialog) */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(0 0 0 / 0.7);
+  backdrop-filter: blur(2px);
+}
+
+/* Accessible tab selected indicator using border (not color alone / works in forced-colors) */
+[role="tab"] {
+  position: relative;
+}
+[role="tab"][aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  border-block-end: 3px solid currentColor;
+}
+
+

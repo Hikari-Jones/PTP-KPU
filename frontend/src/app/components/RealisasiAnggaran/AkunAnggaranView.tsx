@@ -18,6 +18,7 @@ import {
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { Badge } from "../ui/badge"
+import { CharLimit } from "../ui/CharLimit"
 import { useAuth } from "../../context/AuthContext"
 import {
   akunAnggaranApi,
@@ -303,7 +304,7 @@ export function AkunAnggaranView({ theme }: Props) {
       )}
 
       {/* Filter Row */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-3">
         {/* Filter Bagian */}
         <div className="relative">
           <select
@@ -350,22 +351,28 @@ export function AkunAnggaranView({ theme }: Props) {
         </div>
 
         {/* Search Input */}
-        <div className="relative flex-1">
-          <Search className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? "text-gray-400" : "text-slate-500"}`} />
-          <input
-            type="text"
-            placeholder="Cari kode MAK, nama akun, bagian, atau program..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value)
-              setCurrentPage(1)
-            }}
-            className={`w-full pl-9 pr-3 py-2 text-xs rounded-xl border outline-none font-medium transition-colors ${
-              isDark
-                ? "bg-[#131b2e] border-[#1e293b] text-white placeholder-gray-500 focus:border-red-500"
-                : "bg-slate-50 border-slate-300 text-black placeholder-slate-400 focus:border-red-500"
-            }`}
-          />
+        <div className="flex-1 space-y-1">
+          <div className="relative">
+            <Search className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? "text-gray-400" : "text-slate-500"}`} />
+            <input
+              type="text"
+              maxLength={150}
+              placeholder="Cari kode MAK, nama akun, bagian, atau program..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setCurrentPage(1)
+              }}
+              className={`w-full pl-9 pr-3 py-2 text-xs rounded-xl border outline-none font-medium transition-colors ${
+                isDark
+                  ? "bg-[#131b2e] border-[#1e293b] text-white placeholder-gray-500 focus:border-red-500"
+                  : "bg-slate-50 border-slate-300 text-black placeholder-slate-400 focus:border-red-500"
+              }`}
+            />
+          </div>
+          <div className="flex justify-end">
+            <CharLimit value={searchQuery} max={150} />
+          </div>
         </div>
       </div>
 
@@ -550,10 +557,14 @@ export function AkunAnggaranView({ theme }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold mb-1">Kode MAK / Akun</label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block font-semibold">Kode MAK / Akun</label>
+                    <CharLimit value={formKode} max={50} />
+                  </div>
                   <input
                     type="text"
                     required
+                    maxLength={50}
                     placeholder="Contoh: 521211"
                     value={formKode}
                     onChange={(e) => setFormKode(e.target.value)}
@@ -597,10 +608,14 @@ export function AkunAnggaranView({ theme }: Props) {
               </div>
 
               <div>
-                <label className="block font-semibold mb-1">Nama Uraian Akun Anggaran</label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block font-semibold">Nama Uraian Akun Anggaran</label>
+                  <CharLimit value={formNama} max={255} />
+                </div>
                 <input
                   type="text"
                   required
+                  maxLength={255}
                   placeholder="Contoh: Belanja Bahan / Logistik Pilkada"
                   value={formNama}
                   onChange={(e) => setFormNama(e.target.value)}
@@ -612,9 +627,13 @@ export function AkunAnggaranView({ theme }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold mb-1">Jenis Belanja</label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block font-semibold">Jenis Belanja</label>
+                    <CharLimit value={formJenisBelanja} max={100} />
+                  </div>
                   <input
                     type="text"
+                    maxLength={100}
                     placeholder="Operasional / Modal"
                     value={formJenisBelanja}
                     onChange={(e) => setFormJenisBelanja(e.target.value)}
@@ -624,9 +643,13 @@ export function AkunAnggaranView({ theme }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Program</label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block font-semibold">Program</label>
+                    <CharLimit value={formProgram} max={255} />
+                  </div>
                   <input
                     type="text"
+                    maxLength={255}
                     placeholder="Program Pemilu / Lainnya"
                     value={formProgram}
                     onChange={(e) => setFormProgram(e.target.value)}

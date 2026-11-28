@@ -16,7 +16,8 @@ import {
   Bug,
   Database,
   LayoutGrid,
-  Archive
+  Archive,
+  History
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
@@ -344,6 +345,21 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
               >
                 <Archive className={iconClass(activeMenu === "arsip")} />
                 {!collapsed && <span className="truncate">Arsip Data</span>}
+              </button>
+
+              {/* Audit Arsip */}
+              <button
+                onClick={() => onSelectMenu("arsip_audit")}
+                title={collapsed ? "Audit Arsip" : undefined}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "arsip_audit"
+                  ? "bg-red-600 text-white"
+                  : isDark
+                    ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  } ${collapsed ? "justify-center px-0" : ""}`}
+              >
+                <History className={iconClass(activeMenu === "arsip_audit")} />
+                {!collapsed && <span className="truncate">Audit Arsip</span>}
               </button>
 
               {/* FAQ */}

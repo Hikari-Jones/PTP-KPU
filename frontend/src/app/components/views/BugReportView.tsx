@@ -2,6 +2,7 @@ import { saveFile } from "../../../services/csv"
 import { useEffect, useState } from 'react'
 import { request, message } from '../../../services/operations'
 import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
+import { CharLimit } from '../ui/CharLimit'
 import { useAuth } from '../../context/AuthContext'
 import { AlertCircle, RefreshCw, Send, CheckCircle2, Clock, Loader2, Download, FileText } from 'lucide-react'
 
@@ -105,9 +106,12 @@ export function BugReportView({ theme }: { theme: 'light' | 'dark' }) {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
-                Ringkasan Kendala
-              </label>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Ringkasan Kendala
+                </label>
+                <CharLimit value={title} max={500} />
+              </div>
               <input
                 required
                 maxLength={500}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { request, download, message } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
 import type { RealisasiAnggaranResponse } from './types'
+import { CharLimit } from '../ui/CharLimit'
 
 type HistoryEvent = {
   id: number
@@ -181,19 +182,27 @@ export function BudgetActions({ item, userId, canReview, onSuccess }: Props) {
             />
           </label>
           <label className="block font-semibold">
-            Nomor dokumen
+            <span className="flex items-center justify-between gap-2">
+              <span>Nomor dokumen</span>
+              <CharLimit value={form.nomor_dokumen} max={100} />
+            </span>
             <input
               required
+              maxLength={100}
               className={inputCls}
               value={form.nomor_dokumen}
               onChange={(e) => setForm({ ...form, nomor_dokumen: e.target.value })}
             />
           </label>
           <label className="block font-semibold">
-            Uraian
+            <span className="flex items-center justify-between gap-2">
+              <span>Uraian</span>
+              <CharLimit value={form.uraian_kegiatan} max={1000} />
+            </span>
             <textarea
               required
               rows={2}
+              maxLength={1000}
               className={inputCls}
               value={form.uraian_kegiatan}
               onChange={(e) => setForm({ ...form, uraian_kegiatan: e.target.value })}
@@ -228,9 +237,13 @@ export function BudgetActions({ item, userId, canReview, onSuccess }: Props) {
       {canReview && !own && item.status === 'submitted' && (
         <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
           <label className="block font-semibold text-slate-700 dark:text-slate-200">
-            Catatan pemeriksaan
+            <span className="flex items-center justify-between gap-2">
+              <span>Catatan pemeriksaan</span>
+              <CharLimit value={note} max={500} />
+            </span>
             <textarea
               rows={2}
+              maxLength={500}
               className={inputCls}
               placeholder="Catatan persetujuan (opsional) atau alasan pengembalian (wajib min. 3 karakter)..."
               value={note}

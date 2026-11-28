@@ -3,6 +3,7 @@ import { X, AlertCircle, FileText, CheckCircle2, Loader2, Sparkles, RefreshCw } 
 import { Card, CardContent } from "../ui/card"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
+import { CharLimit } from "../ui/CharLimit"
 import {
   paguAnggaranApi,
   realisasiAnggaranApi,
@@ -240,11 +241,15 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
             </div>
 
             <div className="space-y-1.5">
-              <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-                Nomor Dokumen (SPBY / SP2D / Kuitansi) *
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+                  Nomor Dokumen (SPBY / SP2D / Kuitansi) *
+                </label>
+                <CharLimit value={noDokumen} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 value={noDokumen}
                 onChange={(e) => setNoDokumen(e.target.value)}
                 required
@@ -258,12 +263,16 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
 
           {/* Nominal Realisasi */}
           <div className="space-y-1.5">
-            <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-              Jumlah Realisasi Belanja (Rp) *
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+                Jumlah Realisasi Belanja (Rp) *
+              </label>
+              <CharLimit value={formatCurrencyInput(jumlahStr)} max={22} />
+            </div>
             <Input
               type="text"
               inputMode="decimal"
+              maxLength={22}
               value={formatCurrencyInput(jumlahStr)}
               onChange={handleJumlahChange}
               required
@@ -281,11 +290,15 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
 
           {/* Uraian Kegiatan */}
           <div className="space-y-1.5">
-            <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-              Uraian / Deskripsi Belanja Kegiatan *
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+                Uraian / Deskripsi Belanja Kegiatan *
+              </label>
+              <CharLimit value={uraian} max={1000} />
+            </div>
             <textarea
               rows={3}
+              maxLength={1000}
               value={uraian}
               onChange={(e) => setUraian(e.target.value)}
               required
@@ -300,11 +313,15 @@ export function EditRealisasiModal({ isOpen, onClose, onSuccess, transaksi, them
 
           {/* Periode Belanja */}
           <div className="space-y-1.5">
-            <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-              Periode Realisasi
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className={`text-xs font-bold ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+                Periode Realisasi
+              </label>
+              <CharLimit value={periode} max={100} />
+            </div>
             <Input
               type="text"
+              maxLength={100}
               value={periode}
               onChange={(e) => setPeriode(e.target.value)}
               placeholder="Contoh: Agustus 2026"

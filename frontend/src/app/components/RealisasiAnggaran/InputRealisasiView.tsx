@@ -3,6 +3,7 @@ import { CheckCircle2, FileText, Upload, Sparkles, Loader2, AlertCircle, X } fro
 import { Card, CardContent } from "../ui/card"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
+import { CharLimit } from "../ui/CharLimit"
 import { ReadOnlyFieldset } from "../ui/read-only"
 import { useAuth } from "../../context/AuthContext"
 import {
@@ -296,11 +297,15 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               />
             </div>
             <div className="space-y-1.5">
-              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
-                Nomor Dokumen / SPD <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Nomor Dokumen / SPD <span className="text-red-500">*</span>
+                </label>
+                <CharLimit value={nomorDokumen} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 placeholder="Contoh: 001/SPD/KPU-SULUT/XI/2026"
                 value={nomorDokumen}
                 onChange={(e) => setNomorDokumen(e.target.value)}
@@ -342,11 +347,15 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
             </div>
 
             <div className="space-y-1.5">
-              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
-                Periode Anggaran <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Periode Anggaran <span className="text-red-500">*</span>
+                </label>
+                <CharLimit value={periode} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 value={periode}
                 onChange={(e) => setPeriode(e.target.value)}
                 disabled={isSubmitting}
@@ -376,11 +385,15 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
           {/* Baris 3: Uraian Transaksi Belanja & Nominal Realisasi */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
-              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
-                Uraian Transaksi Belanja <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Uraian Transaksi Belanja <span className="text-red-500">*</span>
+                </label>
+                <CharLimit value={uraian} max={1000} />
+              </div>
               <Input
                 type="text"
+                maxLength={1000}
                 placeholder="Contoh: Belanja Operasional Rapat Evaluasi Anggaran"
                 value={uraian}
                 onChange={(e) => setUraian(e.target.value)}
@@ -390,19 +403,23 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
                   Nominal Realisasi (Rp) <span className="text-red-500">*</span>
                 </label>
-                {isOverBudget && (
-                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400 animate-pulse">
-                    Nominal melebihi sisa anggaran!
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {isOverBudget && (
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-400 animate-pulse">
+                      Nominal melebihi sisa anggaran!
+                    </span>
+                  )}
+                  <CharLimit value={formatCurrencyInput(jumlah)} max={22} />
+                </div>
               </div>
               <Input
                 type="text"
                 inputMode="decimal"
+                maxLength={22}
                 placeholder="0"
                 value={formatCurrencyInput(jumlah)}
                 onChange={handleJumlahChange}
@@ -448,11 +465,15 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
-                Nomor SP2D (Opsional)
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Nomor SP2D (Opsional)
+                </label>
+                <CharLimit value={nomorSp2d} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 placeholder="No. SP2D KPPN"
                 value={nomorSp2d}
                 onChange={(e) => setNomorSp2d(e.target.value)}
@@ -461,11 +482,15 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               />
             </div>
             <div className="space-y-1.5">
-              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
-                Penerima / Rekanan
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Penerima / Rekanan
+                </label>
+                <CharLimit value={penerimaPembayaran} max={255} />
+              </div>
               <Input
                 type="text"
+                maxLength={255}
                 placeholder="Nama penyedia / bendahara"
                 value={penerimaPembayaran}
                 onChange={(e) => setPenerimaPembayaran(e.target.value)}
@@ -474,12 +499,16 @@ export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
               />
             </div>
             <div className="space-y-1.5">
-              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
-                Potongan Pajak (Rp)
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Potongan Pajak (Rp)
+                </label>
+                <CharLimit value={formatCurrencyInput(potonganPajak)} max={22} />
+              </div>
               <Input
                 type="text"
                 inputMode="decimal"
+                maxLength={22}
                 placeholder="0"
                 value={formatCurrencyInput(potonganPajak)}
                 onChange={(e) => setPotonganPajak(sanitizeCurrencyInput(e.target.value))}

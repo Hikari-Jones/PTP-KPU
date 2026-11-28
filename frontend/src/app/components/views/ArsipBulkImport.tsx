@@ -4,6 +4,7 @@ import { request, message } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
 import { showToast as notify, withQuietFeedback } from '../../../services/activity'
 import { field, button } from '../ui/operations'
+import { CharLimit } from '../ui/CharLimit'
 
 /** Must match backend/app/api/v1/endpoints/files.py and MAX_UPLOAD_SIZE_MB. */
 const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.jpg', '.jpeg', '.png']
@@ -244,14 +245,20 @@ export function ArsipBulkImport({
 
         {/* 2. Data bersama untuk semua berkas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Kategori Dokumen *</span>
-            <input className={small} value={meta.kategori} disabled={running} onChange={(e) => setMeta({ ...meta, kategori: e.target.value })} />
-          </label>
-          <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Kegiatan / Event</span>
-            <input className={small} value={meta.event} disabled={running} placeholder="Opsional" onChange={(e) => setMeta({ ...meta, event: e.target.value })} />
-          </label>
+          <div className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
+            <div className="flex items-center justify-between gap-2">
+              <span>Kategori Dokumen *</span>
+              <CharLimit value={meta.kategori} max={100} />
+            </div>
+            <input maxLength={100} className={small} value={meta.kategori} disabled={running} onChange={(e) => setMeta({ ...meta, kategori: e.target.value })} />
+          </div>
+          <div className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
+            <div className="flex items-center justify-between gap-2">
+              <span>Kegiatan / Event</span>
+              <CharLimit value={meta.event} max={200} />
+            </div>
+            <input maxLength={200} className={small} value={meta.event} disabled={running} placeholder="Opsional" onChange={(e) => setMeta({ ...meta, event: e.target.value })} />
+          </div>
           <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
             <span>Tanggal Dokumen *</span>
             <input type="date" className={small} value={meta.tanggal_dokumen} disabled={running} onChange={(e) => setMeta({ ...meta, tanggal_dokumen: e.target.value })} />
@@ -276,19 +283,25 @@ export function ArsipBulkImport({
               ))}
             </select>
           </label>
-          <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
-            <span>Lokasi Fisik (Opsional)</span>
-            <input className={small} value={meta.lokasi_fisik} disabled={running} placeholder="Lemari / Rak / Boks" onChange={(e) => setMeta({ ...meta, lokasi_fisik: e.target.value })} />
-          </label>
-          <label className="space-y-1 font-semibold text-slate-700 dark:text-slate-300 md:col-span-2">
-            <span>Awalan Nomor Dokumen Otomatis</span>
+          <div className="space-y-1 font-semibold text-slate-700 dark:text-slate-300">
+            <div className="flex items-center justify-between gap-2">
+              <span>Lokasi Fisik (Opsional)</span>
+              <CharLimit value={meta.lokasi_fisik} max={150} />
+            </div>
+            <input maxLength={150} className={small} value={meta.lokasi_fisik} disabled={running} placeholder="Lemari / Rak / Boks" onChange={(e) => setMeta({ ...meta, lokasi_fisik: e.target.value })} />
+          </div>
+          <div className="space-y-1 font-semibold text-slate-700 dark:text-slate-300 md:col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <span>Awalan Nomor Dokumen Otomatis</span>
+              <CharLimit value={prefix} max={60} />
+            </div>
             <div className="flex gap-2">
-              <input className={small} value={prefix} disabled={running} onChange={(e) => setPrefix(e.target.value)} />
+              <input maxLength={60} className={small} value={prefix} disabled={running} onChange={(e) => setPrefix(e.target.value)} />
               <button type="button" className={`${button} !px-3 !py-1.5 !text-xs !bg-slate-700 hover:!bg-slate-800 shrink-0`} disabled={running || rows.length === 0} onClick={renumber}>
                 Terapkan
               </button>
             </div>
-          </label>
+          </div>
         </div>
 
         {/* 3. Daftar berkas (nama & nomor dapat diubah per berkas) */}
@@ -325,11 +338,13 @@ export function ArsipBulkImport({
                           <span className="block truncate font-medium" title={row.file.name}>{row.file.name}</span>
                           <span className="text-[10px] text-slate-500">{formatSize(row.file.size)}</span>
                         </td>
-                        <td className="px-3 py-2 min-w-[180px]">
+                        <td className="px-3 py-2 min-w-[180px] space-y-1">
                           <input aria-label={`Nama dokumen ${row.file.name}`} className={small} value={row.nama_dokumen} maxLength={255} disabled={locked} onChange={(e) => updateRow(row.key, { nama_dokumen: e.target.value })} />
+                          <div className="flex justify-end"><CharLimit value={row.nama_dokumen} max={255} /></div>
                         </td>
-                        <td className="px-3 py-2 min-w-[160px]">
+                        <td className="px-3 py-2 min-w-[160px] space-y-1">
                           <input aria-label={`Nomor dokumen ${row.file.name}`} className={small} value={row.nomor_dokumen} maxLength={100} disabled={locked} onChange={(e) => updateRow(row.key, { nomor_dokumen: e.target.value })} />
+                          <div className="flex justify-end"><CharLimit value={row.nomor_dokumen} max={100} /></div>
                         </td>
                         <td className="px-3 py-2 min-w-[120px] max-w-[220px]">{statusBadge(row)}</td>
                         <td className="px-3 py-2 text-right">

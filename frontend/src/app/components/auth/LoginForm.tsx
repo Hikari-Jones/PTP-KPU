@@ -5,6 +5,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { authApi, type RegisterResponse, type UnitBagianOption } from "../../../services/api"
+import { CharLimit } from "../ui/CharLimit"
 import kpuLogo from "../../../assets/branding/kpu-sulut-logo.jpg"
 import kpuOffice from "../../../assets/branding/kpu-sulut-office.png"
 import "../../../styles/login.css"
@@ -291,7 +292,10 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
           {mode === "login" && (
             <form className="login-form" onSubmit={handleSubmit} aria-busy={isLoading}>
               <div className="login-field">
-                <label htmlFor="login-nip">Nomor Induk Pegawai <span>(NIP)</span></label>
+                <div className="login-label-row">
+                  <label htmlFor="login-nip">Nomor Induk Pegawai <span>(NIP)</span></label>
+                  <CharLimit value={nip} max={18} exact />
+                </div>
                 <div className="login-input-wrap">
                   <IdCard className="login-input-icon" size={19} aria-hidden="true" />
                   <input id="login-nip" name="username" type="text" inputMode="numeric" autoComplete="username"
@@ -300,18 +304,21 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
                     readOnly={isLoading} aria-invalid={!!errorMessage}
                     aria-describedby={errorMessage ? "login-nip-hint login-error" : "login-nip-hint"} />
                 </div>
-                <p className="login-field-hint" id="login-nip-hint">Gunakan NIP sesuai identitas kepegawaian Anda.</p>
+                <p className="login-field-hint" id="login-nip-hint">Gunakan NIP sesuai identitas kepegawaian Anda (18 digit).</p>
               </div>
               <div className="login-field">
                 <div className="login-label-row">
                   <label htmlFor="login-password">Kata sandi</label>
-                  <button type="button" className="login-help-toggle" onClick={() => setShowHelp(!showHelp)}
-                    aria-expanded={showHelp} aria-controls="login-help">Lupa kata sandi?</button>
+                  <div className="flex items-center gap-2">
+                    <CharLimit value={password} max={128} />
+                    <button type="button" className="login-help-toggle" onClick={() => setShowHelp(!showHelp)}
+                      aria-expanded={showHelp} aria-controls="login-help">Lupa kata sandi?</button>
+                  </div>
                 </div>
                 <div className="login-input-wrap">
                   <LockKeyhole className="login-input-icon" size={18} aria-hidden="true" />
                   <input id="login-password" name="password" type={showPassword ? "text" : "password"}
-                    autoComplete="current-password" required value={password}
+                    autoComplete="current-password" required maxLength={128} value={password}
                     onChange={(event) => { setPassword(event.target.value); setErrorMessage(null) }}
                     placeholder="Masukkan kata sandi" readOnly={isLoading} aria-invalid={!!errorMessage}
                     aria-describedby={errorMessage ? "login-error" : undefined} />
@@ -360,13 +367,17 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
               )}
 
               <div className="login-field">
-                <label htmlFor="signup-nama">Nama Lengkap</label>
+                <div className="login-label-row">
+                  <label htmlFor="signup-nama">Nama Lengkap</label>
+                  <CharLimit value={signupNama} max={150} />
+                </div>
                 <div className="login-input-wrap">
                   <User className="login-input-icon" size={18} aria-hidden="true" />
                   <input
                     id="signup-nama"
                     type="text"
                     required
+                    maxLength={150}
                     value={signupNama}
                     onChange={(e) => { setSignupNama(e.target.value); setErrorMessage(null) }}
                     placeholder="Masukkan nama lengkap beserta gelar"
@@ -376,7 +387,10 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
               </div>
 
               <div className="login-field">
-                <label htmlFor="signup-nip">Nomor Induk Pegawai <span>(NIP)</span></label>
+                <div className="login-label-row">
+                  <label htmlFor="signup-nip">Nomor Induk Pegawai <span>(NIP)</span></label>
+                  <CharLimit value={signupNip} max={18} exact />
+                </div>
                 <div className="login-input-wrap">
                   <IdCard className="login-input-icon" size={19} aria-hidden="true" />
                   <input
@@ -396,7 +410,10 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
               </div>
 
               <div className="login-field">
-                <label htmlFor="signup-password">Kata sandi <span>(minimal 8 karakter)</span></label>
+                <div className="login-label-row">
+                  <label htmlFor="signup-password">Kata sandi <span>(min. 8 karakter)</span></label>
+                  <CharLimit value={signupPassword} max={128} />
+                </div>
                 <div className="login-input-wrap">
                   <LockKeyhole className="login-input-icon" size={18} aria-hidden="true" />
                   <input
@@ -405,6 +422,7 @@ export function LoginForm({ theme = "light", onToggleTheme }: LoginFormProps) {
                     autoComplete="new-password"
                     required
                     minLength={8}
+                    maxLength={128}
                     value={signupPassword}
                     onChange={(e) => { setSignupPassword(e.target.value); setErrorMessage(null) }}
                     placeholder="Minimal 8 karakter"

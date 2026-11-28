@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { BarChart3, Download, Plus, RefreshCw, Search, X, Loader2, AlertCircle, CheckCircle2, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
+import { CharLimit } from "../ui/CharLimit"
 import { useAuth } from "../../context/AuthContext"
 import {
   paguAnggaranApi,
@@ -635,17 +636,23 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
             {bagianList.map((b) => <option key={b.id_bagian} value={b.nama_bagian}>{b.nama_bagian}</option>)}
           </select>
         )}
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <input
-            value={searchQuery}
-            onChange={(event) => {
-              setSearchQuery(event.target.value)
-              setCurrentPage(1)
-            }}
-            placeholder={activeTab === "pagu" ? "Cari kode, nama akun, atau bagian..." : "Cari no. revisi, kode akun, alasan, atau nama operator..."}
-            className={`${inputClass} pl-9`}
-          />
+        <div className="flex-1 space-y-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              maxLength={150}
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value)
+                setCurrentPage(1)
+              }}
+              placeholder={activeTab === "pagu" ? "Cari kode, nama akun, atau bagian..." : "Cari no. revisi, kode akun, alasan, atau nama operator..."}
+              className={`${inputClass} pl-9`}
+            />
+          </div>
+          <div className="flex justify-end">
+            <CharLimit value={searchQuery} max={150} />
+          </div>
         </div>
       </div>
 
@@ -928,11 +935,15 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
               {/* Nilai Pagu Awal (Hanya saat Tambah Baru) */}
               {!selectedPaguToEdit ? (
                 <label className="block space-y-1 font-semibold">
-                  Pagu Awal Penetapan DIPA (Rp)
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Pagu Awal Penetapan DIPA (Rp)</span>
+                    <CharLimit value={formatCurrencyInput(formPaguAwal)} max={22} />
+                  </span>
                   <input
                     required
                     type="text"
                     inputMode="decimal"
+                    maxLength={22}
                     value={formatCurrencyInput(formPaguAwal)}
                     onChange={(e) => setFormPaguAwal(sanitizeCurrencyInput(e.target.value))}
                     placeholder="Contoh: 50.000.000"
@@ -954,8 +965,12 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="space-y-1 font-semibold">
-                  Nomor SK / Dasar Hukum (Opsional)
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Nomor SK / Dasar Hukum (Opsional)</span>
+                    <CharLimit value={formNomorSK} max={100} />
+                  </span>
                   <input
+                    maxLength={100}
                     value={formNomorSK}
                     onChange={(e) => setFormNomorSK(e.target.value)}
                     placeholder="Contoh: SK-001/DIPA/2026"
@@ -975,10 +990,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="space-y-1 font-semibold">
-                  Pagu Blokir / Self-Blocking (Rp)
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Pagu Blokir / Self-Blocking (Rp)</span>
+                    <CharLimit value={formatCurrencyInput(formPaguBlokir)} max={22} />
+                  </span>
                   <input
                     type="text"
                     inputMode="decimal"
+                    maxLength={22}
                     value={formatCurrencyInput(formPaguBlokir)}
                     onChange={(e) => setFormPaguBlokir(sanitizeCurrencyInput(e.target.value))}
                     placeholder="0"
@@ -987,28 +1006,44 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="space-y-1 font-semibold">
-                    RPD Triwulan I
-                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd1)} onChange={(e) => setFormRpd1(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                    <span className="flex items-center justify-between gap-1">
+                      <span>RPD Triwulan I</span>
+                      <CharLimit value={formatCurrencyInput(formRpd1)} max={22} />
+                    </span>
+                    <input type="text" inputMode="decimal" maxLength={22} value={formatCurrencyInput(formRpd1)} onChange={(e) => setFormRpd1(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
                   </label>
                   <label className="space-y-1 font-semibold">
-                    RPD Triwulan II
-                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd2)} onChange={(e) => setFormRpd2(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                    <span className="flex items-center justify-between gap-1">
+                      <span>RPD Triwulan II</span>
+                      <CharLimit value={formatCurrencyInput(formRpd2)} max={22} />
+                    </span>
+                    <input type="text" inputMode="decimal" maxLength={22} value={formatCurrencyInput(formRpd2)} onChange={(e) => setFormRpd2(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
                   </label>
                   <label className="space-y-1 font-semibold">
-                    RPD Triwulan III
-                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd3)} onChange={(e) => setFormRpd3(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                    <span className="flex items-center justify-between gap-1">
+                      <span>RPD Triwulan III</span>
+                      <CharLimit value={formatCurrencyInput(formRpd3)} max={22} />
+                    </span>
+                    <input type="text" inputMode="decimal" maxLength={22} value={formatCurrencyInput(formRpd3)} onChange={(e) => setFormRpd3(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
                   </label>
                   <label className="space-y-1 font-semibold">
-                    RPD Triwulan IV
-                    <input type="text" inputMode="decimal" value={formatCurrencyInput(formRpd4)} onChange={(e) => setFormRpd4(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
+                    <span className="flex items-center justify-between gap-1">
+                      <span>RPD Triwulan IV</span>
+                      <CharLimit value={formatCurrencyInput(formRpd4)} max={22} />
+                    </span>
+                    <input type="text" inputMode="decimal" maxLength={22} value={formatCurrencyInput(formRpd4)} onChange={(e) => setFormRpd4(sanitizeCurrencyInput(e.target.value))} placeholder="0" className={inputClass} />
                   </label>
                 </div>
               </div>
 
               <label className="block space-y-1 font-semibold">
-                Keterangan (Opsional)
+                <span className="flex items-center justify-between gap-2">
+                  <span>Keterangan (Opsional)</span>
+                  <CharLimit value={formKeterangan} max={1000} />
+                </span>
                 <textarea
                   rows={2}
+                  maxLength={1000}
                   value={formKeterangan}
                   onChange={(e) => setFormKeterangan(e.target.value)}
                   placeholder="Catatan alokasi pagu..."
@@ -1065,9 +1100,13 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="space-y-1 font-semibold">
-                  Nomor Surat/SK Revisi
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Nomor Surat/SK Revisi</span>
+                    <CharLimit value={formNomorRevisi} max={100} />
+                  </span>
                   <input
                     required
+                    maxLength={100}
                     value={formNomorRevisi}
                     onChange={(e) => setFormNomorRevisi(e.target.value)}
                     placeholder="Contoh: REV-001/2026"
@@ -1109,11 +1148,15 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                   <input readOnly value={formatRupiah(formPaguSebelum)} className={`${inputClass} opacity-70`} />
                 </label>
                 <label className="space-y-1 font-semibold">
-                  Pagu Baru Setelah Revisi (Rp)
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Pagu Baru Setelah Revisi (Rp)</span>
+                    <CharLimit value={formatCurrencyInput(formPaguBaru)} max={22} />
+                  </span>
                   <input
                     required
                     type="text"
                     inputMode="decimal"
+                    maxLength={22}
                     value={formatCurrencyInput(formPaguBaru)}
                     onChange={(e) => setFormPaguBaru(sanitizeCurrencyInput(e.target.value))}
                     placeholder="0"
@@ -1126,10 +1169,14 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
               </div>
 
               <label className="block space-y-1 font-semibold">
-                Alasan Revisi / Pergeseran (Minimal 5 karakter)
+                <span className="flex items-center justify-between gap-2">
+                  <span>Alasan Revisi / Pergeseran (Minimal 5 karakter)</span>
+                  <CharLimit value={formAlasanRevisi} max={1000} />
+                </span>
                 <textarea
                   required
                   rows={3}
+                  maxLength={1000}
                   value={formAlasanRevisi}
                   onChange={(e) => setFormAlasanRevisi(e.target.value)}
                   placeholder="Jelaskan dasar pertimbangan perubahan pagu..."
@@ -1189,8 +1236,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
               )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="space-y-1 font-semibold">
-                  Nomor Revisi POK
-                  <input required value={formNomorRevisi} onChange={(e) => setFormNomorRevisi(e.target.value)} className={inputClass} />
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Nomor Revisi POK</span>
+                    <CharLimit value={formNomorRevisi} max={100} />
+                  </span>
+                  <input required maxLength={100} value={formNomorRevisi} onChange={(e) => setFormNomorRevisi(e.target.value)} className={inputClass} />
                 </label>
                 <label className="space-y-1 font-semibold">
                   Tanggal Pergeseran
@@ -1220,11 +1270,15 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 </select>
               </label>
               <label className="block space-y-1 font-semibold">
-                Nominal Pergeseran (Rp)
+                <span className="flex items-center justify-between gap-2">
+                  <span>Nominal Pergeseran (Rp)</span>
+                  <CharLimit value={formatCurrencyInput(pokNominal)} max={22} />
+                </span>
                 <input
                   required
                   type="text"
                   inputMode="decimal"
+                  maxLength={22}
                   value={formatCurrencyInput(pokNominal)}
                   onChange={(e) => setPokNominal(sanitizeCurrencyInput(e.target.value))}
                   placeholder="0"
@@ -1232,8 +1286,11 @@ export function PaguAnggaranView({ theme }: { theme: "light" | "dark"; onNavigat
                 />
               </label>
               <label className="block space-y-1 font-semibold">
-                Alasan Pergeseran POK (Minimal 5 karakter)
-                <textarea required rows={3} value={formAlasanRevisi} onChange={(e) => setFormAlasanRevisi(e.target.value)} className={inputClass} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Alasan Pergeseran POK (Minimal 5 karakter)</span>
+                  <CharLimit value={formAlasanRevisi} max={1000} />
+                </span>
+                <textarea required rows={3} maxLength={1000} value={formAlasanRevisi} onChange={(e) => setFormAlasanRevisi(e.target.value)} className={inputClass} />
               </label>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={closeModal} disabled={submitting} className={`rounded-xl border px-4 py-2 font-bold cursor-pointer ${isDark ? "border-white/10 text-gray-300" : "border-slate-300 text-slate-700"}`}>

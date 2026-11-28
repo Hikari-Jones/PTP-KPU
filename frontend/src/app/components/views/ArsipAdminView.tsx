@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { request, download, message } from '../../../services/operations'
 import { showToast as notify } from '../../../services/activity'
 import { Workspace, field, button, useOperation } from '../ui/operations'
+import { CharLimit } from '../ui/CharLimit'
 import {
   Archive, ShieldCheck, History, HardDriveDownload, RefreshCw,
   FileText, CheckCircle2, Trash2, Plus,
@@ -239,12 +240,18 @@ export function ArsipAdminView({ theme }: { theme: 'light' | 'dark' }) {
                     <option value="serah">Usul Serah (ANRI / Arsip Statis)</option>
                     <option value="pindah">Usul Pindah (Depo Inaktif)</option>
                   </select>
-                  <input
-                    className={`${field} sm:col-span-2`}
-                    placeholder="Dasar / Alasan penyusutan (min. 5 karakter)..."
-                    value={alasanSusut}
-                    onChange={(e) => setAlasanSusut(e.target.value)}
-                  />
+                  <div className="sm:col-span-2 space-y-1">
+                    <input
+                      className={field}
+                      maxLength={500}
+                      placeholder="Dasar / Alasan penyusutan (min. 5 karakter)..."
+                      value={alasanSusut}
+                      onChange={(e) => setAlasanSusut(e.target.value)}
+                    />
+                    <div className="flex justify-end">
+                      <CharLimit value={alasanSusut} max={500} />
+                    </div>
+                  </div>
                 </div>
                 <button
                   className={button}
@@ -353,8 +360,14 @@ export function ArsipAdminView({ theme }: { theme: 'light' | 'dark' }) {
               <option value="access_secret_archive">access_secret_archive (Akses Arsip Rahasia & Audit)</option>
               <option value="approve_disposal">approve_disposal (Panitia Penyusutan Arsip)</option>
             </select>
-            <input required className={field} placeholder="Nomor SK Penugasan *" value={grantForm.document_reference} onChange={(e) => setGrantForm({ ...grantForm, document_reference: e.target.value })} />
-            <input className={field} placeholder="Jabatan Penugasan (mis. PPK / PPSPM)" value={grantForm.jabatan_penugasan} onChange={(e) => setGrantForm({ ...grantForm, jabatan_penugasan: e.target.value })} />
+            <div className="space-y-1">
+              <input required maxLength={200} className={field} placeholder="Nomor SK Penugasan *" value={grantForm.document_reference} onChange={(e) => setGrantForm({ ...grantForm, document_reference: e.target.value })} />
+              <div className="flex justify-end"><CharLimit value={grantForm.document_reference} max={200} /></div>
+            </div>
+            <div className="space-y-1">
+              <input maxLength={200} className={field} placeholder="Jabatan Penugasan (mis. PPK / PPSPM)" value={grantForm.jabatan_penugasan} onChange={(e) => setGrantForm({ ...grantForm, jabatan_penugasan: e.target.value })} />
+              <div className="flex justify-end"><CharLimit value={grantForm.jabatan_penugasan} max={200} /></div>
+            </div>
             <input type="date" required className={field} value={grantForm.valid_from} onChange={(e) => setGrantForm({ ...grantForm, valid_from: e.target.value })} />
             <input type="date" required className={field} value={grantForm.valid_until} onChange={(e) => setGrantForm({ ...grantForm, valid_until: e.target.value })} />
             <div className="sm:col-span-2 lg:col-span-3">

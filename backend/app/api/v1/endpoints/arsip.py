@@ -180,6 +180,69 @@ async def rehitung_retensi_jra(
     return {"status": "success", "checked": len(docs), "updated": updated}
 
 
+@router.get("/my-audit-logs", response_model=List[ArsipAuditLogResponse])
+async def list_scoped_arsip_audit_logs(
+    aksi: Optional[str] = Query(None),
+    search: Optional[str] = Query(None, max_length=150),
+    id_dokumen: Optional[int] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    skip: int = Query(0, ge=0),
+    current_user: Pegawai = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Scoped archive audit trail for the Sidebar Audit menu.
+
+    Administrators and holders of `access_secret_archive` see all archive audit entries;
+    other staff see entries only for archives they are permitted to view or actions they performed.
+    """
+    from sqlalchemy import or_
+
+    has_global = await arsip._has_secret_authority(db, current_user)
+    conds = []
+    if aksi:
+        conds.append(ArsipAuditLog.aksi == aksi.strip())
+    if id_dokumen is not None:
+        conds.append(ArsipAuditLog.id_dokumen == id_dokumen)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        conds.append(
+            or_(
+                ArsipAuditLog.nama_dokumen.ilike(like),
+                ArsipAuditLog.nomor_dokumen.ilike(like),
+                ArsipAuditLog.actor_nama.ilike(like),
+                ArsipAuditLog.detail.ilike(like),
+            )
+        )
+
+    rows = (
+        await db.scalars(
+            select(ArsipAuditLog)
+            .where(*conds)
+            .order_by(desc(ArsipAuditLog.created_at), desc(ArsipAuditLog.id))
+            .offset(skip if has_global else 0)
+            .limit(limit if has_global else 500)
+        )
+    ).all()
+
+    if has_global:
+        return list(rows)
+
+    visible_cache: dict[int, bool] = {}
+    filtered = []
+    for row in rows:
+        if row.actor_id == current_user.id_pegawai:
+            filtered.append(row)
+            continue
+        if row.id_dokumen is None:
+            continue
+        if row.id_dokumen not in visible_cache:
+            doc = await arsip.get_by_id(db, row.id_dokumen)
+            visible_cache[row.id_dokumen] = bool(doc and await arsip.can_view(db, doc, current_user))
+        if visible_cache[row.id_dokumen]:
+            filtered.append(row)
+    return filtered[skip : skip + limit]
+
+
 @router.get("/audit-logs", response_model=List[ArsipAuditLogResponse])
 async def list_arsip_audit_logs(
     aksi: Optional[str] = Query(None),

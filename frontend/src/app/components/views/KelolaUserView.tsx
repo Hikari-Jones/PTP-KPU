@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { request, message } from '../../../services/operations'
 import type { Employee, Department } from '../../../services/operations'
 import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
+import { CharLimit } from '../ui/CharLimit'
 import { UserPlus, Edit3, UserCheck, UserX, Loader2, Clock, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react'
 
 interface AccountRequest {
@@ -91,13 +92,17 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
-              Nama
-            </label>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Nama
+              </label>
+              <CharLimit value={form.nama} max={150} />
+            </div>
             <input
               className={field}
               type="text"
               required
+              maxLength={150}
               placeholder="Contoh: Drs. Nama Lengkap, M.Si"
               value={form.nama}
               onChange={e => setForm({ ...form, nama: e.target.value })}
@@ -105,17 +110,22 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
-              NIP
-            </label>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                NIP
+              </label>
+              <CharLimit value={form.nip} max={18} exact />
+            </div>
             <input
               className={field}
               type="text"
+              inputMode="numeric"
+              maxLength={18}
               disabled={edit !== null}
               required
               placeholder="Nomor Induk Pegawai (18 digit)"
               value={form.nip}
-              onChange={e => setForm({ ...form, nip: e.target.value })}
+              onChange={e => setForm({ ...form, nip: e.target.value.replace(/\D/g, '').slice(0, 18) })}
             />
           </div>
 
@@ -146,15 +156,19 @@ export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
-              Kata sandi (minimal 8 karakter)
-            </label>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Kata sandi (minimal 8 karakter)
+              </label>
+              <CharLimit value={form.password} max={128} />
+            </div>
             <input
               className={field}
               type="password"
               autoComplete="new-password"
               required={!edit}
               minLength={8}
+              maxLength={128}
               placeholder={edit ? 'Kosongkan jika tidak ingin mengubah kata sandi' : 'Minimal 8 karakter'}
               value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}

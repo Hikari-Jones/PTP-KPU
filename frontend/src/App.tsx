@@ -24,6 +24,7 @@ const LaporanBulananView = lazy(() => import("./app/components/RealisasiAnggaran
 const SuratView = lazy(() => import("./app/components/views/SuratView").then((m) => ({ default: m.SuratView })))
 const SuratMenyuratModule = lazy(() => import("./app/components/SuratMenyurat/SuratMenyuratModule").then((m) => ({ default: m.SuratMenyuratModule })))
 const ArsipView = lazy(() => import("./app/components/views/ArsipView").then((m) => ({ default: m.ArsipView })))
+const ArsipAuditView = lazy(() => import("./app/components/views/ArsipAuditView").then((m) => ({ default: m.ArsipAuditView })))
 const PengaturanView = lazy(() => import("./app/components/views/PengaturanView").then((m) => ({ default: m.PengaturanView })))
 const FAQView = lazy(() => import("./app/components/views/FAQView").then((m) => ({ default: m.FAQView })))
 const ProfilView = lazy(() => import("./app/components/views/ProfilView").then((m) => ({ default: m.ProfilView })))
@@ -179,6 +180,8 @@ function MainLayout() {
         return <SuratView key="surat-klasifikasi" theme={theme} subTab="klasifikasi" onNavigate={(tab) => setActiveMenu(tab)} />
       case "arsip":
         return <ArsipView theme={theme} />
+      case "arsip_audit":
+        return <ArsipAuditView theme={theme} />
       case "pengaturan":
         return <PengaturanView theme={theme} onToggleTheme={() => toggleTheme()} />
       case "faq":

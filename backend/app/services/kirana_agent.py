@@ -62,6 +62,7 @@ Anda asisten serba bisa: menjawab pertanyaan umum, menjelaskan, merangkum, mener
 Cara menjawab:
 - Permintaan membuat, menyusun, atau menulis draf (nota dinas, surat, undangan, surat tugas) dijawab LANGSUNG dengan draf, TANPA query_database, walaupun menyebut nama bagian atau pejabat.
 - Gunakan bahasa pengguna; bawaan bahasa Indonesia yang baku, jelas, dan ramah. Langsung ke inti, tidak bertele-tele.
+- Jika pengguna menyapa (seperti "halo", "hai", "selamat pagi"), balas dengan ramah, alami, dan singkat sebagai KIRANA (asisten AI PTP-KPU Sulut) tanpa kalimat kaku seperti "Siapa yang mau berkomunikasi?".
 - Gunakan Markdown bila membantu: daftar, **tebal**, dan tabel untuk data berbaris.
 - Tulis nominal uang sebagai Rupiah dengan pemisah ribuan, contoh Rp 1.250.000.
 - Jangan pernah mengarang data. Angka, nama, nomor surat, dan isi dokumen hanya boleh berasal dari hasil query_database. Jika hasilnya kosong atau query gagal, katakan apa adanya.
@@ -252,12 +253,122 @@ def _clean_history(history: Optional[Sequence[Dict[str, Any]]]) -> List[Dict[str
     return turns
 
 
-def _held_back(text: str) -> int:
-    """Length of the tail of `text` that might be the start of a <tool_call> tag."""
-    for size in range(min(len(text), len(TOOL_OPEN) - 1), 0, -1):
-        if TOOL_OPEN.startswith(text[-size:]):
-            return size
-    return 0
+_GREETING_RE = re.compile(
+    r"^\s*(?P<salut>halo+|hallo+|hai+|hay+|hi+|hello+|helo+|selamat\s+(?:pagi|siang|sore|malam)|"
+    r"ass?alamu[\s']*alaikum(?:\s+wr\.?\s*wb\.?)?|salam|permisi|tes+|test+|ping|p)"
+    r"(?:[\s,!\.]*(?:kirana|ai|asisten|bot|kak|min|admin|semua))?[\s!\.\?]*$",
+    re.IGNORECASE,
+)
+
+_ASKED_FOR_SQL_RE = re.compile(r"\b(sql|query|kueri)\b", re.IGNORECASE)
+_JSON_TOOL_START_RE = re.compile(r'\{\s*"name"\s*:\s*"query_database"', re.IGNORECASE)
+_FENCED_SQL_START_RE = re.compile(r"```\s*sql\b", re.IGNORECASE)
+_FENCED_JSON_TOOL_RE = re.compile(r'```\s*json\s*\n?\s*\{\s*"name"\s*:\s*"query_database"', re.IGNORECASE)
+_BARE_SQL_LINE_RE = re.compile(r"(?im)^\s*(?:SELECT|WITH)\b[\s\S]+?\bFROM\b")
+_TRAILING_SQL_OR_TAG_RE = re.compile(
+    r"(?:^|\n)[ \t]*(?:<t?o?o?l?[_a-z]*|```[a-z]*|\{\s*\"?n?a?m?e?\"?|(?:SELECT|WITH)\b[^\n]*)$",
+    re.IGNORECASE,
+)
+
+
+def _greeting_reply(message: str, user=None) -> Optional[str]:
+    """Return a clean, instant Indonesian reply for simple greetings without invoking the 3B model."""
+    m = _GREETING_RE.match(message or "")
+    if not m:
+        return None
+    salut = m.group("salut").strip().lower()
+    raw_name = getattr(user, "nama", None) or ""
+    first_name = raw_name.strip().split(",")[0].strip() if raw_name.strip() else ""
+    who = f", {first_name}" if first_name else ""
+
+    if salut.startswith("ass") or salut.startswith("asalamu"):
+        opener = f"Waalaikumsalam{who}!"
+    elif salut.startswith("selamat "):
+        opener = f"{salut.capitalize()}{who}!"
+    else:
+        opener = f"Halo{who}!"
+
+    return (
+        f"{opener} Saya **KIRANA**, asisten AI Sistem Informasi PTP-KPU Provinsi Sulawesi Utara. "
+        "Ada yang bisa saya bantu hari ini? Anda dapat menanyakan data persuratan, arsip, pegawai, "
+        "realisasi anggaran, atau meminta saya menyusun draf surat dinas."
+    )
+
+
+def _find_tool_start(output: str) -> int:
+    """Return earliest index where a tool call or SQL query begins, or -1 if none."""
+    indices = []
+    idx = output.find(TOOL_OPEN)
+    if idx != -1:
+        indices.append(idx)
+    for pat in (_FENCED_SQL_START_RE, _FENCED_JSON_TOOL_RE, _JSON_TOOL_START_RE, _BARE_SQL_LINE_RE):
+        m = pat.search(output)
+        if m:
+            indices.append(m.start())
+    return min(indices) if indices else -1
+
+
+def _strip_leaked_queries(text: str, user_asked_sql: bool) -> str:
+    """Remove any residual tool XML tags or SQL code blocks before showing text to the user."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"<tool_call>[\s\S]*?</tool_call>", "", text, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<tool_response>[\s\S]*?</tool_response>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?tool_(?:call|response)>", "", cleaned, flags=re.IGNORECASE)
+    if not user_asked_sql:
+        cleaned = re.sub(r"```\s*sql\b[\s\S]*?```", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'```\s*json\s*[\s\S]*?"query_database"[\s\S]*?```', "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\{\s*"name"\s*:\s*"query_database"[\s\S]*?\}\s*\}?', "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"(?im)^\s*(?:SELECT|WITH)\b[^\n;]*\bFROM\b[^\n;]*;?\s*$", "", cleaned)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+
+def _extract_queries_from_output(output: str, tool_at: int) -> List[str]:
+    """Extract SQL queries from <tool_call>, raw JSON, ```sql blocks, or bare SELECT lines."""
+    queries: List[str] = []
+    # 1. Explicit <tool_call> or JSON {"name": "query_database", ...}
+    if tool_at != -1:
+        tail = output[tool_at:]
+        if tail.startswith(TOOL_OPEN):
+            sql = _parse_tool_call(tail[len(TOOL_OPEN):])
+            if sql:
+                queries.append(sql)
+        else:
+            m_json = _JSON_TOOL_START_RE.search(tail)
+            if m_json:
+                sql = _parse_tool_call(tail[m_json.start():])
+                if sql:
+                    queries.append(sql)
+    # 2. Fenced ```sql ... ```
+    if not queries:
+        queries.extend(_sql_written_as_text(output))
+    # 3. Bare SELECT/WITH statement
+    if not queries:
+        m_bare = re.search(r"(?im)^\s*((?:SELECT|WITH)\b[\s\S]+?\bFROM\b[^;`\n]+(?:;)?)", output)
+        if m_bare:
+            candidate = m_bare.group(1).strip().rstrip(";").strip()
+            if candidate:
+                queries.append(candidate)
+    return queries[:3]
+
+
+def _held_back(text: str, *, suppress_sql_prefix: bool = False) -> int:
+    """Length of the tail of `text` that might be the start of a tool call or SQL query."""
+    best = 0
+    markers = (TOOL_OPEN, "<tool_response>", "```sql", "```SQL", "```json", '{"name"')
+    for marker in markers:
+        for size in range(min(len(text), len(marker) - 1), 0, -1):
+            if marker.lower().startswith(text[-size:].lower()):
+                if size > best:
+                    best = size
+                break
+    if suppress_sql_prefix:
+        m = _TRAILING_SQL_OR_TAG_RE.search(text)
+        if m:
+            tail_len = len(text) - m.start()
+            if tail_len > best:
+                best = tail_len
+    return best
 
 
 def _parse_tool_call(raw: str) -> Optional[str]:
@@ -305,8 +416,8 @@ def _with_guidance(result: str) -> str:
         )
     if result.startswith("Hasil: 0 baris"):
         return (
-            result + "\nCoba sekali lagi dengan kata kunci lain atau LIKE '%kata%' pada "
-            "kolom yang lebih tepat. Jika tetap kosong, sampaikan bahwa datanya tidak ditemukan."
+            "Hasil: 0 baris (tidak ada data di database). Sampaikan kepada pengguna secara "
+            "singkat dan jelas bahwa datanya belum tersedia, tanpa menyalin teks instruksi ini."
         )
     return result
 
@@ -367,9 +478,16 @@ async def run_agent(
 ) -> AsyncIterator[Dict[str, Any]]:
     import kirana_llm
 
+    greeting = _greeting_reply(message, user=user)
+    if greeting is not None:
+        yield {"type": "token", "text": greeting}
+        yield {"type": "done", "model": kirana_llm.MODEL_NAME, "used_database": False}
+        return
+
     # Drafting needs no data; small models still tend to look up names they see in
     # the request, so the request is marked and any database call is redirected.
     draft_mode = _is_draft_request(message)
+    user_asked_sql = bool(_ASKED_FOR_SQL_RE.search(message or ""))
     relevant_history = _select_relevant_history(message, history)
     user_content = message
     if draft_mode:
@@ -385,20 +503,30 @@ async def run_agent(
     ]
     used_database = False
     wrote_text = False
+    likely_rag = (not draft_mode) and bool(_DATA_DOMAIN_QUERY.search(message or "") or _detect_domains(message or ""))
 
     for round_no in range(MAX_TOOL_ROUNDS + 1):
         output = ""
         emitted = 0
         tool_at = -1
+        can_query = round_no < MAX_TOOL_ROUNDS
+        # Buffer initial RAG round until we know whether the model emits a query,
+        # so SQL / preambles never flicker in the chatbox during database lookup.
+        buffer_round = can_query and likely_rag and round_no == 0 and not user_asked_sql
 
         async with aclosing(_stream_model(messages, stop=[TOOL_CLOSE])) as stream:
             async for piece in stream:
                 output += piece
-                if tool_at == -1:
-                    tool_at = output.find(TOOL_OPEN)
-                if tool_at != -1:
-                    continue  # collecting the tool call; nothing to show
-                safe = len(output) - _held_back(output)
+                if tool_at == -1 and not user_asked_sql:
+                    tool_at = _find_tool_start(output)
+                    if tool_at != -1:
+                        if wrote_text:
+                            wrote_text = False
+                            yield {"type": "reset"}
+                        yield {"type": "status", "text": "Membaca database…"}
+                if tool_at != -1 or buffer_round:
+                    continue  # collecting the tool call or buffering RAG round; hide SQL from chatbox
+                safe = len(output) - _held_back(output, suppress_sql_prefix=can_query)
                 if safe > emitted:
                     text = output[emitted:safe]
                     if not wrote_text:
@@ -408,23 +536,37 @@ async def run_agent(
                         yield {"type": "token", "text": text}
                     emitted = safe
 
-        can_query = round_no < MAX_TOOL_ROUNDS
+        if tool_at == -1 and not user_asked_sql:
+            tool_at = _find_tool_start(output)
 
-        if tool_at == -1:
-            if emitted < len(output):  # held-back tail that was not a tag after all
+        queries = _extract_queries_from_output(output, tool_at) if can_query else []
+
+        if not queries and tool_at == -1:
+            if buffer_round:
+                cleaned_out = _strip_leaked_queries(output, user_asked_sql)
+                if cleaned_out:
+                    wrote_text = True
+                    yield {"type": "token", "text": cleaned_out}
+            elif emitted < len(output):  # held-back tail that was not a tag/query after all
+                tail = _strip_leaked_queries(output[emitted:], user_asked_sql)
+                if tail:
+                    wrote_text = True
+                    yield {"type": "token", "text": tail}
+            break
+
+        if not can_query:
+            cleaned_final = _strip_leaked_queries(output, user_asked_sql)
+            if wrote_text:
+                wrote_text = False
+                yield {"type": "reset"}
+            if cleaned_final:
                 wrote_text = True
-                yield {"type": "token", "text": output[emitted:]}
-            queries = _sql_written_as_text(output) if can_query else []
-            if not queries:
-                break
-            # The model described its queries instead of running them: run them
-            # for it, drop that text, and let it answer from the real rows.
+                yield {"type": "token", "text": cleaned_final}
+            break
+
+        if queries:
             calls = "\n".join(_tool_call_text(sql) for sql in queries)
         else:
-            if not can_query:
-                break  # out of attempts; handled below
-            sql = _parse_tool_call(output[tool_at + len(TOOL_OPEN):])
-            queries = [sql] if sql else []
             calls = output[tool_at:].rstrip() + "\n" + TOOL_CLOSE
 
         if wrote_text:  # "please wait" preamble, or SQL shown as text

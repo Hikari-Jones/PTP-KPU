@@ -1,5 +1,4 @@
 import { showToast } from "../../../services/activity"
-import { saveFile } from "../../../services/csv"
 import { useState, useRef, useEffect, useCallback } from "react"
 import {
   MessageSquare,
@@ -8,15 +7,12 @@ import {
   User,
   Minimize2,
   Maximize2,
-  Download,
   Loader2,
   Sparkles,
   Square,
   Copy,
   Check,
   RotateCcw,
-  SquarePen,
-  Database,
   History,
   Trash2,
   Plus,
@@ -332,11 +328,6 @@ export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | 
     }
   }
 
-  const downloadMessage = (msg: ChatMessage) => {
-    const blob = new Blob([msg.text], { type: "text/plain;charset=utf-8" })
-    saveFile(`KIRANA_${new Date().toISOString().slice(0, 10)}.txt`, blob)
-  }
-
   const lastMessage = messages[messages.length - 1]
   const hasConversation = messages.some((msg) => msg.sender === "user")
   const actionButtonClass = `p-1 rounded transition-colors cursor-pointer ${
@@ -566,15 +557,6 @@ export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | 
                               >
                                 {copiedId === msg.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadMessage(msg)}
-                                className={actionButtonClass}
-                                title="Unduh sebagai berkas .txt"
-                                aria-label="Unduh sebagai berkas .txt"
-                              >
-                                <Download className="w-3 h-3" />
-                              </button>
                               {msg.id === lastMessage?.id && (
                                 <button
                                   type="button"
@@ -585,16 +567,6 @@ export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | 
                                 >
                                   <RotateCcw className="w-3 h-3" />
                                 </button>
-                              )}
-                              {msg.usedDatabase && (
-                                <span
-                                  className={`ml-1 flex items-center gap-1 text-[9px] font-semibold ${
-                                    isDark ? "text-emerald-400" : "text-emerald-600"
-                                  }`}
-                                  title="Jawaban disusun dari data di database"
-                                >
-                                  <Database className="w-3 h-3" /> dari database
-                                </span>
                               )}
                             </div>
                           ) : (
@@ -689,6 +661,7 @@ export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | 
                   ref={inputRef}
                   value={inputMessage}
                   rows={1}
+                  maxLength={8000}
                   onChange={(e) => {
                     setInputMessage(e.target.value)
                     autoGrow(e.target)
@@ -731,9 +704,14 @@ export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | 
                   </Button>
                 )}
               </form>
-              <p className={`text-[10px] text-center ${isDark ? "text-gray-400" : "text-slate-400"}`}>
-                Enter untuk kirim · Shift+Enter baris baru · Respon AI terintegrasi basis data lokal KPU Sulut.
-              </p>
+              <div className="flex items-center justify-between gap-2 text-[10px]">
+                <p className={isDark ? "text-gray-400" : "text-slate-400"}>
+                  Enter untuk kirim · Shift+Enter baris baru
+                </p>
+                <span className={`tabular-nums font-medium ${inputMessage.length >= 8000 ? "text-red-500 font-bold" : isDark ? "text-gray-400" : "text-slate-500"}`}>
+                  {inputMessage.length}/8000
+                </span>
+              </div>
             </div>
           )}
         </div>

@@ -3,6 +3,7 @@ import { X, Upload, AlertCircle, FileText, CheckCircle2, Loader2, Sparkles } fro
 import { Card, CardContent } from "../ui/card"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
+import { CharLimit } from "../ui/CharLimit"
 import {
   paguAnggaranApi,
   realisasiAnggaranApi,
@@ -323,9 +324,13 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-semibold block">Nomor Dokumen / SPD</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="font-semibold block">Nomor Dokumen / SPD</label>
+                <CharLimit value={noDokumen} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 value={noDokumen}
                 onChange={(e) => setNoDokumen(e.target.value)}
                 disabled={isSubmitting}
@@ -394,9 +399,13 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
           {/* Periode Anggaran & Mekanisme Pembayaran (PMK 62/2023) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <label className="font-semibold block">Periode Anggaran</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="font-semibold block">Periode Anggaran</label>
+                <CharLimit value={periode} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 value={periode}
                 onChange={(e) => setPeriode(e.target.value)}
                 disabled={isSubmitting}
@@ -437,9 +446,13 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <label className="font-semibold block">Nomor SP2D (Opsional)</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="font-semibold block">Nomor SP2D (Opsional)</label>
+                <CharLimit value={nomorSp2d} max={100} />
+              </div>
               <Input
                 type="text"
+                maxLength={100}
                 value={nomorSp2d}
                 onChange={(e) => setNomorSp2d(e.target.value)}
                 disabled={isSubmitting}
@@ -448,9 +461,13 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
               />
             </div>
             <div className="space-y-1.5">
-              <label className="font-semibold block">Penerima Pembayaran</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="font-semibold block">Penerima Pembayaran</label>
+                <CharLimit value={penerimaPembayaran} max={255} />
+              </div>
               <Input
                 type="text"
+                maxLength={255}
                 value={penerimaPembayaran}
                 onChange={(e) => setPenerimaPembayaran(e.target.value)}
                 disabled={isSubmitting}
@@ -459,10 +476,14 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
               />
             </div>
             <div className="space-y-1.5">
-              <label className="font-semibold block">Potongan Pajak (Rp)</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="font-semibold block">Potongan Pajak (Rp)</label>
+                <CharLimit value={formatCurrencyInput(potonganPajakStr)} max={22} />
+              </div>
               <Input
                 type="text"
                 inputMode="decimal"
+                maxLength={22}
                 value={formatCurrencyInput(potonganPajakStr)}
                 onChange={(e) => setPotonganPajakStr(sanitizeCurrencyInput(e.target.value))}
                 disabled={isSubmitting}
@@ -474,11 +495,15 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
           {/* Uraian Kegiatan / Belanja */}
           <div className="space-y-1.5">
-            <label className={`font-bold block ${isDark ? "text-white" : "text-black"}`}>
-              Uraian Kegiatan / Keterangan Belanja
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className={`font-bold block ${isDark ? "text-white" : "text-black"}`}>
+                Uraian Kegiatan / Keterangan Belanja
+              </label>
+              <CharLimit value={uraian} max={1000} />
+            </div>
             <Input
               type="text"
+              maxLength={1000}
               placeholder="Contoh: Honorarium Rapat Pleno Rekapitulasi Pemilu"
               value={uraian}
               onChange={(e) => setUraian(e.target.value)}
@@ -493,19 +518,23 @@ export function TambahRealisasiModal({ isOpen, onClose, onSuccess, theme }: Prop
 
           {/* Jumlah Realisasi */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <label className={`font-bold block ${isDark ? "text-white" : "text-black"}`}>
                 Jumlah Realisasi (Rp)
               </label>
-              {isOverBudget && (
-                <span className="text-[10px] font-extrabold text-white bg-red-600 px-2 py-0.5 rounded shadow-xs animate-pulse">
-                  ⚠️ Peringatan: Melebihi Sisa Anggaran Pagu!
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {isOverBudget && (
+                  <span className="text-[10px] font-extrabold text-white bg-red-600 px-2 py-0.5 rounded shadow-xs animate-pulse">
+                    ⚠️ Peringatan: Melebihi Sisa Anggaran Pagu!
+                  </span>
+                )}
+                <CharLimit value={formatCurrencyInput(jumlahStr)} max={22} />
+              </div>
             </div>
             <Input
               type="text"
               inputMode="decimal"
+              maxLength={22}
               placeholder="0"
               value={formatCurrencyInput(jumlahStr)}
               onChange={handleJumlahChange}

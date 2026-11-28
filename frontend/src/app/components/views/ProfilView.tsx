@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { Award, CheckCircle2, AlertCircle, IdCard, Loader2, LockKeyhole, Save, Shield, User } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
+import { CharLimit } from "../ui/CharLimit"
 
 export function ProfilView({ theme }: { theme: "light" | "dark" }) {
   const { currentUser, userRole, updateProfile } = useAuth()
@@ -178,12 +179,16 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  Nama Lengkap
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Nama Lengkap
+                  </label>
+                  <CharLimit value={nama} max={150} />
+                </div>
                 <input
                   type="text"
                   required
+                  maxLength={150}
                   value={nama}
                   onChange={(e) => setNama(e.target.value)}
                   className={inputClass}
@@ -192,9 +197,12 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  NIP (18 Digit)
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    NIP (18 Digit)
+                  </label>
+                  <CharLimit value={nip} max={18} exact />
+                </div>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -208,15 +216,19 @@ export function ProfilView({ theme }: { theme: "light" | "dark" }) {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  Kata Sandi Baru (Opsional)
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Kata Sandi Baru (Opsional)
+                  </label>
+                  <CharLimit value={password} max={128} />
+                </div>
                 <div className="relative">
                   <LockKeyhole className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="password"
                     autoComplete="new-password"
                     minLength={8}
+                    maxLength={128}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className={`${inputClass} pl-9`}

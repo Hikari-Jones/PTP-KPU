@@ -170,6 +170,46 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
             2,
         )
 
+    async def test_greeting_replies_naturally_without_calling_model(self):
+        called = False
+        async def fail_stream(*args, **kwargs):
+            nonlocal called
+            called = True
+            yield 'Siapa yang mau berkomunikasi?'
+
+        named_user = SimpleNamespace(id_pegawai=1, id_bagian=10, role='Operator', nama='Budi Santoso')
+        with patch.dict('sys.modules', {'kirana_llm': SimpleNamespace(MODEL_NAME='test')}), \
+             patch.object(kirana_agent, '_stream_model', fail_stream):
+            events_out = [ev async for ev in kirana_agent.run_agent('halo', user=named_user)]
+
+        self.assertFalse(called)
+        text = ''.join(e['text'] for e in events_out if e['type'] == 'token')
+        self.assertIn('Halo, Budi Santoso!', text)
+        self.assertIn('KIRANA', text)
+        self.assertNotIn('berkomunikasi', text.lower())
+        self.assertFalse(events_out[-1]['used_database'])
+
+    async def test_rag_hides_fenced_and_raw_sql_queries_from_stream(self):
+        async def stream_with_fenced_sql(messages, **kwargs):
+            if len(messages) == 2:
+                for ch in ['Baik, saya cek:\n```sql\n', 'SELECT COUNT(*) FROM dokumen_arsip\n```']:
+                    yield ch
+            else:
+                yield 'Saat ini terdapat 3 dokumen arsip.'
+
+        from unittest.mock import AsyncMock
+        query = AsyncMock(return_value='Hasil: 1 baris.\ncount\n3')
+        with patch.dict('sys.modules', {'kirana_llm': SimpleNamespace(MODEL_NAME='test')}), \
+             patch.object(kirana_agent, '_stream_model', stream_with_fenced_sql), \
+             patch.object(kirana_db, 'run_query', query):
+            events_out = [ev async for ev in kirana_agent.run_agent('Berapa jumlah arsip?', user=USER)]
+
+        emitted_tokens = ''.join(e['text'] for e in events_out if e['type'] == 'token')
+        self.assertNotIn('SELECT', emitted_tokens)
+        self.assertNotIn('```sql', emitted_tokens)
+        self.assertEqual(emitted_tokens, 'Saat ini terdapat 3 dokumen arsip.')
+        self.assertTrue(events_out[-1]['used_database'])
+
 
 class ScopedDatabaseTests(unittest.TestCase):
     def setUp(self):

@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { useAuth } from "../../context/AuthContext"
 import { showToast as notify } from "../../../services/activity"
 import { ReadOnlyBanner } from "../ui/read-only"
+import { CharLimit } from "../ui/CharLimit"
 
 export interface SuratViewProps {
   theme?: "light" | "dark"
@@ -961,16 +962,22 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
       {activeTab === "surat-keluar" && (
         <Card className={cardClass}>
           <CardHeader className="flex flex-col gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-              <div className="relative w-full lg:max-w-sm">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  aria-label="Cari surat keluar"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari perihal, nomor, atau tujuan…"
-                  className={`${field} pl-9`}
-                />
+            <div className="flex flex-col lg:flex-row lg:items-start gap-3">
+              <div className="w-full lg:max-w-sm space-y-1">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    aria-label="Cari surat keluar"
+                    maxLength={150}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Cari perihal, nomor, atau tujuan…"
+                    className={`${field} pl-9`}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <CharLimit value={searchQuery} max={150} />
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto lg:flex-1">
                 <select aria-label="Filter status" className={field} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -1037,16 +1044,22 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 Menampilkan surat tugas yang menugaskan Anda (hanya baca).
               </p>
             )}
-            <div className={`flex flex-col lg:flex-row lg:items-center gap-2 p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
-              <div className="relative w-full lg:max-w-sm">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  aria-label="Cari surat tugas"
-                  value={tugasSearch}
-                  onChange={(e) => setTugasSearch(e.target.value)}
-                  placeholder="Cari nomor, maksud, tempat, atau pelaksana…"
-                  className={`${field} pl-9`}
-                />
+            <div className={`flex flex-col lg:flex-row lg:items-start gap-2 p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
+              <div className="w-full lg:max-w-sm space-y-1">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    aria-label="Cari surat tugas"
+                    maxLength={150}
+                    value={tugasSearch}
+                    onChange={(e) => setTugasSearch(e.target.value)}
+                    placeholder="Cari nomor, maksud, tempat, atau pelaksana…"
+                    className={`${field} pl-9`}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <CharLimit value={tugasSearch} max={150} />
+                </div>
               </div>
               <select aria-label="Filter beban anggaran" className={`${field} lg:w-auto`} value={tugasBeban} onChange={(e) => setTugasBeban(e.target.value)}>
                 <option value="">Semua Beban Anggaran</option>
@@ -1167,16 +1180,22 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </button>
             </div>
           )}
-          <div className={`flex flex-col lg:flex-row lg:items-center gap-2 p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
-            <div className="relative w-full lg:max-w-sm">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                aria-label="Cari kode klasifikasi"
-                value={klasSearch}
-                onChange={(e) => setKlasSearch(e.target.value)}
-                placeholder="Cari kode, nama, atau deskripsi…"
-                className={`${field} pl-9`}
-              />
+          <div className={`flex flex-col lg:flex-row lg:items-start gap-2 p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
+            <div className="w-full lg:max-w-sm space-y-1">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  aria-label="Cari kode klasifikasi"
+                  maxLength={150}
+                  value={klasSearch}
+                  onChange={(e) => setKlasSearch(e.target.value)}
+                  placeholder="Cari kode, nama, atau deskripsi…"
+                  className={`${field} pl-9`}
+                />
+              </div>
+              <div className="flex justify-end">
+                <CharLimit value={klasSearch} max={150} />
+              </div>
             </div>
             <select aria-label="Filter kategori klasifikasi" className={`${field} lg:w-auto`} value={klasKategori} onChange={(e) => setKlasKategori(e.target.value)}>
               <option value="">Semua Kategori</option>
@@ -1342,8 +1361,12 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               {/* Catatan pemeriksaan / paraf jika relevan */}
               {((s.status === "diajukan" && canReviewSurat) || ((s.status === "draft" || s.status === "revisi") && !readOnly)) && (
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold">Catatan Pemeriksaan / Pengajuan</label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-bold">Catatan Pemeriksaan / Pengajuan</label>
+                    <CharLimit value={reviewNote} max={500} />
+                  </div>
                   <input
+                    maxLength={500}
                     className={field}
                     placeholder="Opsional: catatan paraf, revisi, atau pengajuan…"
                     value={reviewNote}
@@ -1654,36 +1677,60 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 <input type="date" required className={field} value={form.tanggal_surat} onChange={(e) => setForm({ ...form, tanggal_surat: e.target.value })} />
               </label>
               <label className="space-y-1.5">
-                <span>Lampiran</span>
-                <input className={field} value={form.lampiran} placeholder="Contoh: 1 berkas" onChange={(e) => setForm({ ...form, lampiran: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Lampiran</span>
+                  <CharLimit value={form.lampiran} max={100} />
+                </span>
+                <input maxLength={100} className={field} value={form.lampiran} placeholder="Contoh: 1 berkas" onChange={(e) => setForm({ ...form, lampiran: e.target.value })} />
               </label>
               <label className="space-y-1.5 md:col-span-2">
-                <span>Perihal *</span>
-                <input required className={field} value={form.perihal} onChange={(e) => setForm({ ...form, perihal: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Perihal *</span>
+                  <CharLimit value={form.perihal} max={255} />
+                </span>
+                <input required maxLength={255} className={field} value={form.perihal} onChange={(e) => setForm({ ...form, perihal: e.target.value })} />
               </label>
               <label className="space-y-1.5 md:col-span-2">
-                <span>Tujuan Surat *</span>
-                <input required className={field} value={form.tujuan_surat} onChange={(e) => setForm({ ...form, tujuan_surat: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Tujuan Surat *</span>
+                  <CharLimit value={form.tujuan_surat} max={255} />
+                </span>
+                <input required maxLength={255} className={field} value={form.tujuan_surat} onChange={(e) => setForm({ ...form, tujuan_surat: e.target.value })} />
               </label>
               <label className="space-y-1.5 md:col-span-2">
-                <span>Isi Surat</span>
-                <textarea rows={5} className={field} value={form.isi_surat} onChange={(e) => setForm({ ...form, isi_surat: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Isi Surat</span>
+                  <CharLimit value={form.isi_surat} max={4000} />
+                </span>
+                <textarea rows={5} maxLength={4000} className={field} value={form.isi_surat} onChange={(e) => setForm({ ...form, isi_surat: e.target.value })} />
               </label>
               <label className="space-y-1.5">
-                <span>Atas Nama (a.n. / u.b. / Plt.)</span>
-                <input className={field} placeholder="Contoh: a.n." value={form.atas_nama} onChange={(e) => setForm({ ...form, atas_nama: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Atas Nama (a.n. / u.b. / Plt.)</span>
+                  <CharLimit value={form.atas_nama} max={30} />
+                </span>
+                <input maxLength={30} className={field} placeholder="Contoh: a.n." value={form.atas_nama} onChange={(e) => setForm({ ...form, atas_nama: e.target.value })} />
               </label>
               <label className="space-y-1.5">
-                <span>Jabatan Penandatangan</span>
-                <input className={field} placeholder="Contoh: Sekretaris KPU Provinsi Sulawesi Utara" value={form.penandatangan_jabatan} onChange={(e) => setForm({ ...form, penandatangan_jabatan: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Jabatan Penandatangan</span>
+                  <CharLimit value={form.penandatangan_jabatan} max={150} />
+                </span>
+                <input maxLength={150} className={field} placeholder="Contoh: Sekretaris KPU Provinsi Sulawesi Utara" value={form.penandatangan_jabatan} onChange={(e) => setForm({ ...form, penandatangan_jabatan: e.target.value })} />
               </label>
               <label className="space-y-1.5">
-                <span>Nama Penandatangan</span>
-                <input className={field} placeholder="Nama lengkap pejabat penandatangan" value={form.penandatangan_nama} onChange={(e) => setForm({ ...form, penandatangan_nama: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Nama Penandatangan</span>
+                  <CharLimit value={form.penandatangan_nama} max={150} />
+                </span>
+                <input maxLength={150} className={field} placeholder="Nama lengkap pejabat penandatangan" value={form.penandatangan_nama} onChange={(e) => setForm({ ...form, penandatangan_nama: e.target.value })} />
               </label>
               <label className="space-y-1.5">
-                <span>Tembusan</span>
-                <textarea rows={2} className={field} placeholder="1. Ketua KPU Provinsi Sulawesi Utara&#10;2. Arsip" value={form.tembusan} onChange={(e) => setForm({ ...form, tembusan: e.target.value })} />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Tembusan</span>
+                  <CharLimit value={form.tembusan} max={1000} />
+                </span>
+                <textarea rows={2} maxLength={1000} className={field} placeholder="1. Ketua KPU Provinsi Sulawesi Utara&#10;2. Arsip" value={form.tembusan} onChange={(e) => setForm({ ...form, tembusan: e.target.value })} />
               </label>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -1718,16 +1765,25 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-semibold">
               <label className="space-y-1.5 md:col-span-2">
-                <span>Maksud Penugasan *</span>
-                <textarea required rows={3} className={field} value={tugasForm.maksud_tugas} onChange={(e) => setTugasForm({ ...tugasForm, maksud_tugas: e.target.value })} placeholder="Contoh: Melaksanakan supervisi pemutakhiran data pemilih" />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Maksud Penugasan *</span>
+                  <CharLimit value={tugasForm.maksud_tugas} max={2000} />
+                </span>
+                <textarea required rows={3} maxLength={2000} className={field} value={tugasForm.maksud_tugas} onChange={(e) => setTugasForm({ ...tugasForm, maksud_tugas: e.target.value })} placeholder="Contoh: Melaksanakan supervisi pemutakhiran data pemilih" />
               </label>
               <label className="space-y-1.5 md:col-span-2">
-                <span>Dasar Penugasan</span>
-                <input className={field} value={tugasForm.dasar_tugas} onChange={(e) => setTugasForm({ ...tugasForm, dasar_tugas: e.target.value })} placeholder="Contoh: Undangan KPU RI Nomor 12/2026" />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Dasar Penugasan</span>
+                  <CharLimit value={tugasForm.dasar_tugas} max={1000} />
+                </span>
+                <input maxLength={1000} className={field} value={tugasForm.dasar_tugas} onChange={(e) => setTugasForm({ ...tugasForm, dasar_tugas: e.target.value })} placeholder="Contoh: Undangan KPU RI Nomor 12/2026" />
               </label>
               <label className="space-y-1.5 md:col-span-2">
-                <span>Tempat / Lokasi Tugas *</span>
-                <input required className={field} value={tugasForm.tempat_tugas} onChange={(e) => setTugasForm({ ...tugasForm, tempat_tugas: e.target.value })} placeholder="Contoh: KPU Kota Manado" />
+                <span className="flex items-center justify-between gap-2">
+                  <span>Tempat / Lokasi Tugas *</span>
+                  <CharLimit value={tugasForm.tempat_tugas} max={255} />
+                </span>
+                <input required maxLength={255} className={field} value={tugasForm.tempat_tugas} onChange={(e) => setTugasForm({ ...tugasForm, tempat_tugas: e.target.value })} placeholder="Contoh: KPU Kota Manado" />
               </label>
               <label className="space-y-1.5">
                 <span>Tanggal Mulai *</span>
@@ -1761,9 +1817,13 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
                 </label>
               )}
               <div className="space-y-1.5 md:col-span-2">
-                <span>Pegawai Pelaksana Tugas * ({tugasForm.pelaksana.length} dipilih)</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Pegawai Pelaksana Tugas * ({tugasForm.pelaksana.length} dipilih)</span>
+                  <CharLimit value={pelaksanaSearch} max={150} />
+                </div>
                 <input
                   aria-label="Cari pegawai"
+                  maxLength={150}
                   className={field}
                   placeholder="Cari nama pegawai…"
                   value={pelaksanaSearch}
@@ -1886,11 +1946,15 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
             <div className="space-y-3.5 text-xs font-semibold">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
-                    Kode Klasifikasi *
-                  </label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Kode Klasifikasi *
+                    </label>
+                    <CharLimit value={klasifikasiForm.kode_klasifikasi} max={50} />
+                  </div>
                   <input
                     required
+                    maxLength={50}
                     placeholder="Contoh: PL.01"
                     value={klasifikasiForm.kode_klasifikasi}
                     onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, kode_klasifikasi: e.target.value })}
@@ -1917,11 +1981,15 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
-                  Nama Klasifikasi *
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Nama Klasifikasi *
+                  </label>
+                  <CharLimit value={klasifikasiForm.nama_klasifikasi} max={255} />
+                </div>
                 <input
                   required
+                  maxLength={255}
                   placeholder="Contoh: Pencalonan Peserta Pemilu dan Pemilihan"
                   value={klasifikasiForm.nama_klasifikasi}
                   onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, nama_klasifikasi: e.target.value })}
@@ -1930,10 +1998,14 @@ export function SuratView({ theme = "dark", subTab = "overview", onNavigate }: S
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
-                  Deskripsi / Keterangan
-                </label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Deskripsi / Keterangan
+                  </label>
+                  <CharLimit value={klasifikasiForm.deskripsi} max={500} />
+                </div>
                 <input
+                  maxLength={500}
                   placeholder="Keterangan dokumen yang dicakup..."
                   value={klasifikasiForm.deskripsi}
                   onChange={(e) => setKlasifikasiForm({ ...klasifikasiForm, deskripsi: e.target.value })}

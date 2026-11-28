@@ -3,6 +3,7 @@ import { request, download, message } from '../../../services/operations'
 import type { Employee } from '../../../services/operations'
 import { filesApi } from '../../../services/api'
 import { Workspace, field, button, useOperation } from '../ui/operations'
+import { CharLimit } from '../ui/CharLimit'
 import { useAuth } from '../../context/AuthContext'
 import { RefreshCw, FileText, ChevronDown, Download, CheckCircle, AlertCircle, Send, Archive, Check, Search, Filter, X, Eye, Inbox } from 'lucide-react'
 import { showToast as notify } from '../../../services/activity'
@@ -288,12 +289,16 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               </div>
 
               <div className="space-y-1.5 md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Perihal Surat <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Perihal Surat <span className="text-red-500">*</span>
+                  </label>
+                  <CharLimit value={form.subject} max={255} />
+                </div>
                 <input
                   required
                   type="text"
+                  maxLength={255}
                   className={field}
                   placeholder="Masukkan pokok atau perihal surat..."
                   value={form.subject}
@@ -302,12 +307,16 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Instansi / Pengirim <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Instansi / Pengirim <span className="text-red-500">*</span>
+                  </label>
+                  <CharLimit value={form.sender} max={255} />
+                </div>
                 <input
                   required
                   type="text"
+                  maxLength={255}
                   className={field}
                   placeholder="Nama atau instansi pengirim"
                   value={form.sender}
@@ -316,12 +325,16 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Tujuan / Penerima <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Tujuan / Penerima <span className="text-red-500">*</span>
+                  </label>
+                  <CharLimit value={form.recipient} max={255} />
+                </div>
                 <input
                   required
                   type="text"
+                  maxLength={255}
                   className={field}
                   placeholder="Nama atau bagian penerima"
                   value={form.recipient}
@@ -330,12 +343,16 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Nomor Surat Masuk {form.kind === 'masuk' ? <span className="text-slate-400 font-normal">(Opsional)</span> : <span className="text-slate-400 font-normal">(Dinonaktifkan untuk draft keluar)</span>}
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Nomor Surat Masuk {form.kind === 'masuk' ? <span className="text-slate-400 font-normal">(Opsional)</span> : <span className="text-slate-400 font-normal">(Dinonaktifkan untuk draft keluar)</span>}
+                  </label>
+                  <CharLimit value={form.number} max={150} />
+                </div>
                 <input
                   disabled={form.kind === 'keluar'}
                   type="text"
+                  maxLength={150}
                   className={field}
                   placeholder={form.kind === 'keluar' ? 'Nomor akan dibuat otomatis saat persetujuan' : 'Contoh: 123/KPU-SULUT/XI/2026'}
                   value={form.number}
@@ -373,11 +390,15 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               </div>
 
               <div className="space-y-1.5 md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Ringkasan / Isi Surat
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Ringkasan / Isi Surat
+                  </label>
+                  <CharLimit value={form.content} max={4000} />
+                </div>
                 <textarea
                   rows={3}
+                  maxLength={4000}
                   className={field}
                   placeholder="Tuliskan ringkasan isi surat atau keterangan penting..."
                   value={form.content}
@@ -409,25 +430,31 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
       )}
 
       {/* Filter Surat */}
-      <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
-        <span className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
+      <div className="flex flex-wrap items-start gap-2 p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400 pt-1.5">
           <Filter className="w-3.5 h-3.5" /> Filter:
         </span>
         <form
-          className="relative flex-1 min-w-[200px]"
+          className="flex-1 min-w-[200px] space-y-1"
           onSubmit={(e) => {
             e.preventDefault()
             applyFilter(() => setAppliedSearch(search.trim()))
           }}
         >
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            aria-label="Cari surat"
-            className={`${field} !pl-8 !py-1.5 !text-xs`}
-            placeholder="Cari perihal, pengirim, penerima, atau nomor… (Enter)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              aria-label="Cari surat"
+              maxLength={150}
+              className={`${field} !pl-8 !py-1.5 !text-xs`}
+              placeholder="Cari perihal, pengirim, penerima, atau nomor… (Enter)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end">
+            <CharLimit value={search} max={150} />
+          </div>
         </form>
         <select
           aria-label="Filter status surat"
@@ -583,11 +610,15 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
             <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
               {hasActions && (
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Catatan Tindakan
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Catatan Tindakan
+                  </label>
+                  <CharLimit value={note} max={500} />
+                </div>
                 <textarea
                   rows={2}
+                  maxLength={500}
                   className={field}
                   placeholder="Tuliskan catatan disposisi atau instruksi pemeriksaan..."
                   value={note}
@@ -599,11 +630,15 @@ export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }:
               {canEditDraft && (
                 <div className="space-y-2">
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Perbaiki Isi Surat
-                    </label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Perbaiki Isi Surat
+                      </label>
+                      <CharLimit value={content} max={4000} />
+                    </div>
                     <textarea
                       rows={3}
+                      maxLength={4000}
                       className={field}
                       value={content}
                       onChange={(e) => setContent(e.target.value)}
