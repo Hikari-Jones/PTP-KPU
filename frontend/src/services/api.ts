@@ -25,6 +25,15 @@ import type {
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
+export class ApiStatusError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiStatusError';
+    this.status = status;
+  }
+}
+
 const getAuthHeaders = (): HeadersInit => {
   const token = localStorage.getItem('ptp_kpu_token');
   return {
@@ -193,7 +202,19 @@ export const streamChatMessage = async (
   });
   if (!res.ok || !res.body) {
     const error = await res.json().catch(() => ({}));
-    throw new Error(typeof error.detail === 'string' ? error.detail : `Layanan AI mengembalikan status ${res.status}`);
+    if (res.status === 401) {
+      throw new ApiStatusError('Sesi login Anda telah berakhir. Silakan muat ulang halaman dan masuk kembali.', 401);
+    }
+    if (res.status === 504 || res.status === 524) {
+      throw new ApiStatusError('KIRANA membutuhkan waktu terlalu lama untuk merespons. Silakan coba lagi.', res.status);
+    }
+    if (res.status === 502 || res.status === 503) {
+      throw new ApiStatusError('Server AI sedang sibuk atau memulai ulang. Tunggu sebentar lalu coba lagi.', res.status);
+    }
+    throw new ApiStatusError(
+      typeof error.detail === 'string' ? error.detail : `Layanan AI mengembalikan status ${res.status}`,
+      res.status,
+    );
   }
 
   await consumeChatStream(res.body, onEvent);
@@ -890,7 +911,7 @@ export const authApi = {
         localStorage.removeItem('ptp_kpu_user');
       }
       const err = await res.json().catch(() => ({ detail: 'Sesi kedaluwarsa atau tidak valid' }));
-      throw new Error(err.detail || `Gagal memverifikasi identitas pengguna (${res.status})`);
+      throw new ApiStatusError(err.detail || `Gagal memverifikasi identitas pengguna (${res.status})`, res.status);
     }
 
     return await res.json();

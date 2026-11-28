@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react"
 import { request } from "../../services/operations"
-import { authApi } from "../../services/api"
+import { authApi, ApiStatusError } from "../../services/api"
 
 export interface UserProfile {
   id_pegawai?: number
@@ -92,10 +92,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const profile = user as UserProfile
           setCurrentUser(profile)
           localStorage.setItem("ptp_kpu_user", JSON.stringify(profile))
-        } catch {
-          localStorage.removeItem("ptp_kpu_token")
-          localStorage.removeItem("ptp_kpu_user")
-          setCurrentUser(null)
+        } catch (err) {
+          const isUnauthorized = err instanceof ApiStatusError && (err.status === 401 || err.status === 403)
+          if (isUnauthorized || !localStorage.getItem("ptp_kpu_user")) {
+            localStorage.removeItem("ptp_kpu_token")
+            localStorage.removeItem("ptp_kpu_user")
+            setCurrentUser(null)
+          }
         }
       } else {
         localStorage.removeItem("ptp_kpu_user")

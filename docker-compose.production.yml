@@ -39,8 +39,9 @@ services:
     build: ./backend
     logging: *default-logging
     restart: unless-stopped
-    # Measured: API ~100 MB; the AI model needs ~1.7 GB working memory (runs at full speed under this cap).
-    mem_limit: 2560m
+    # API ~100 MB + 2.1 GB KIRANA weights + 8192-token KV cache (~2.8-3.5 GB peak).
+    # Override via BACKEND_MEM_LIMIT in .env on smaller hosts if needed.
+    mem_limit: ${BACKEND_MEM_LIMIT:-5120m}
     command:
       - sh
       - -c
@@ -63,6 +64,7 @@ services:
       TZ: ${TZ:-Asia/Makassar}
       DATABASE_URL: mysql+aiomysql://kpu_app:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}@mysql-db:3306/kpu_db
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
       AUTHORITY_GRANTS: ${AUTHORITY_GRANTS:-[]}
       # Keep "false" until the office validates number format and signing authority.
       OFFICIAL_ISSUANCE_ENABLED: ${OFFICIAL_ISSUANCE_ENABLED:-false}

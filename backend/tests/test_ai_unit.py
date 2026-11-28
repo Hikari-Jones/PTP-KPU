@@ -70,6 +70,23 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(closed, [True])
         self.assertEqual(ai._inference_slots._value, 2)
 
+    async def test_stream_emits_keepalive_during_slow_inference(self):
+        async def slow_generate(*args):
+            await asyncio.sleep(0.06)
+            yield {'type': 'token', 'text': 'Siap'}
+            yield {'type': 'done', 'model': 'test', 'used_database': False}
+
+        with patch.object(ai, '_run_agent', slow_generate), \
+             patch.object(ai, '_SSE_KEEPALIVE_SECONDS', 0.02):
+            response = await ai.chat_with_ai_stream(ai.ChatRequest(message='Halo'), USER)
+            raw_chunks = [chunk async for chunk in response.body_iterator]
+
+        self.assertIn(': keepalive\n\n', raw_chunks)
+        data_events = [json.loads(c[6:]) for c in raw_chunks if c.startswith('data: ')]
+        self.assertEqual([e['type'] for e in data_events], ['token', 'done'])
+        self.assertEqual(data_events[0]['text'], 'Siap')
+        self.assertEqual(ai._inference_slots._value, 2)
+
     async def test_concurrency_limit(self):
         for endpoint in [ai.chat_with_ai, ai.chat_with_ai_stream]:
             with patch.object(ai, '_inference_slots', asyncio.Semaphore(0)):

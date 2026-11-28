@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import threading
-from contextlib import aclosing
+from contextlib import aclosing, suppress
 import logging
 from typing import AsyncIterator, List, Literal, Optional
 
@@ -218,6 +218,9 @@ async def chat_with_ai(payload: ChatRequest, user: Pegawai = Depends(get_current
     )
 
 
+_SSE_KEEPALIVE_SECONDS = 15.0
+
+
 def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -227,6 +230,8 @@ async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_
     """Ask KIRANA and receive the answer as it is written (Server-Sent Events).
 
     Each event is a JSON object: {"type": "token"|"status"|"reset"|"done"|"error", ...}.
+    Emits SSE comment heartbeats during slow model load/evaluation so reverse proxies
+    (such as Cloudflare's 100s idle timeout) never drop the connection.
     Closing the connection stops the generation.
     """
     query = payload.message.strip()
@@ -237,16 +242,45 @@ async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_
 
     async def events() -> AsyncIterator[str]:
         wrote_text = False
+        event_queue: asyncio.Queue = asyncio.Queue()
+        done_sentinel = object()
+
+        async def _produce() -> None:
+            try:
+                async with aclosing(_run_agent(payload, user)) as agent:
+                    async for event in agent:
+                        await event_queue.put(("event", event))
+            except BaseException as exc:
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
+                await event_queue.put(("error", exc))
+            finally:
+                await event_queue.put(("done", done_sentinel))
+
+        producer = asyncio.create_task(_produce())
         try:
-            async with aclosing(_run_agent(payload, user)) as agent:
-                async for event in agent:
-                    if event["type"] == "token":
-                        wrote_text = True
-                    elif event["type"] == "reset":
-                        wrote_text = False
-                    if event["type"] == "done" and event.get("source", "local_model") == "local_model":
-                        _record_inference(None)
-                    yield _sse({"source": "local_model", **event} if event["type"] == "done" else event)
+            while True:
+                try:
+                    kind, item = await asyncio.wait_for(
+                        event_queue.get(), timeout=_SSE_KEEPALIVE_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+
+                if kind == "done":
+                    break
+                if kind == "error":
+                    raise item
+
+                event = item
+                if event["type"] == "token":
+                    wrote_text = True
+                elif event["type"] == "reset":
+                    wrote_text = False
+                if event["type"] == "done" and event.get("source", "local_model") == "local_model":
+                    _record_inference(None)
+                yield _sse({"source": "local_model", **event} if event["type"] == "done" else event)
         except Exception as exc:
             logger.exception("Local model inference failed")
             _record_inference(exc)
@@ -262,6 +296,10 @@ async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_
             })
 
         finally:
+            if not producer.done():
+                producer.cancel()
+            with suppress(asyncio.CancelledError):
+                await producer
             _inference_slots.release()
 
     return StreamingResponse(
