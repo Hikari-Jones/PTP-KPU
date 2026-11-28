@@ -189,9 +189,10 @@ async def upgrade():
     async with engine.begin() as connection:
         await apply_schema_upgrades(connection)
     from app.core.database import AsyncSessionLocal
-    from app.core.reference_data import ensure_reference_data
+    from app.core.reference_data import ensure_reference_data, ensure_subbagian_master
     async with AsyncSessionLocal() as session:
         await ensure_reference_data(session)
+        await ensure_subbagian_master(session)
         await session.commit()
     await engine.dispose()
     print("Operations schema upgrade completed without reseeding demo data")

@@ -104,6 +104,35 @@ class Wave4MigrationsAndKiranaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("pagu_blokir", safe_q)
 
+    async def test_unit_bagian_options_auto_seeds_official_subbagian_on_fresh_db(self):
+        """Fresh DB containing only ADMIN still populates all 3 Unit Bagian x 2 Subbagian for Sign Up."""
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+        from app.models.schema import Bagian
+        from app.services.account_requests import get_unit_bagian_options
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Bagian.__table__.create)
+            Session = async_sessionmaker(engine, expire_on_commit=False)
+            async with Session() as session:
+                session.add(Bagian(kode_bagian="ADMIN", nama_bagian="Administrasi Sistem"))
+                await session.commit()
+
+                options = await get_unit_bagian_options(session)
+                self.assertEqual(len(options), 3)
+                all_codes = [s["kode_bagian"] for u in options for s in u["subbagian"]]
+                self.assertEqual(len(all_codes), 6)
+                self.assertEqual(set(all_codes), {"BAG-01", "BAG-02", "BAG-03", "BAG-04", "BAG-05", "BAG-06"})
+                for unit in options:
+                    self.assertEqual(len(unit["subbagian"]), 2)
+        finally:
+            await engine.dispose()
+
 
 if __name__ == "__main__":
     unittest.main()

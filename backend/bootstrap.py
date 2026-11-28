@@ -28,8 +28,9 @@ async def main():
             await db.flush()
             db.add(Pegawai(nip=account.nip, nama=account.nama, password=hash_password(password),
                            role='Admin', is_active=True, id_bagian=section.id_bagian))
-            from app.core.reference_data import ensure_reference_data
+            from app.core.reference_data import ensure_reference_data, ensure_subbagian_master
             await ensure_reference_data(db)
+            await ensure_subbagian_master(db)
             await db.commit()
         print('Created one administrator and the official reference data (archive classifications, '
               'letter types). No sample users, letters or financial transactions were inserted.')

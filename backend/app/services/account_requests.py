@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.reference_data import ensure_subbagian_master
 from app.models.schema import Bagian, PermintaanAkun
 
 
@@ -57,6 +58,13 @@ async def get_unit_bagian_options(db: AsyncSession) -> List[Dict[str, object]]:
     """Kelompokkan daftar subbagian database ke dalam 3 Unit Bagian utama."""
     rows = (await db.execute(select(Bagian).order_by(Bagian.kode_bagian, Bagian.id_bagian))).scalars().all()
     by_code = {(b.kode_bagian or "").strip().upper(): b for b in rows}
+
+    required_codes = {code for unit in UNIT_BAGIAN_DEFS for code in unit["subbagian_codes"]}
+    if not (required_codes & set(by_code.keys())):
+        await ensure_subbagian_master(db)
+        await db.commit()
+        rows = (await db.execute(select(Bagian).order_by(Bagian.kode_bagian, Bagian.id_bagian))).scalars().all()
+        by_code = {(b.kode_bagian or "").strip().upper(): b for b in rows}
 
     result: List[Dict[str, object]] = []
     for unit in UNIT_BAGIAN_DEFS:

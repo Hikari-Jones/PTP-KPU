@@ -7,7 +7,17 @@ safe to run on every install and upgrade.
 """
 from sqlalchemy import select
 
-from app.models.schema import JenisSurat, KodeKlasifikasiArsip
+from app.models.schema import Bagian, JenisSurat, KodeKlasifikasiArsip
+
+# 6 Subbagian resmi Sekretariat KPU Provinsi Sulawesi Utara (dipetakan ke 3 Unit Bagian pada form Sign Up)
+SUBBAGIAN_KPU = [
+    ("BAG-01", "Subbagian SDM dan Partisipasi Masyarakat"),
+    ("BAG-02", "Subbagian RENDATIN (Perencanaan, Data dan Informasi)"),
+    ("BAG-03", "Subbagian Teknis Penyelenggaraan Pemilu"),
+    ("BAG-04", "Subbagian Hukum"),
+    ("BAG-05", "Subbagian Umum dan Logistik (UMLOG)"),
+    ("BAG-06", "Subbagian Keuangan"),
+]
 
 # (kode, nama, kategori_utama, retensi_aktif_tahun, retensi_inaktif_tahun, hak_akses)
 # Mengacu pada Keputusan KPU Nomor 1257 Tahun 2024 & PKPU 17/2023 (JRA)
@@ -68,3 +78,16 @@ async def ensure_reference_data(session) -> tuple[dict, dict]:
             await session.flush()
         jenis[kode] = row.id_jenis_surat
     return klasifikasi, jenis
+
+
+async def ensure_subbagian_master(session) -> dict[str, int]:
+    """Insert missing official KPU Sulut Subbagian rows (BAG-01..BAG-06) idempotently."""
+    bagian_map: dict[str, int] = {}
+    for kode, nama in SUBBAGIAN_KPU:
+        row = await session.scalar(select(Bagian).where(Bagian.kode_bagian == kode))
+        if row is None:
+            row = Bagian(kode_bagian=kode, nama_bagian=nama)
+            session.add(row)
+            await session.flush()
+        bagian_map[kode] = row.id_bagian
+    return bagian_map
