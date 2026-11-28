@@ -1,488 +1,782 @@
-import { useState } from "react"
-import {
-  ArrowLeft,
-  FileText,
-  UserCheck,
-  FileEdit,
-  ShieldCheck,
-  History,
-  Printer,
-  CheckCircle2,
-} from "lucide-react"
-import { Card, CardContent } from "../ui/card"
-import { Badge } from "../ui/badge"
-import type { SuratItem, DisposisiFormState, SuratMasukFormState, SuratKeluarFormState } from "./types"
-import { INITIAL_SURAT_LIST } from "./mockData"
+import { useEffect, useState, useRef } from 'react'
+import { request, download, message } from '../../../services/operations'
+import type { Employee } from '../../../services/operations'
+import { filesApi } from '../../../services/api'
+import { Workspace, field, button, useOperation } from '../ui/operations'
+import { useAuth } from '../../context/AuthContext'
+import { RefreshCw, FileText, ChevronDown, Download, CheckCircle, AlertCircle, Send, Archive, Check, Search, Filter, X, Eye, Inbox } from 'lucide-react'
+import { showToast as notify } from '../../../services/activity'
 
-// Import modular components
-import { SuratDashboard } from "./SuratDashboard"
-import { InputSuratMasukModal } from "./InputSuratMasukModal"
-import { BuatDraftSuratModal } from "./BuatDraftSuratModal"
-import { DisposisiAlurPanel } from "./DisposisiAlurPanel"
-import { VerifikasiDraftPanel } from "./VerifikasiDraftPanel"
-import { TteDistribusiPanel } from "./TteDistribusiPanel"
-import { AuditTrailLog } from "./AuditTrailLog"
+const TABS: { id: string; label: string }[] = [
+  { id: "overview", label: "Dashboard" },
+  { id: "surat-masuk", label: "Surat Masuk & Disposisi" },
+  { id: "surat-keluar", label: "Surat Keluar" },
+  { id: "surat-tugas", label: "Surat Tugas" },
+  { id: "klasifikasi", label: "Kode Klasifikasi" },
+]
 
-export interface SuratMenyuratModuleProps {
-  theme: "light" | "dark"
-  subTab?: "ringkasan" | "masuk" | "keluar"
+const TAB_ROUTE: Record<string, string> = {
+  overview: "surat-summary",
+  "surat-masuk": "surat-masuk",
+  "surat-keluar": "surat-keluar",
+  "surat-tugas": "surat-tugas",
+  klasifikasi: "surat-klasifikasi",
 }
 
-export function SuratMenyuratModule({ theme, subTab = "ringkasan" }: SuratMenyuratModuleProps) {
-  const isDark = theme === "dark"
+interface Letter {
+  id: number
+  kind: string
+  subject: string
+  sender: string
+  recipient: string
+  number: string | null
+  nomor_agenda?: string | null
+  sifat_surat?: string
+  batas_waktu?: string | null
+  content: string
+  date: string
+  status: string
+  file_id: number | null
+  owner_id?: number
+  assignee_id?: number | null
+  version: number
+  history: {
+    at: string
+    actor: string
+    action: string
+    note: string
+    assignee_name?: string
+    instruksi_disposisi?: string[]
+    batas_waktu?: string
+  }[]
+}
 
-  // Master State
-  const [suratList, setSuratList] = useState<SuratItem[]>(INITIAL_SURAT_LIST)
-  const [selectedSurat, setSelectedSurat] = useState<SuratItem | null>(null)
-  const [activeDetailTab, setActiveDetailTab] = useState<"detail" | "disposisi" | "verifikasi" | "tte" | "audit">("detail")
+const DISPOSISI_PRESETS = [
+  'Tindak Lanjuti',
+  'Siapkan Bahan',
+  'Koordinasikan',
+  'Untuk Diketahui',
+  'Hadir / Wakili',
+  'Arsipkan',
+]
 
-  // Modals state
-  const [isInputMasukOpen, setIsInputMasukOpen] = useState(false)
-  const [isBuatDraftOpen, setIsBuatDraftOpen] = useState(false)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
+export interface SuratMenyuratModuleProps {
+  theme: 'light' | 'dark'
+  subTab?: 'ringkasan' | 'masuk' | 'keluar'
+  onNavigate?: (tab: string) => void
+}
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg)
-    setTimeout(() => setToastMessage(null), 4000)
+const statuses: Record<string, string> = {
+  registered: 'Terdaftar',
+  draft: 'Draft',
+  submitted: 'Menunggu Verifikasi',
+  revision: 'Perlu Revisi',
+  approved: 'Lolos Pemeriksaan Internal',
+  assigned: 'Dalam Disposisi',
+  completed: 'Disposisi Selesai',
+  archived: 'Terarsip',
+}
+
+export function SuratMenyuratModule({ theme, subTab = 'ringkasan', onNavigate }: SuratMenyuratModuleProps) {
+  const requestId = useRef(0)
+  const [page, setPage] = useState(0)
+  const [hasNext, setHasNext] = useState(false)
+  const [items, setItems] = useState<Letter[]>([])
+  const [people, setPeople] = useState<Employee[]>([])
+  const [selected, setSelected] = useState<number | null>(null)
+  const [note, setNote] = useState('')
+  const [assignee, setAssignee] = useState('')
+  const [instruksiDipilih, setInstruksiDipilih] = useState<string[]>([])
+  const [disposisiBatasWaktu, setDisposisiBatasWaktu] = useState('')
+  const [content, setContent] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const blank = {
+    kind: subTab === 'keluar' ? 'keluar' : 'masuk',
+    subject: '',
+    sender: '',
+    recipient: '',
+    number: '',
+    sifat_surat: 'Biasa',
+    batas_waktu: '',
+    content: '',
+    date: new Date().toLocaleDateString('en-CA'),
+  }
+  const [form, setForm] = useState(blank)
+  const { userRole, canEdit, currentUser } = useAuth()
+  const admin = userRole === 'Admin'
+  const editor = canEdit('surat')
+  // Filters (server-side, so they work across pages)
+  const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [yearFilter, setYearFilter] = useState('')
+  const filtersActive = Boolean(appliedSearch || statusFilter || yearFilter)
+  const currentYear = new Date().getFullYear()
+  const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i)
+  const { busy, error, run, setError } = useOperation()
+
+  const load = async () => {
+    const activeRequest = ++requestId.current
+    const params = new URLSearchParams({ skip: String(page * 50), limit: '51' })
+    if (subTab !== 'ringkasan') params.set('kind', subTab)
+    if (appliedSearch) params.set('search', appliedSearch)
+    if (statusFilter) params.set('status', statusFilter)
+    if (yearFilter) params.set('year', yearFilter)
+    const rows = await request<Letter[]>(`/operations/letters?${params}`)
+    if (activeRequest !== requestId.current) return
+    setHasNext(rows.length > 50)
+    setItems(rows.slice(0, 50))
+    if (admin) setPeople(await request<Employee[]>('/pegawai/?limit=1000'))
   }
 
-  // Handle Input Surat Masuk Submit
-  const handleInputSuratMasuk = (form: SuratMasukFormState) => {
-    const newSurat: SuratItem = {
-      id: `SRT-2026-${Math.floor(100 + Math.random() * 900)}`,
-      nomorSurat: form.nomorSurat,
-      perihal: form.perihal,
-      jenis: "masuk",
-      pengirim: form.pengirim,
-      penerima: form.penerima,
-      tanggal: form.tanggal,
-      prioritas: form.prioritas,
-      status: "menunggu_disposisi",
-      fileName: form.fileName,
-      ringkasanIsi: form.ringkasanIsi,
-      history: [
-        {
-          id: `h-${Date.now()}`,
-          tanggal: new Date().toISOString().split("T")[0],
-          waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-          aktor: "Staf Agenda Persuratan",
-          jabatan: "Pengelola Persuratan",
-          aksi: "Registrasi Surat Masuk",
-          keterangan: `Input surat masuk nomor ${form.nomorSurat} dari ${form.pengirim}`,
-        },
-      ],
+  useEffect(() => {
+    setPage(0)
+    setSelected(null)
+  }, [subTab])
+
+  useEffect(() => {
+    load().catch((e) => setError(message(e)))
+    return () => {
+      requestId.current++
     }
+  }, [page, subTab, appliedSearch, statusFilter, yearFilter])
 
-    setSuratList([newSurat, ...suratList])
-    showToast(`Surat Masuk No. ${form.nomorSurat} berhasil diregistrasi!`)
+  const applyFilter = (apply: () => void) => {
+    apply()
+    setPage(0)
+    setSelected(null)
   }
 
-  // Handle Buat Draft Surat Keluar Submit
-  const handleBuatDraftSurat = (form: SuratKeluarFormState) => {
-    const newDraft: SuratItem = {
-      id: `SRT-2026-${Math.floor(100 + Math.random() * 900)}`,
-      nomorSurat: "DRAFT-KONSEP-" + Math.floor(10 + Math.random() * 90),
-      perihal: form.perihal,
-      jenis: form.kategoriSurat.includes("Nota") ? "nota_dinas" : "keluar",
-      pengirim: "Subbagian Konseptor PTP-KPU",
-      penerima: form.penerima,
-      tanggal: new Date().toISOString().split("T")[0],
-      prioritas: "penting",
-      status: "draft",
-      fileName: form.fileName,
-      ringkasanIsi: form.isiSurat,
-      history: [
-        {
-          id: `h-${Date.now()}`,
-          tanggal: new Date().toISOString().split("T")[0],
-          waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-          aktor: "Staf Konseptor",
-          jabatan: "Konseptor Surat",
-          aksi: "Buat Draft Surat Keluar",
-          keterangan: `Konsep draft diajukan untuk verifikasi pejabat. Catatan: ${form.catatanInternal || "Tanpa catatan"}`,
-        },
-      ],
-    }
-
-    setSuratList([newDraft, ...suratList])
-    showToast(`Draft Surat "${form.perihal.substring(0, 30)}..." berhasil disimpan!`)
-  }
-
-  // Handle Disposisi Save
-  const handleSaveDisposisi = (suratId: string, disposisiData: DisposisiFormState) => {
-    setSuratList((prev) =>
-      prev.map((s) => {
-        if (s.id === suratId) {
-          const updatedHistory = [
-            ...s.history,
-            {
-              id: `h-${Date.now()}`,
-              tanggal: new Date().toISOString().split("T")[0],
-              waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-              aktor: "Drs. Meidy Tinangon, M.Si",
-              jabatan: "Ketua KPU Provinsi",
-              aksi: "Perekaman Disposisi",
-              keterangan: `Disposisi diteruskan ke ${disposisiData.tujuanUnit} dengan instruksi: "${disposisiData.catatan}"`,
-            },
-          ]
-          const updated: SuratItem = {
-            ...s,
-            status: "dalam_proses",
-            disposisi: {
-              ...disposisiData,
-              tanggalDisposisi: new Date().toISOString().split("T")[0],
-              disposisiOleh: "Drs. Meidy Tinangon, M.Si (Ketua KPU)",
-            },
-            history: updatedHistory,
-          }
-          if (selectedSurat?.id === suratId) setSelectedSurat(updated)
-          return updated
-        }
-        return s
+  const item = items.find((x) => x.id === selected)
+  // What this account may do with the open letter (mirrors backend workflow rules).
+  const isAssignee = Boolean(item && currentUser?.id_pegawai && item.assignee_id === currentUser.id_pegawai)
+  const canEditDraft = Boolean(item && editor && ['draft', 'revision'].includes(item.status))
+  const canReview = Boolean(item && admin && item.status === 'submitted')
+  const canAssign = Boolean(item && admin && ['registered', 'assigned'].includes(item.status))
+  const canComplete = Boolean(item && item.status === 'assigned' && (admin || isAssignee))
+  const canArchive = Boolean(item && editor && ['approved', 'completed'].includes(item.status))
+  const hasActions = canEditDraft || canReview || canAssign || canComplete || canArchive
+  const act = (action: string) =>
+    void run(async () => {
+      if (!item) return
+      await request(`/operations/letters/${item.id}/actions`, 'POST', {
+        action,
+        version: item.version,
+        note,
+        assignee_id: assignee ? Number(assignee) : null,
+        ...(action === 'assign' && instruksiDipilih.length > 0 ? { instruksi_disposisi: instruksiDipilih } : {}),
+        ...(action === 'assign' && disposisiBatasWaktu ? { batas_waktu: disposisiBatasWaktu } : {}),
+        ...(action === 'edit' ? { content } : {}),
       })
-    )
-    showToast("Disposisi pimpinan berhasil direkam dan diteruskan!")
-  }
-
-  // Handle Update Status Disposisi
-  const handleUpdateStatusDisposisi = (suratId: string, status: SuratItem["status"], keterangan: string) => {
-    setSuratList((prev) =>
-      prev.map((s) => {
-        if (s.id === suratId) {
-          const updatedHistory = [
-            ...s.history,
-            {
-              id: `h-${Date.now()}`,
-              tanggal: new Date().toISOString().split("T")[0],
-              waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-              aktor: "Kasubag Unit Pelaksana",
-              jabatan: "Kasubag Target Disposisi",
-              aksi: "Proses Verifikasi / Tindak Lanjut",
-              keterangan: keterangan,
-            },
-          ]
-          const updated: SuratItem = {
-            ...s,
-            status: status,
-            history: updatedHistory,
-          }
-          if (selectedSurat?.id === suratId) setSelectedSurat(updated)
-          return updated
-        }
-        return s
-      })
-    )
-    showToast(`Status surat diperbarui menjadi: ${status.replace("_", " ").toUpperCase()}`)
-  }
-
-  // Handle Approve Draft
-  const handleApproveDraft = (suratId: string, nomorOtomatis: string) => {
-    setSuratList((prev) =>
-      prev.map((s) => {
-        if (s.id === suratId) {
-          const updatedHistory = [
-            ...s.history,
-            {
-              id: `h-${Date.now()}`,
-              tanggal: new Date().toISOString().split("T")[0],
-              waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-              aktor: "Dr. Salman S., M.Si",
-              jabatan: "Sekretaris KPU / Pejabat Penyetuju",
-              aksi: "Verifikasi / Approval Draft",
-              keterangan: `Draft disetujui. Nomor Registrasi Otomatis terbit: ${nomorOtomatis}. Lanjut ke alur Otorisasi TTE.`,
-            },
-          ]
-          const updated: SuratItem = {
-            ...s,
-            nomorSurat: nomorOtomatis,
-            status: "menunggu_tte",
-            catatanRevisi: undefined,
-            history: updatedHistory,
-          }
-          if (selectedSurat?.id === suratId) setSelectedSurat(updated)
-          return updated
-        }
-        return s
-      })
-    )
-    showToast(`Draft Disetujui! Nomor Otomatis ${nomorOtomatis} Diterbitkan.`)
-  }
-
-  // Handle Reject Draft (Revisi)
-  const handleRejectRevisiDraft = (suratId: string, catatanRevisi: string) => {
-    setSuratList((prev) =>
-      prev.map((s) => {
-        if (s.id === suratId) {
-          const updatedHistory = [
-            ...s.history,
-            {
-              id: `h-${Date.now()}`,
-              tanggal: new Date().toISOString().split("T")[0],
-              waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-              aktor: "Pejabat Penyetuju",
-              jabatan: "Kabag / Sekretaris KPU",
-              aksi: "Permintaan Revisi Draft",
-              keterangan: `Draft dikembalikan ke konseptor. Catatan revisi: "${catatanRevisi}"`,
-            },
-          ]
-          const updated: SuratItem = {
-            ...s,
-            status: "revisi",
-            catatanRevisi: catatanRevisi,
-            history: updatedHistory,
-          }
-          if (selectedSurat?.id === suratId) setSelectedSurat(updated)
-          return updated
-        }
-        return s
-      })
-    )
-    showToast("Catatan revisi dikirimkan kembali ke konseptor!")
-  }
-
-  // Handle Sign TTE
-  const handleSignTte = (suratId: string, _passphrase: string, penandatangan: string) => {
-    setSuratList((prev) =>
-      prev.map((s) => {
-        if (s.id === suratId) {
-          const updatedHistory = [
-            ...s.history,
-            {
-              id: `h-${Date.now()}`,
-              tanggal: new Date().toISOString().split("T")[0],
-              waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-              aktor: penandatangan,
-              jabatan: "Ketua / Sekretaris KPU",
-              aksi: "Otorisasi Tanda Tangan Digital (TTE)",
-              keterangan: "Sertifikat BSrE BSSN valid & Hash barcode terbukti sah.",
-            },
-          ]
-          const updated: SuratItem = {
-            ...s,
-            status: "disetujui",
-            tteInfo: {
-              penandatangan: penandatangan,
-              jabatan: "Ketua KPU Provinsi Sulawesi Utara",
-              tanggalTte: new Date().toLocaleString(),
-              barcodeData: `KPU-SULUT-TTE-${Date.now()}`,
-            },
-            history: updatedHistory,
-          }
-          if (selectedSurat?.id === suratId) setSelectedSurat(updated)
-          return updated
-        }
-        return s
-      })
-    )
-    showToast("Tanda Tangan Digital (TTE) BSrE Berhasil Dibubuhkan!")
-  }
-
-  // Handle Distribusi Surat
-  const handleDistribusiSurat = (suratId: string, metode: "email" | "cetak" | "internal") => {
-    const resiCode = `DIST-${metode.toUpperCase()}-${Date.now().toString().slice(-6)}`
-    setSuratList((prev) =>
-      prev.map((s) => {
-        if (s.id === suratId) {
-          const updatedHistory = [
-            ...s.history,
-            {
-              id: `h-${Date.now()}`,
-              tanggal: new Date().toISOString().split("T")[0],
-              waktu: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + " WITA",
-              aktor: "System Auto Gateway",
-              jabatan: "Modul Distribusi PTP",
-              aksi: "Pengiriman & Terarsip",
-              keterangan: `Pengiriman via kanal ${metode.toUpperCase()} sukses. Bukti resi: ${resiCode}. Status akhir Terkirim & Terarsip.`,
-            },
-          ]
-          const updated: SuratItem = {
-            ...s,
-            status: "terkirim_terarsip",
-            pengiriman: {
-              metode: metode,
-              tanggalKirim: new Date().toLocaleString(),
-              nomorResiAtauBukti: resiCode,
-            },
-            history: updatedHistory,
-          }
-          if (selectedSurat?.id === suratId) setSelectedSurat(updated)
-          return updated
-        }
-        return s
-      })
-    )
-    showToast(`Pengiriman Berhasil via ${metode.toUpperCase()}! Berkas Otomatis Terarsip.`)
-  }
+      setNote('')
+      setInstruksiDipilih([])
+      setDisposisiBatasWaktu('')
+      await load()
+    })
 
   return (
-    <div className="space-y-6">
-      {/* Notification Toast */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-600 text-white shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom duration-300">
-          <CheckCircle2 className="w-5 h-5 shrink-0" />
-          <p className="text-xs font-bold">{toastMessage}</p>
+    <Workspace
+      theme={theme}
+      category="Surat"
+      title={subTab === 'masuk' ? 'Surat Masuk & Disposisi' : 'Alur Persuratan'}
+      description={
+        subTab === 'masuk'
+          ? 'Buku Agenda Surat Masuk, Lembar Disposisi Pimpinan, dan Pelacakan Tindak Lanjut Dokumen KPU Sulawesi Utara'
+          : 'Registrasi Mandiri, Alur Disposisi Naskah Dinas, dan Pelacakan Persetujuan Dokumen KPU Sulawesi Utara'
+      }
+      navigation={
+        <nav aria-label="Sub-menu persuratan" className="flex gap-2 overflow-x-auto pb-1">
+          {TABS.map((t) => {
+            const active = t.id === 'surat-masuk'
+            return (
+              <button
+                key={t.id}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                onClick={() => onNavigate?.(TAB_ROUTE[t.id])}
+                className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                  active
+                    ? 'bg-red-600 border-red-600 text-white shadow-md'
+                    : theme === 'dark'
+                      ? 'border-white/10 bg-[#0f172a] text-gray-300 hover:border-red-500/50'
+                      : 'border-slate-300 bg-white text-slate-700 hover:border-red-400'
+                }`}
+              >
+                {t.id === 'surat-masuk' && <Inbox className="w-3.5 h-3.5" />}
+                {t.label}
+              </button>
+            )
+          })}
+        </nav>
+      }
+    >
+      {/* Banner Informasi Regulasi / Status Operasional */}
+      <div className="p-3.5 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/20 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+        {subTab === 'masuk'
+          ? 'Buku agenda surat masuk terpadu dengan lembar disposisi digital pimpinan. Setiap surat masuk dapat langsung diteruskan atau ditindaklanjuti oleh pegawai pelaksana tugas.'
+          : 'Registrasi, disposisi, revisi, dan persetujuan tersimpan di server. Nomor ALUR adalah register internal. Penerbitan nomor surat resmi belum diaktifkan sampai format dan kewenangan KPU divalidasi. Persetujuan ini bukan TTE tersertifikasi.'}
+      </div>
+
+      {error && (
+        <div role="alert" className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium">
+          {error}
         </div>
       )}
 
-      {/* Main Container View Switch */}
-      {!selectedSurat ? (
-        /* Dashboard Component */
-        <SuratDashboard
-          theme={theme}
-          suratList={suratList}
-          initialTab={subTab === "masuk" ? "masuk" : subTab === "keluar" ? "keluar" : "semua"}
-          onOpenInputSuratMasuk={() => setIsInputMasukOpen(true)}
-          onOpenBuatDraft={() => setIsBuatDraftOpen(true)}
-          onSelectSurat={(surat) => {
-            setSelectedSurat(surat)
-            if (surat.jenis === "masuk") setActiveDetailTab("disposisi")
-            else if (surat.status === "draft" || surat.status === "revisi") setActiveDetailTab("verifikasi")
-            else if (surat.status === "menunggu_tte") setActiveDetailTab("tte")
-            else setActiveDetailTab("detail")
-          }}
-        />
-      ) : (
-        /* Detailed Workflow view for selected Surat */
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Top Bar with Back Button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSelectedSurat(null)}
-                className={`p-2 rounded-xl border transition-colors cursor-pointer ${isDark ? "bg-[#0d1322] border-[#1e293b] text-gray-300 hover:bg-[#131d30]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                  }`}
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-bold text-red-500">{selectedSurat.nomorSurat}</span>
-                  <Badge variant={selectedSurat.jenis === "masuk" ? "info" : "success"}>
-                    {selectedSurat.jenis.toUpperCase()}
-                  </Badge>
+
+      {/* Form Registrasi / Buat Draft Baru - Berjarak & Berhuruf Kapital */}
+      {canEdit('surat') && (
+        <details className="group border rounded-xl border-slate-200 dark:border-white/10 overflow-hidden bg-slate-50/50 dark:bg-black/20 transition-all">
+          <summary className="cursor-pointer font-semibold text-xs tracking-wide px-4 py-3 select-none flex items-center justify-between text-slate-800 dark:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-white/5 transition-colors">
+            <span className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-red-600 dark:text-red-500" />
+              {subTab === 'masuk' ? 'Registrasi Surat Masuk Baru' : 'Registrasi / Buat Draft Surat Baru'}
+            </span>
+            <ChevronDown className="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" />
+          </summary>
+
+          <form
+            className="p-4 sm:p-5 border-t border-slate-200 dark:border-white/10 space-y-4 bg-white/70 dark:bg-slate-900/40"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void run(async () => {
+                // If saving the letter fails, the uploaded file is rolled back.
+                const save = (fileId: number | null) =>
+                  request('/operations/letters', 'POST', {
+                    ...form,
+                    batas_waktu: form.batas_waktu || null,
+                    file_id: fileId,
+                  })
+                if (file) await filesApi.uploadThen(file, 'surat', (uploaded) => save(uploaded.file_id))
+                else await save(null)
+                setForm(blank)
+                setFile(null)
+                if (fileInputRef.current) fileInputRef.current.value = ''
+                await load()
+              })
+            }}
+          >
+            {/* Grid 2 Kolom untuk Tata Letak Rapi dan Tidak Berdempetan */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Jenis Surat <span className="text-red-500">*</span>
+                </label>
+                <select
+                  className={field}
+                  value={subTab === 'masuk' ? 'masuk' : form.kind}
+                  disabled={subTab === 'masuk'}
+                  onChange={(e) => setForm({ ...form, kind: e.target.value })}
+                >
+                  <option value="masuk">Surat Masuk</option>
+                  {subTab !== 'masuk' && <option value="keluar">Draft Surat Keluar</option>}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Tanggal Surat <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  type="date"
+                  className={field}
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Perihal Surat <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  type="text"
+                  className={field}
+                  placeholder="Masukkan pokok atau perihal surat..."
+                  value={form.subject}
+                  onChange={(e) => setForm({ ...form, subject: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Instansi / Pengirim <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  type="text"
+                  className={field}
+                  placeholder="Nama atau instansi pengirim"
+                  value={form.sender}
+                  onChange={(e) => setForm({ ...form, sender: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Tujuan / Penerima <span className="text-red-500">*</span>
+                </label>
+                <input
+                  required
+                  type="text"
+                  className={field}
+                  placeholder="Nama atau bagian penerima"
+                  value={form.recipient}
+                  onChange={(e) => setForm({ ...form, recipient: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Nomor Surat Masuk {form.kind === 'masuk' ? <span className="text-slate-400 font-normal">(Opsional)</span> : <span className="text-slate-400 font-normal">(Dinonaktifkan untuk draft keluar)</span>}
+                </label>
+                <input
+                  disabled={form.kind === 'keluar'}
+                  type="text"
+                  className={field}
+                  placeholder={form.kind === 'keluar' ? 'Nomor akan dibuat otomatis saat persetujuan' : 'Contoh: 123/KPU-SULUT/XI/2026'}
+                  value={form.number}
+                  onChange={(e) => setForm({ ...form, number: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Sifat Surat
+                  </label>
+                  <select
+                    className={field}
+                    value={form.sifat_surat}
+                    onChange={(e) => setForm({ ...form, sifat_surat: e.target.value })}
+                  >
+                    <option value="Biasa">Biasa</option>
+                    <option value="Penting">Penting</option>
+                    <option value="Segera">Segera</option>
+                    <option value="Rahasia">Rahasia</option>
+                  </select>
                 </div>
-                <h2 className={`text-lg font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{selectedSurat.perihal}</h2>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Batas Waktu (SLA)
+                  </label>
+                  <input
+                    type="date"
+                    className={field}
+                    value={form.batas_waktu}
+                    onChange={(e) => setForm({ ...form, batas_waktu: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Ringkasan / Isi Surat
+                </label>
+                <textarea
+                  rows={3}
+                  className={field}
+                  placeholder="Tuliskan ringkasan isi surat atau keterangan penting..."
+                  value={form.content}
+                  onChange={(e) => setForm({ ...form, content: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Lampiran Berkas <span className="text-slate-400 font-normal">(Opsional)</span>
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  className={`${field} file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-red-600 file:text-white file:cursor-pointer hover:file:bg-red-700`}
+                />
               </div>
             </div>
 
-            {/* Print / Export Quick Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => window.print()}
-                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${isDark ? "bg-[#0d1322] border-[#1e293b] text-gray-300 hover:bg-[#131d30]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
-                  }`}
-              >
-                <Printer className="w-4 h-4" />
-                <span>Cetak Lembar Disposisi</span>
+            {/* Tombol Simpan */}
+            <div className="pt-2">
+              <button disabled={busy} className={button}>
+                {busy ? 'Menyimpan Surat...' : subTab === 'masuk' ? 'Simpan & Daftarkan Surat Masuk' : 'Simpan Surat'}
               </button>
             </div>
-          </div>
-
-          {/* Navigation Tabs for Details */}
-          <div className={`flex items-center gap-2 p-1.5 rounded-2xl border ${isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200"}`}>
-            {[
-              { id: "detail", label: "Substansi & Ringkasan", icon: FileText },
-              { id: "disposisi", label: "2. Disposisi & Tindak Lanjut", icon: UserCheck, show: selectedSurat.jenis === "masuk" },
-              { id: "verifikasi", label: "3. Verifikasi Draft Surat", icon: FileEdit, show: selectedSurat.jenis !== "masuk" },
-              { id: "tte", label: "4. TTE Digital & Distribusi", icon: ShieldCheck, show: selectedSurat.jenis !== "masuk" },
-              { id: "audit", label: "5. Log Audit Trail", icon: History },
-            ]
-              .filter((tab) => tab.show !== false)
-              .map((tab) => {
-                const Icon = tab.icon
-                const isActive = activeDetailTab === tab.id
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveDetailTab(tab.id as any)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${isActive
-                        ? "bg-red-600 text-white shadow-md"
-                        : isDark
-                          ? "text-gray-400 hover:bg-[#131d30] hover:text-white"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{tab.label}</span>
-                  </button>
-                )
-              })}
-          </div>
-
-          {/* Tab Content Display */}
-          {activeDetailTab === "detail" && (
-            <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
-              <CardContent className="p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    <p className="text-[10px] text-gray-400 font-mono">PENGIRIM</p>
-                    <p className="font-bold text-xs mt-1">{selectedSurat.pengirim}</p>
-                  </div>
-                  <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    <p className="text-[10px] text-gray-400 font-mono">PENERIMA</p>
-                    <p className="font-bold text-xs mt-1">{selectedSurat.penerima}</p>
-                  </div>
-                  <div className={`p-4 rounded-xl border ${isDark ? "bg-[#131d30]/50 border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    <p className="text-[10px] text-gray-400 font-mono">TANGGAL BERKAS</p>
-                    <p className="font-bold text-xs mt-1">{selectedSurat.tanggal}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-xs font-mono text-gray-400 uppercase mb-2">RINGKASAN URAIAN ISI SURAT</h4>
-                  <p className={`p-4 rounded-xl border leading-relaxed text-xs ${isDark ? "bg-[#131d30] border-[#1e293b]" : "bg-slate-50 border-slate-200"}`}>
-                    {selectedSurat.ringkasanIsi || "Belum ada catatan deskripsi tambaha."}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeDetailTab === "disposisi" && (
-            <DisposisiAlurPanel
-              theme={theme}
-              surat={selectedSurat}
-              onSaveDisposisi={handleSaveDisposisi}
-              onUpdateStatus={handleUpdateStatusDisposisi}
-            />
-          )}
-
-          {activeDetailTab === "verifikasi" && (
-            <VerifikasiDraftPanel
-              theme={theme}
-              surat={selectedSurat}
-              onApproveDraft={handleApproveDraft}
-              onRejectRevisiDraft={handleRejectRevisiDraft}
-            />
-          )}
-
-          {activeDetailTab === "tte" && (
-            <TteDistribusiPanel
-              theme={theme}
-              surat={selectedSurat}
-              onSignTte={handleSignTte}
-              onDistribusi={handleDistribusiSurat}
-            />
-          )}
-
-          {activeDetailTab === "audit" && <AuditTrailLog theme={theme} surat={selectedSurat} />}
-        </div>
+          </form>
+        </details>
       )}
 
-      {/* Modals */}
-      <InputSuratMasukModal
-        theme={theme}
-        isOpen={isInputMasukOpen}
-        onClose={() => setIsInputMasukOpen(false)}
-        onSubmit={handleInputSuratMasuk}
-      />
+      {/* Filter Surat */}
+      <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-black/20">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
+          <Filter className="w-3.5 h-3.5" /> Filter:
+        </span>
+        <form
+          className="relative flex-1 min-w-[200px]"
+          onSubmit={(e) => {
+            e.preventDefault()
+            applyFilter(() => setAppliedSearch(search.trim()))
+          }}
+        >
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            aria-label="Cari surat"
+            className={`${field} !pl-8 !py-1.5 !text-xs`}
+            placeholder="Cari perihal, pengirim, penerima, atau nomor… (Enter)"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </form>
+        <select
+          aria-label="Filter status surat"
+          className={`${field} !w-auto !py-1.5 !text-xs`}
+          value={statusFilter}
+          onChange={(e) => applyFilter(() => setStatusFilter(e.target.value))}
+        >
+          <option value="">Semua Status</option>
+          {Object.entries(statuses).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter tahun surat"
+          className={`${field} !w-auto !py-1.5 !text-xs`}
+          value={yearFilter}
+          onChange={(e) => applyFilter(() => setYearFilter(e.target.value))}
+        >
+          <option value="">Semua Tahun</option>
+          {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+        {filtersActive && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+            onClick={() => {
+              applyFilter(() => {
+                setSearch('')
+                setAppliedSearch('')
+                setStatusFilter('')
+                setYearFilter('')
+              })
+              notify('info', 'Filter surat direset')
+            }}
+          >
+            <X className="w-3.5 h-3.5" /> Reset
+          </button>
+        )}
+      </div>
 
-      <BuatDraftSuratModal
-        theme={theme}
-        isOpen={isBuatDraftOpen}
-        onClose={() => setIsBuatDraftOpen(false)}
-        onSubmit={handleBuatDraftSurat}
-      />
-    </div>
+      {/* Daftar Surat & Detail Panel Disposisi */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Kolom Kiri: List Surat */}
+        <div className="space-y-2.5">
+          {items.filter((x) => subTab === 'ringkasan' || x.kind === subTab).length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-400 border rounded-xl border-slate-200 dark:border-white/10">
+              {filtersActive ? 'Tidak ada surat yang cocok dengan filter.' : 'Belum ada data surat pada kategori ini.'}
+            </div>
+          ) : (
+            items
+              .filter((x) => subTab === 'ringkasan' || x.kind === subTab)
+              .map((x) => (
+                <button
+                  key={x.id}
+                  className={`block text-left w-full border rounded-xl p-4 transition-all cursor-pointer shadow-2xs ${
+                    selected === x.id
+                      ? 'border-red-600 bg-red-50/40 dark:bg-red-950/20'
+                      : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 bg-white/40 dark:bg-black/20'
+                  }`}
+                  aria-pressed={selected === x.id}
+                  title="Klik untuk melihat isi surat"
+                  onClick={() => {
+                    setSelected(x.id)
+                    setContent(x.content)
+                    setNote('')
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <strong className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      {x.subject}
+                    </strong>
+                    <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 shrink-0">
+                      {statuses[x.status] || x.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-2">
+                    <span>
+                      {x.nomor_agenda ? `${x.nomor_agenda} · ` : ''}
+                      {x.number || `Draft #${x.id}`} · {x.date}
+                      {x.sifat_surat && x.sifat_surat !== 'Biasa' ? ` · ${x.sifat_surat}` : ''}
+                      {x.batas_waktu ? ` · SLA ${x.batas_waktu}` : ''}
+                      {x.file_id ? ' · 📎 Lampiran' : ''}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-semibold shrink-0">
+                      <Eye className="w-3 h-3" /> Lihat
+                    </span>
+                  </p>
+                </button>
+              ))
+          )}
+        </div>
+
+        {/* Kolom Kanan: Detail & Alur Tindakan Disposisi */}
+        {item ? (
+          <article className="space-y-4 border rounded-xl p-5 border-slate-200 dark:border-white/10 bg-white/60 dark:bg-slate-900/40 shadow-xs">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 block mb-1">
+                {item.kind === 'masuk' ? 'Lembar Disposisi & Detail Surat Masuk' : 'Detail Alur Surat'}
+              </span>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">{item.subject}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {item.sender} → {item.recipient}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {item.nomor_agenda ? `${item.nomor_agenda} · ` : ''}
+                {item.kind === 'masuk' ? 'Surat Masuk' : 'Draft Surat Keluar'} · {item.number || `Draft #${item.id}`} · {item.date} · {statuses[item.status] || item.status}
+                {item.sifat_surat ? ` · Sifat: ${item.sifat_surat}` : ''}
+                {item.batas_waktu ? ` · Batas Waktu: ${item.batas_waktu}` : ''}
+              </p>
+            </div>
+
+            {!editor && (
+              <p className="text-[11px] font-semibold rounded-lg px-3 py-2 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300">
+                Mode baca saja: Anda dapat melihat isi dan lampiran surat{canComplete ? ', serta menyelesaikan disposisi yang ditujukan kepada Anda' : ''}.
+              </p>
+            )}
+
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Isi / Ringkasan Surat</p>
+              <div className="p-3 rounded-lg bg-slate-50 dark:bg-black/30 border border-slate-200/80 dark:border-white/5 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                {item.content?.trim() || <span className="italic text-slate-400">Isi surat belum diisi.</span>}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {item.file_id && (
+                <button
+                  className={`${button} !px-3 !py-1.5 !text-xs`}
+                  disabled={busy}
+                  onClick={() => void run(() => download(`/files/${item.file_id}`, `lampiran-${item.id}`))}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Lampiran Berkas</span>
+                </button>
+              )}
+              {item.kind === 'masuk' && (
+                <button
+                  className={`${button} !bg-slate-700 hover:!bg-slate-800 !px-3 !py-1.5 !text-xs`}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() =>
+                      download(`/operations/letters/${item.id}/lembar-disposisi`, `lembar-disposisi-${item.id}.pdf`)
+                    )
+                  }
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Cetak Lembar Disposisi (PDF)</span>
+                </button>
+              )}
+            </div>
+
+            {/* Aksi & Catatan Disposisi */}
+            <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
+              {hasActions && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Catatan Tindakan
+                </label>
+                <textarea
+                  rows={2}
+                  className={field}
+                  placeholder="Tuliskan catatan disposisi atau instruksi pemeriksaan..."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </div>
+              )}
+
+              {canEditDraft && (
+                <div className="space-y-2">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Perbaiki Isi Surat
+                    </label>
+                    <textarea
+                      rows={3}
+                      className={field}
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button className={button} disabled={busy} onClick={() => act('edit')}>
+                      Simpan Revisi
+                    </button>
+                    <button className={`${button} !bg-slate-700 hover:!bg-slate-800`} disabled={busy} onClick={() => act('submit')}>
+                      Ajukan Verifikasi
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {canReview && (
+                <div className="flex gap-2 pt-1">
+                  <button className={button} disabled={busy} onClick={() => act('approve')}>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>Lolos Pemeriksaan Internal</span>
+                  </button>
+                  <button
+                    className={`${button} !bg-slate-700 hover:!bg-slate-800`}
+                    disabled={busy}
+                    onClick={() => act('revise')}
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Minta Revisi</span>
+                  </button>
+                </div>
+              )}
+
+              {canAssign && (
+                <div className="space-y-2.5 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Penerima Disposisi
+                      </label>
+                      <select className={field} value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+                        <option value="">Pilih Pegawai Penerima Disposisi</option>
+                        {people
+                          .filter((p) => p.is_active)
+                          .map((p) => (
+                            <option key={p.id_pegawai} value={p.id_pegawai}>
+                              {p.nama}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Batas Waktu Tindak Lanjut
+                      </label>
+                      <input
+                        type="date"
+                        className={field}
+                        value={disposisiBatasWaktu}
+                        onChange={(e) => setDisposisiBatasWaktu(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Instruksi Standar Disposisi
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {DISPOSISI_PRESETS.map((preset) => {
+                        const checked = instruksiDipilih.includes(preset)
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() =>
+                              setInstruksiDipilih((prev) =>
+                                checked ? prev.filter((x) => x !== preset) : [...prev, preset]
+                              )
+                            }
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer transition-colors ${
+                              checked
+                                ? 'bg-red-600 border-red-600 text-white'
+                                : 'border-slate-300 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:border-red-400'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <button className={button} disabled={busy || !assignee} onClick={() => act('assign')}>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Kirim Disposisi Internal</span>
+                  </button>
+                </div>
+              )}
+
+              {canComplete && (
+                <div className="pt-1">
+                  <button className={button} disabled={busy} onClick={() => act('complete')}>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Selesaikan Disposisi</span>
+                  </button>
+                </div>
+              )}
+
+              {canArchive && (
+                <div className="pt-1">
+                  <button className={`${button} !bg-slate-800 hover:!bg-slate-900`} disabled={busy} onClick={() => act('archive')}>
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Arsipkan Alur</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Riwayat Alur Server */}
+              <div className="pt-3 border-t border-slate-200 dark:border-white/10 space-y-2">
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200">Riwayat Alur Surat</h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {item.history.map((h, i) => (
+                    <div key={i} className="text-xs p-2.5 rounded-lg bg-slate-50 dark:bg-black/20 border border-slate-200/60 dark:border-white/5 space-y-0.5">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>{new Date(h.at).toLocaleString('id-ID')}</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">{h.actor}</span>
+                      </div>
+                      <p className="font-medium text-slate-800 dark:text-slate-200">
+                        {h.action}
+                        {h.assignee_name ? ` → ${h.assignee_name}` : ''}
+                      </p>
+                      {h.instruksi_disposisi && h.instruksi_disposisi.length > 0 && (
+                        <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+                          Instruksi: {h.instruksi_disposisi.join(', ')}
+                        </p>
+                      )}
+                      {h.note && <p className="text-slate-500 dark:text-slate-400 italic">"{h.note}"</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </article>
+        ) : (
+          <div className="hidden lg:flex items-center justify-center p-8 border border-dashed rounded-xl border-slate-200 dark:border-white/10 text-xs text-slate-400">
+            Pilih salah satu surat dari daftar di sebelah kiri untuk melihat detail alur dan disposisi.
+          </div>
+        )}
+      </div>
+
+      {/* Navigasi Paginasi Tipis & Ramping */}
+      <nav className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-white/10 text-xs">
+        <button
+          className={`${button} !px-3 !py-1.5 !text-xs`}
+          disabled={busy || page === 0}
+          onClick={() => {
+            setSelected(null)
+            setPage(page - 1)
+          }}
+        >
+          Sebelumnya
+        </button>
+        <span className="text-slate-500 dark:text-slate-400 font-medium">Halaman {page + 1}</span>
+        <button
+          className={`${button} !px-3 !py-1.5 !text-xs`}
+          disabled={busy || !hasNext}
+          onClick={() => {
+            setSelected(null)
+            setPage(page + 1)
+          }}
+        >
+          Berikutnya
+        </button>
+      </nav>
+    </Workspace>
   )
 }

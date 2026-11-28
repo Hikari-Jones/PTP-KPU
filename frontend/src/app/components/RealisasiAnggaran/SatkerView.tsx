@@ -1,47 +1,114 @@
-﻿import { useState, useEffect } from "react"
-import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, MapPin } from "lucide-react"
+import { saveCsv } from "../../../services/csv"
+import { useState, useEffect } from "react"
+import { Building2, Search, Download, Filter, CheckCircle2, TrendingUp, Layers, MapPin, Plus, X } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
 import { Badge } from "../ui/badge"
-import { fetchSatker, type SatkerData } from "../../../services/api"
+import { fetchSatker, createSatker, type SatkerData } from "../../../services/api"
+import { useAuth } from "../../context/AuthContext"
+import { showToast } from "../../../services/activity"
 
 interface Props {
   theme: "light" | "dark"
   onNavigate?: (tab: string) => void
 }
 
-const FALLBACK_SATKER: SatkerData[] = [
-  { id_satker: 1, kode_satker: "652801", nama_satker: "KPU Provinsi Sulawesi Utara", tingkat: "Provinsi", alamat: "Jl. Diponegoro No. 12, Manado", pagu: 45780000000, realisasi: 31950000000, persentase: 69.8, status_dipa: "Aktif" },
-  { id_satker: 2, kode_satker: "652802", nama_satker: "KPU Kota Manado", tingkat: "Kabupaten/Kota", alamat: "Jl. Balai Kota No. 1, Manado", pagu: 14200000000, realisasi: 10224000000, persentase: 72.0, status_dipa: "Aktif" },
-  { id_satker: 3, kode_satker: "652803", nama_satker: "KPU Kota Bitung", tingkat: "Kabupaten/Kota", alamat: "Jl. Dr. Sam Ratulangi, Bitung", pagu: 9800000000, realisasi: 6860000000, persentase: 70.0, status_dipa: "Aktif" },
-  { id_satker: 4, kode_satker: "652804", nama_satker: "KPU Kota Tomohon", tingkat: "Kabupaten/Kota", alamat: "Kakaskasen Tiga, Tomohon", pagu: 7500000000, realisasi: 5400000000, persentase: 72.0, status_dipa: "Aktif" },
-  { id_satker: 5, kode_satker: "652805", nama_satker: "KPU Kota Kotamobagu", tingkat: "Kabupaten/Kota", alamat: "Jl. Paloko Kinalang, Kotamobagu", pagu: 8100000000, realisasi: 5508000000, persentase: 68.0, status_dipa: "Aktif" },
-  { id_satker: 6, kode_satker: "652806", nama_satker: "KPU Kabupaten Minahasa", tingkat: "Kabupaten/Kota", alamat: "Jl. Tuur In Tana, Tondano", pagu: 12500000000, realisasi: 8875000000, persentase: 71.0, status_dipa: "Aktif" },
-  { id_satker: 7, kode_satker: "652807", nama_satker: "KPU Kabupaten Minahasa Utara", tingkat: "Kabupaten/Kota", alamat: "Airmadidi, Minahasa Utara", pagu: 9600000000, realisasi: 6912000000, persentase: 72.0, status_dipa: "Aktif" },
-  { id_satker: 8, kode_satker: "652808", nama_satker: "KPU Kabupaten Minahasa Selatan", tingkat: "Kabupaten/Kota", alamat: "Amurang, Minahasa Selatan", pagu: 9200000000, realisasi: 6256000000, persentase: 68.0, status_dipa: "Aktif" },
-  { id_satker: 9, kode_satker: "652809", nama_satker: "KPU Kabupaten Minahasa Tenggara", tingkat: "Kabupaten/Kota", alamat: "Ratahan, Minahasa Tenggara", pagu: 7800000000, realisasi: 5226000000, persentase: 67.0, status_dipa: "Aktif" },
-  { id_satker: 10, kode_satker: "652810", nama_satker: "KPU Kabupaten Bolaang Mongondow", tingkat: "Kabupaten/Kota", alamat: "Lolak, Bolaang Mongondow", pagu: 11000000000, realisasi: 7480000000, persentase: 68.0, status_dipa: "Aktif" },
-  { id_satker: 11, kode_satker: "652811", nama_satker: "KPU Kabupaten Bolmong Utara", tingkat: "Kabupaten/Kota", alamat: "Boroko, Bolmong Utara", pagu: 7200000000, realisasi: 4896000000, persentase: 68.0, status_dipa: "Aktif" },
-  { id_satker: 12, kode_satker: "652812", nama_satker: "KPU Kabupaten Bolmong Selatan", tingkat: "Kabupaten/Kota", alamat: "Molibagu, Bolmong Selatan", pagu: 6900000000, realisasi: 4623000000, persentase: 67.0, status_dipa: "Aktif" },
-  { id_satker: 13, kode_satker: "652813", nama_satker: "KPU Kabupaten Bolmong Timur", tingkat: "Kabupaten/Kota", alamat: "Tutuyan, Bolmong Timur", pagu: 6800000000, realisasi: 4556000000, persentase: 67.0, status_dipa: "Aktif" },
-  { id_satker: 14, kode_satker: "652814", nama_satker: "KPU Kabupaten Kepulauan Sangihe", tingkat: "Kabupaten/Kota", alamat: "Tahuna, Kepulauan Sangihe", pagu: 8900000000, realisasi: 6141000000, persentase: 69.0, status_dipa: "Aktif" },
-  { id_satker: 15, kode_satker: "652815", nama_satker: "KPU Kabupaten Kepulauan Talaud", tingkat: "Kabupaten/Kota", alamat: "Melonguane, Kepulauan Talaud", pagu: 8700000000, realisasi: 5916000000, persentase: 68.0, status_dipa: "Aktif" },
-  { id_satker: 16, kode_satker: "652816", nama_satker: "KPU Kabupaten Kepulauan Siau Tagulandang Biaro", tingkat: "Kabupaten/Kota", alamat: "Ondong Siau, Sitaro", pagu: 7100000000, realisasi: 4828000000, persentase: 68.0, status_dipa: "Aktif" },
-]
-
 export function SatkerView({ theme, onNavigate }: Props) {
   const isDark = theme === "dark"
-  const [satkers, setSatkers] = useState<SatkerData[]>(FALLBACK_SATKER)
+  const { userRole } = useAuth()
+  const isAdmin = userRole === "Admin"
+  const [satkers, setSatkers] = useState<SatkerData[]>([])
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTingkat, setFilterTingkat] = useState("Semua")
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formData, setFormData] = useState({
+    kode_satker: "",
+    nama_satker: "",
+    tingkat: "Kabupaten/Kota",
+    alamat: "",
+    pagu: 0,
+    realisasi: 0,
+    status_dipa: "Aktif",
+  })
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const data = await fetchSatker()
+      setSatkers(data)
+      setError("")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Data Satker tidak tersedia')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    fetchSatker().then((data) => {
-      if (data && data.length > 0) {
-        setSatkers(data)
-      }
-    })
+    void loadData()
   }, [])
+
+  const handleCreateSatker = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.kode_satker || !formData.nama_satker || !formData.alamat) {
+      showToast("error", "Harap isi semua kolom wajib!")
+      return
+    }
+    try {
+      setIsSubmitting(true)
+      await createSatker(formData)
+      setShowAddModal(false)
+      setFormData({
+        kode_satker: "",
+        nama_satker: "",
+        tingkat: "Kabupaten/Kota",
+        alamat: "",
+        pagu: 0,
+        realisasi: 0,
+        status_dipa: "Aktif",
+      })
+      await loadData()
+    } catch {
+      // The global notification already shows the server's message; keep the form open to fix it.
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (loading) return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div>
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
+          Realisasi Anggaran
+        </p>
+        <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
+          Data Satuan Kerja
+        </h1>
+        <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+          Memuat data Satker…
+        </p>
+      </div>
+    </div>
+  )
+
+  if (error) return (
+    <div className="space-y-6 animate-in fade-in duration-200">
+      <div>
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
+          Realisasi Anggaran
+        </p>
+        <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
+          Data Satuan Kerja
+        </h1>
+        <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`} role="alert">
+          {error}
+        </p>
+      </div>
+    </div>
+  )
 
   const filteredSatkers = satkers.filter((s) => {
     const matchesSearch =
@@ -63,24 +130,9 @@ export function SatkerView({ theme, onNavigate }: Props) {
   const exportCSV = () => {
     const headers = ["Kode Satker", "Nama Satker", "Tingkat", "Alamat", "Pagu (Rp)", "Realisasi (Rp)", "Persentase (%)", "Status DIPA"]
     const rows = filteredSatkers.map((s) => [
-      s.kode_satker,
-      `"${s.nama_satker}"`,
-      s.tingkat,
-      `"${s.alamat}"`,
-      s.pagu,
-      s.realisasi,
-      s.persentase,
-      s.status_dipa,
+      s.kode_satker, s.nama_satker, s.tingkat, s.alamat, s.pagu, s.realisasi, s.persentase, s.status_dipa,
     ])
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.setAttribute("download", `Data_Satker_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    saveCsv(`Data_Satker_KPU_Sulut_${new Date().toISOString().split("T")[0]}.csv`, [headers, ...rows])
   }
 
   return (
@@ -96,63 +148,126 @@ export function SatkerView({ theme, onNavigate }: Props) {
           </h1>
           <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
             Pengelolaan Data Satker KPU Provinsi dan 15 KPU Kabupaten/Kota Se-Sulawesi Utara
+            <span className="block mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+              Nilai pagu dan realisasi Satker diisi manual oleh administrator; belum terhubung otomatis ke data keuangan satker.
+            </span>
           </p>
         </div>
-        <button
-          onClick={exportCSV}
-          className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-md"
-        >
-          <Download className="w-4 h-4" />
-          <span>Ekspor CSV</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-md"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Satker</span>
+            </button>
+          )}
+          <button
+            onClick={exportCSV}
+            className={`px-4 py-2 font-bold text-xs rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-xs ${
+              isDark ? "bg-[#1e293b]/80 border-white/10 text-slate-200 hover:bg-[#1e293b]" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            <span>Ekspor CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Total Satker</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{satkers.length} Satuan Kerja</h3>
+        {/* Card 1: TOTAL SATKER */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                TOTAL SATKER
+              </p>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {satkers.length} Satuan Kerja
+              </h2>
+              <p className={`text-[10px] font-bold mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                Wilayah Sulawesi Utara
+              </p>
             </div>
-            <div className="p-3 rounded-xl bg-red-600 text-white shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Building2 className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Total Pagu Gabungan</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{formatRupiah(totalPagu)}</h3>
+        {/* Card 2: TOTAL PAGU GABUNGAN */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                TOTAL PAGU GABUNGAN
+              </p>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {formatRupiah(totalPagu)}
+              </h2>
+              <p className={`text-[10px] font-bold mt-1 ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                Akumulasi Pagu Satker
+              </p>
             </div>
-            <div className={`p-3 rounded-xl ${isDark ? "bg-white text-slate-950" : "bg-slate-900 text-white"}`}>
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Layers className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Realisasi Wilayah</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{formatRupiah(totalRealisasi)}</h3>
+        {/* Card 3: REALISASI WILAYAH */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex items-center justify-between min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="flex-1 flex flex-col justify-center">
+              <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                REALISASI WILAYAH
+              </p>
+              <h2 className={`text-2xl font-black mt-1 tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                {formatRupiah(totalRealisasi)}
+              </h2>
+              <p className="text-[10px] font-bold flex items-center gap-1 mt-1 text-red-600 dark:text-red-400">
+                <TrendingUp className="w-3.5 h-3.5" /> Total Penyerapan
+              </p>
             </div>
-            <div className="p-3 rounded-xl bg-red-600 text-white shadow-xs">
+            <div className="w-12 h-12 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <TrendingUp className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-400" : "text-slate-600"}`}>Rata-rata Serapan</p>
-              <h3 className={`text-xl font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{avgPct.toFixed(1)}%</h3>
+        {/* Card 4: RATA-RATA SERAPAN */}
+        <Card className={`relative overflow-hidden transition-all ${isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white/85 border-slate-200"} backdrop-blur-md shadow-lg rounded-2xl`}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600"></div>
+          <CardContent className={`m-3 ml-4 p-4 rounded-xl border flex flex-col justify-center gap-3 min-h-[118px] ${isDark ? "bg-[#111827]/60 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <div className="pt-1">
+              <div className="flex items-center justify-between">
+                <p className={`text-[11px] font-extrabold tracking-wider uppercase ${isDark ? "text-gray-300" : "text-slate-800"}`}>
+                  RATA-RATA SERAPAN
+                </p>
+                <div className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline justify-between mt-1">
+                <h2 className={`text-2xl font-black tracking-tight ${isDark ? "text-white" : "text-black"}`}>
+                  {avgPct.toFixed(1)}%
+                </h2>
+                <span className={`text-[10px] font-bold ${isDark ? "text-gray-400" : "text-slate-600"}`}>
+                  dari total pagu
+                </span>
+              </div>
             </div>
-            <div className={`p-3 rounded-xl ${isDark ? "bg-white text-slate-950" : "bg-slate-900 text-white"}`}>
-              <CheckCircle2 className="w-5 h-5" />
+
+            <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-red-600 transition-all duration-500"
+                style={{ width: `${Math.min(100, avgPct)}%` }}
+              ></div>
             </div>
           </CardContent>
         </Card>
@@ -210,6 +325,17 @@ export function SatkerView({ theme, onNavigate }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {filteredSatkers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center text-xs text-slate-500">
+                    {satkers.length === 0
+                      ? isAdmin
+                        ? "Belum ada data Satker. Gunakan tombol \"Tambah Satker\" untuk menambahkan satuan kerja."
+                        : "Belum ada data Satker. Hubungi administrator untuk menambahkan satuan kerja."
+                      : "Tidak ada Satker yang cocok dengan pencarian atau filter."}
+                  </TableCell>
+                </TableRow>
+              )}
               {filteredSatkers.map((s) => (
                 <TableRow key={s.id_satker} className={isDark ? "border-b border-white/10 hover:bg-white/5" : "border-b border-slate-100 hover:bg-slate-50"}>
                   <TableCell className="font-mono text-xs font-bold text-red-600 dark:text-red-400">{s.kode_satker}</TableCell>
@@ -255,6 +381,145 @@ export function SatkerView({ theme, onNavigate }: Props) {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Modal Tambah Satker */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-lg rounded-2xl border p-6 shadow-2xl backdrop-blur-md ${
+            isDark ? "bg-[#1e293b] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-red-600" />
+                Tambah Satuan Kerja (Satker) Baru
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSatker} className="mt-4 space-y-4 text-xs font-semibold">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Kode Satker *
+                  </label>
+                  <input
+                    required
+                    placeholder="Contoh: 652817"
+                    value={formData.kode_satker}
+                    onChange={(e) => setFormData({ ...formData, kode_satker: e.target.value })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Tingkat Wilayah
+                  </label>
+                  <select
+                    value={formData.tingkat}
+                    onChange={(e) => setFormData({ ...formData, tingkat: e.target.value })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  >
+                    <option value="Kabupaten/Kota">Kabupaten/Kota</option>
+                    <option value="Provinsi">Provinsi</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                  Nama Satuan Kerja *
+                </label>
+                <input
+                  required
+                  placeholder="Contoh: KPU Kabupaten Kepulauan Baru"
+                  value={formData.nama_satker}
+                  onChange={(e) => setFormData({ ...formData, nama_satker: e.target.value })}
+                  className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                    isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                  Alamat Kantor *
+                </label>
+                <input
+                  required
+                  placeholder="Contoh: Jl. Trans Sulawesi No. 10"
+                  value={formData.alamat}
+                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value })}
+                  className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                    isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Alokasi Pagu (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.pagu || ""}
+                    placeholder="0"
+                    onChange={(e) => setFormData({ ...formData, pagu: Number(e.target.value) || 0 })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1 text-slate-500 dark:text-slate-400">
+                    Realisasi Saat Ini (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.realisasi || ""}
+                    placeholder="0"
+                    onChange={(e) => setFormData({ ...formData, realisasi: Number(e.target.value) || 0 })}
+                    className={`w-full rounded-xl border px-3 py-2 text-xs outline-none ${
+                      isDark ? "bg-[#0f172a] border-white/10 text-white focus:border-red-500" : "bg-white border-slate-300 text-slate-900 focus:border-red-500"
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold ${
+                    isDark ? "border-white/10 hover:bg-slate-800 text-gray-300" : "border-slate-300 hover:bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-kpu-red px-5 py-2 text-white font-bold text-xs rounded-xl shadow-md disabled:opacity-50"
+                >
+                  {isSubmitting ? "Menyimpan…" : "Simpan Satker"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

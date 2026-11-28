@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
+import { SATKER_MENU_ENABLED } from "../../../config/features"
 import {
   LayoutDashboard,
   FileCheck,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
+import kpuLogo from "../../../assets/branding/kpu-sulut-logo.jpg"
 
 export interface SidebarProps {
   collapsed: boolean
@@ -29,7 +31,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu, theme = "light" }: SidebarProps) {
-  const { currentUser, userRole, logout } = useAuth()
+  const { currentUser, userRole, logout, isRendatinOrKeuangan, canViewBudget } = useAuth()
 
   // Realisasi Anggaran submenus state
   const isRealisasiActive =
@@ -58,29 +60,46 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     }
   }, [isSuratActive])
 
-  const realisasiSubmenus = [
-    { id: "realization-summary", label: "Overview" },
+  // Submenu configuration with strict role-based access control:
+  // Non-RENDATIN & Non-Keuangan users (Teknis, Hukum, SDM, UMLOG, dll)
+  // are strictly limited to Dashboard, Laporan Bulanan, and Pagu Anggaran only.
+  const fullRealisasiSubmenus = [
+    { id: "realization-summary", label: "Dashboard" },
     { id: "realization-ta", label: "Tahun Anggaran" },
-    { id: "realization-satker", label: "Satker" },
+    { id: "realization-reports", label: "Laporan Bulanan" },
+    ...(SATKER_MENU_ENABLED ? [{ id: "realization-satker", label: "Satker" }] : []),
     { id: "realization-akun", label: "Akun Anggaran" },
     { id: "realization-pagu", label: "Pagu Anggaran" },
     { id: "realization-input", label: "Input Realisasi" },
-    { id: "realization-reports", label: "Laporan Bulanan" },
+    { id: "realization-transaksi", label: "Daftar Transaksi" },
+    { id: "realization-verifikasi", label: "Verifikasi Realisasi" },
+    { id: "realization-audit", label: "Audit & Versi Laporan" },
   ]
 
+  const restrictedRealisasiSubmenus = [
+    { id: "realization-summary", label: "Dashboard" },
+    { id: "realization-reports", label: "Laporan Bulanan" },
+    { id: "realization-pagu", label: "Pagu Anggaran" },
+    { id: "realization-transaksi", label: "Daftar Transaksi" },
+  ]
+
+  const realisasiSubmenus = isRendatinOrKeuangan
+    ? fullRealisasiSubmenus
+    : restrictedRealisasiSubmenus
+
   const suratSubmenus = [
-    { id: "surat-summary", label: "Overview" },
+    { id: "surat-summary", label: "Dashboard" },
+    { id: "surat-masuk", label: "Surat Masuk & Disposisi" },
     { id: "surat-keluar", label: "Surat Keluar" },
     { id: "surat-tugas", label: "Surat Tugas" },
     { id: "surat-klasifikasi", label: "Kode Klasifikasi" },
-    { id: "surat-alur", label: "Alur Disposisi & TTE" },
   ]
 
   const adminMenu = [
     { id: "admin_dashboard", label: "Dashboard Admin", icon: LayoutGrid },
     { id: "kelola_user", label: "Kelola User", icon: Users },
-    { id: "bug_report", label: "Bug Report", icon: Bug },
-    { id: "arsip_admin", label: "Arsip Admin", icon: Database },
+    { id: "arsip_admin", label: "Cadangan & Admin Arsip", icon: Database },
+    { id: "bug_report", label: "Laporan Bug", icon: Bug },
   ]
 
   const isDark = theme === "dark"
@@ -111,6 +130,14 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     }
   }
 
+  // Helper: icon color class for standard menu items (bg-red-600 when active -> white icon)
+  const iconClass = (isActive: boolean) =>
+    `sidebar-nav-icon w-4 h-4 shrink-0 ${isActive ? "active-solid text-white" : isDark ? "text-gray-400" : "text-slate-500"}`
+
+  // Helper: icon color class for expandable parent menus (Realisasi / Surat -> red text when active)
+  const parentIconClass = (isActive: boolean) =>
+    `sidebar-nav-icon w-4 h-4 shrink-0 ${isActive ? (isDark ? "active-parent text-red-400" : "text-red-700") : isDark ? "text-gray-400" : "text-slate-500"}`
+
   return (
     <aside
       className={`relative flex flex-col justify-between h-screen transition-all duration-300 z-20 shrink-0 ${collapsed ? "w-20" : "w-64"
@@ -120,37 +147,55 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
         }`}
     >
       {/* Header / Logo */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto no-scrollbar">
         <div
-          className={`flex items-center h-16 ${collapsed ? "justify-center p-4" : "justify-between p-4"
-            } ${isDark ? "border-b-2 border-red-600/25" : "border-b-2 border-red-600/15"}`}
+          className={`flex items-center h-16 transition-all ${collapsed ? "justify-center px-2 py-3" : "justify-between px-3.5 py-3"
+            } ${isDark ? "border-b border-white/10" : "border-b border-slate-200/80"}`}
         >
-          {!collapsed && (
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-9 h-9 rounded-md bg-red-700 flex items-center justify-center font-black text-white text-sm shrink-0 border border-red-500/40 tracking-wide">
-                KPU
+          {collapsed ? (
+            <button
+              onClick={onToggleCollapse}
+              className="relative group p-0.5 rounded-full transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+              title="Perluas Menu (PTP-KPU SULUT)"
+            >
+              <div className="relative w-9 h-9 rounded-full overflow-hidden shadow-xs">
+                <img
+                  src={kpuLogo}
+                  alt="Logo KPU Sulawesi Utara"
+                  className="absolute w-[122%] h-auto max-w-none left-[-11%] top-[-9.5%]"
+                />
               </div>
-              <div className="flex flex-col truncate">
-                <span className={`font-bold text-sm leading-tight truncate tracking-tight ${isDark ? "text-gray-100" : "text-slate-900"}`}>
-                  KPU Sulut
-                </span>
-                <span className={`text-[10px] font-semibold uppercase tracking-wider truncate ${isDark ? "text-gray-400" : "text-slate-500"}`}>
-                  Sistem Informasi PTP
-                </span>
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
+                <div className="relative w-9 h-9 rounded-full overflow-hidden shadow-xs shrink-0">
+                  <img
+                    src={kpuLogo}
+                    alt="Logo KPU Sulawesi Utara"
+                    className="absolute w-[122%] h-auto max-w-none left-[-11%] top-[-9.5%]"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className={`block font-black text-sm tracking-tight truncate ${isDark ? "text-white" : "text-slate-900"}`}>
+                    PTP-KPU SULUT
+                  </span>
+                </div>
               </div>
-            </div>
-          )}
 
-          <button
-            onClick={onToggleCollapse}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isDark
-                ? "hover:bg-[#1e293b] text-red-400/70 hover:text-red-400"
-                : "hover:bg-slate-100 text-red-600/60 hover:text-red-600"
-              }`}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
+              <button
+                onClick={onToggleCollapse}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${isDark
+                  ? "hover:bg-white/10 text-slate-400 hover:text-white"
+                  : "hover:bg-slate-100 text-slate-400 hover:text-slate-800"
+                  }`}
+                title="Perkecil Menu (Collapse Sidebar)"
+                aria-label="Toggle Sidebar"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Navigation Section */}
@@ -169,32 +214,33 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                 onClick={() => onSelectMenu("dashboard")}
                 title={collapsed ? "Dashboard" : undefined}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "dashboard"
-                    ? "bg-red-600 text-white"
-                    : isDark
-                      ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  ? "bg-red-600 text-white"
+                  : isDark
+                    ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                   } ${collapsed ? "justify-center px-0" : ""}`}
               >
-                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                <LayoutDashboard className={iconClass(activeMenu === "dashboard")} />
                 {!collapsed && <span className="truncate">Dashboard</span>}
               </button>
 
-              {/* Realisasi Anggaran Parent Menu (Expandable) */}
+              {/* Realisasi Anggaran Parent Menu (Hanya tampil jika punya akses penuh atau Kabag Read-Only) */}
+              {canViewBudget && (
               <div>
                 <button
                   onClick={handleRealisasiParentClick}
                   title={collapsed ? "Realisasi Anggaran" : undefined}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${isRealisasiActive
-                      ? isDark
-                        ? "bg-[#162035] text-red-400 font-semibold border border-red-500/20"
-                        : "bg-red-50 text-red-700 font-semibold border border-red-200"
-                      : isDark
-                        ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                    ? isDark
+                      ? "bg-[#162035] text-red-400 font-semibold border border-red-500/20"
+                      : "bg-red-50 text-red-700 font-semibold border border-red-200"
+                    : isDark
+                      ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     } ${collapsed ? "justify-center px-0" : ""}`}
                 >
                   <div className="flex items-center gap-3 truncate">
-                    <FileCheck className="w-4 h-4 shrink-0" />
+                    <FileCheck className={parentIconClass(isRealisasiActive)} />
                     {!collapsed && <span className="truncate">Realisasi Anggaran</span>}
                   </div>
                   {!collapsed && (
@@ -217,10 +263,10 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                           key={sub.id}
                           onClick={() => onSelectMenu(sub.id)}
                           className={`w-full flex items-center px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${isSubActive
-                              ? "bg-red-600 text-white font-bold"
-                              : isDark
-                                ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            ? "bg-red-600 text-white font-bold"
+                            : isDark
+                              ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                             }`}
                         >
                           <span>{sub.label}</span>
@@ -230,6 +276,7 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                   </div>
                 )}
               </div>
+              )}
 
               {/* Surat Parent Menu (Expandable) */}
               <div>
@@ -237,16 +284,16 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                   onClick={handleSuratParentClick}
                   title={collapsed ? "Surat" : undefined}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${isSuratActive
-                      ? isDark
-                        ? "bg-[#162035] text-red-400 font-semibold border border-red-500/20"
-                        : "bg-red-50 text-red-700 font-semibold border border-red-200"
-                      : isDark
-                        ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                    ? isDark
+                      ? "bg-[#162035] text-red-400 font-semibold border border-red-500/20"
+                      : "bg-red-50 text-red-700 font-semibold border border-red-200"
+                    : isDark
+                      ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     } ${collapsed ? "justify-center px-0" : ""}`}
                 >
                   <div className="flex items-center gap-3 truncate">
-                    <Mail className="w-4 h-4 shrink-0" />
+                    <Mail className={parentIconClass(isSuratActive)} />
                     {!collapsed && <span className="truncate">Surat</span>}
                   </div>
                   {!collapsed && (
@@ -263,16 +310,17 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                     {suratSubmenus.map((sub) => {
                       const isSubActive =
                         activeMenu === sub.id ||
-                        (activeMenu === "surat" && sub.id === "surat-summary")
+                        (activeMenu === "surat" && sub.id === "surat-summary") ||
+                        (activeMenu === "surat-alur" && sub.id === "surat-masuk")
                       return (
                         <button
                           key={sub.id}
                           onClick={() => onSelectMenu(sub.id)}
                           className={`w-full flex items-center px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${isSubActive
-                              ? "bg-red-600 text-white font-bold"
-                              : isDark
-                                ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                            ? "bg-red-600 text-white font-bold"
+                            : isDark
+                              ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                             }`}
                         >
                           <span>{sub.label}</span>
@@ -287,31 +335,15 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
               <button
                 onClick={() => onSelectMenu("arsip")}
                 title={collapsed ? "Arsip Data" : undefined}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-                  activeMenu === "arsip"
-                    ? "bg-red-600 text-white"
-                    : isDark
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "arsip"
+                  ? "bg-red-600 text-white"
+                  : isDark
                     ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                } ${collapsed ? "justify-center px-0" : ""}`}
-              >
-                <Archive className="w-4 h-4 shrink-0" />
-                {!collapsed && <span className="truncate">Arsip Data</span>}
-              </button>
-
-              {/* Pengaturan */}
-              <button
-                onClick={() => onSelectMenu("pengaturan")}
-                title={collapsed ? "Pengaturan" : undefined}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "pengaturan"
-                    ? "bg-red-600 text-white"
-                    : isDark
-                      ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                   } ${collapsed ? "justify-center px-0" : ""}`}
               >
-                <Settings className="w-4 h-4 shrink-0" />
-                {!collapsed && <span className="truncate">Pengaturan</span>}
+                <Archive className={iconClass(activeMenu === "arsip")} />
+                {!collapsed && <span className="truncate">Arsip Data</span>}
               </button>
 
               {/* FAQ */}
@@ -319,28 +351,45 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                 onClick={() => onSelectMenu("faq")}
                 title={collapsed ? "FAQ" : undefined}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "faq"
+                  ? "bg-red-600 text-white"
+                  : isDark
+                    ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  } ${collapsed ? "justify-center px-0" : ""}`}
+              >
+                <HelpCircle className={iconClass(activeMenu === "faq")} />
+                {!collapsed && <span className="truncate">FAQ</span>}
+              </button>
+
+              {/* Laporkan Bug (Pegawai) â€” Admin mengakses lewat Menu Admin */}
+              {userRole !== "Admin" && (
+                <button
+                  onClick={() => onSelectMenu("bug_report")}
+                  title={collapsed ? "Laporkan Bug" : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "bug_report"
                     ? "bg-red-600 text-white"
                     : isDark
                       ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                  } ${collapsed ? "justify-center px-0" : ""}`}
-              >
-                <HelpCircle className="w-4 h-4 shrink-0" />
-                {!collapsed && <span className="truncate">FAQ</span>}
-              </button>
+                    } ${collapsed ? "justify-center px-0" : ""}`}
+                >
+                  <Bug className={iconClass(activeMenu === "bug_report")} />
+                  {!collapsed && <span className="truncate">Laporkan Bug</span>}
+                </button>
+              )}
 
               {/* Profil */}
               <button
                 onClick={() => onSelectMenu("profil")}
                 title={collapsed ? "Profil" : undefined}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${activeMenu === "profil"
-                    ? "bg-red-600 text-white"
-                    : isDark
-                      ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  ? "bg-red-600 text-white"
+                  : isDark
+                    ? "text-gray-400 hover:text-gray-100 hover:bg-[#131b2e]"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                   } ${collapsed ? "justify-center px-0" : ""}`}
               >
-                <User className="w-4 h-4 shrink-0" />
+                <User className={iconClass(activeMenu === "profil")} />
                 {!collapsed && <span className="truncate">Profil</span>}
               </button>
             </nav>
@@ -365,13 +414,13 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
                       onClick={() => onSelectMenu(item.id)}
                       title={collapsed ? item.label : undefined}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${isActive
-                          ? "bg-red-700 text-white"
-                          : isDark
-                            ? "text-red-400/80 hover:text-red-300 hover:bg-red-950/30 border border-red-900/20"
-                            : "text-red-700 hover:text-red-900 hover:bg-red-50 border border-red-200"
+                        ? "bg-red-700 text-white"
+                        : isDark
+                          ? "text-red-400/80 hover:text-red-300 hover:bg-red-950/30 border border-red-900/20"
+                          : "text-red-700 hover:text-red-900 hover:bg-red-50 border border-red-200"
                         } ${collapsed ? "justify-center px-0" : ""}`}
                     >
-                      <Icon className="w-4 h-4 shrink-0" />
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : isDark ? "text-red-400/80" : "text-red-700"}`} />
                       {!collapsed && <span className="truncate font-semibold">{item.label}</span>}
                     </button>
                   )
@@ -393,17 +442,16 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
               : "bg-slate-50 border-slate-200 hover:border-red-300 hover:bg-red-50/50"
             }`}
         >
-          <Avatar className="w-8 h-8 shrink-0 border border-red-500/40">
-            <AvatarImage src="" alt={currentUser?.name || "User"} />
-            <AvatarFallback className="bg-red-600 text-white font-bold text-xs">{initials}</AvatarFallback>
-          </Avatar>
+          <div className="w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs border border-red-500/40">
+            <User className="w-4 h-4" />
+          </div>
           {!collapsed && (
             <div className="flex-1 overflow-hidden text-left">
               <p className={`text-xs font-semibold truncate ${isDark ? "text-gray-100" : "text-slate-800"}`}>
                 {currentUser?.name || "Pengguna"}
               </p>
               <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-slate-500"}`}>
-                {currentUser?.role === "Admin" ? "Administrator" : currentUser?.subbagian || "Staf Instansi"}
+                {currentUser?.role === "Admin" ? "Administrator" : currentUser?.subbagian || currentUser?.jabatan || "-"}
               </p>
             </div>
           )}
@@ -412,8 +460,8 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
         <button
           onClick={logout}
           className={`w-full mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${isDark
-              ? "text-red-400 hover:text-red-300 hover:bg-red-950/30 font-semibold"
-              : "text-red-600/70 hover:text-red-600 hover:bg-red-50"
+            ? "text-red-400 hover:text-red-300 hover:bg-red-950/30 font-semibold"
+            : "text-red-600/70 hover:text-red-600 hover:bg-red-50"
             } ${collapsed ? "justify-center px-0" : ""}`}
           title="Keluar"
         >
@@ -424,4 +472,3 @@ export function Sidebar({ collapsed, onToggleCollapse, activeMenu, onSelectMenu,
     </aside>
   )
 }
-

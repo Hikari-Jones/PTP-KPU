@@ -1,0 +1,13 @@
+.env
+.env.*
+app/.env
+app/.env.*
+venv
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+uploads
+backups
+.git
+tests

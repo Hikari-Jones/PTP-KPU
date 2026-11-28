@@ -1,291 +1,590 @@
-﻿import { useState } from "react"
-import { CheckCircle2, FileText, Save, Send, Upload, Wallet } from "lucide-react"
+import { useState, useEffect } from "react"
+import { CheckCircle2, FileText, Upload, Sparkles, Loader2, AlertCircle, X } from "lucide-react"
 import { Card, CardContent } from "../ui/card"
-import { createRealisasiAnggaranApi } from "../../../services/api"
-
-interface AccountOption {
-  kode: string
-  nama: string
-  subbagian: string
-  pagu: number
-  realisasi: number
-}
-
-const ACCOUNT_OPTIONS: AccountOption[] = [
-  { kode: "5211", nama: "Belanja Gaji dan Tunjangan", subbagian: "Keuangan", pagu: 8500000000, realisasi: 6375000000 },
-  { kode: "5212", nama: "Belanja Honorarium", subbagian: "Teknis", pagu: 3200000000, realisasi: 2560000000 },
-  { kode: "5221", nama: "Belanja Barang Operasional", subbagian: "UMLOG", pagu: 4800000000, realisasi: 2880000000 },
-  { kode: "5222", nama: "Belanja Barang Non Operasional", subbagian: "Teknis", pagu: 6500000000, realisasi: 4225000000 },
-  { kode: "5231", nama: "Belanja Pemeliharaan", subbagian: "SDM", pagu: 2100000000, realisasi: 1260000000 },
-  { kode: "5241", nama: "Belanja Perjalanan Dinas", subbagian: "Hukum", pagu: 4200000000, realisasi: 3150000000 },
-  { kode: "5251", nama: "Belanja Jasa", subbagian: "RENDATIN", pagu: 7800000000, realisasi: 5460000000 },
-]
+import { Button } from "../ui/button"
+import { Input } from "../ui/input"
+import { ReadOnlyFieldset } from "../ui/read-only"
+import { useAuth } from "../../context/AuthContext"
+import {
+  paguAnggaranApi,
+  realisasiAnggaranApi,
+  tahunAnggaranApi,
+  filesApi,
+} from "../../../services/api"
+import {
+  formatCurrencyInput,
+  formatRupiah,
+  parseCurrencyValue,
+  sanitizeCurrencyInput,
+} from "../../../utils/currency"
+import type { PaguAnggaranResponse, TahunAnggaranResponse, FileUploadResponse } from "./types"
 
 export function InputRealisasiView({ theme }: { theme: "light" | "dark" }) {
   const isDark = theme === "dark"
-  const [tanggal, setTanggal] = useState("2025-09-19")
-  const [nomorDokumen, setNomorDokumen] = useState("")
-  const [kodeAkun, setKodeAkun] = useState("")
+  const readOnly = !useAuth().canEdit("anggaran")
+
+  const [activeTahun, setActiveTahun] = useState<TahunAnggaranResponse | null>(null)
+  const [paguList, setPaguList] = useState<PaguAnggaranResponse[]>([])
+  const [selectedPaguId, setSelectedPaguId] = useState<number | null>(null)
+
+  const [tanggal, setTanggal] = useState(new Date().toLocaleDateString("en-CA"))
+  const [nomorDokumen, setNomorDokumen] = useState(
+    ""
+  )
   const [uraian, setUraian] = useState("")
   const [jumlah, setJumlah] = useState("")
+  const [mekanismeBayar, setMekanismeBayar] = useState<"UP" | "TUP" | "GUP" | "LS">("LS")
+  const [jenisDokumenBayar, setJenisDokumenBayar] = useState<"SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi">("SP2D")
+  const [nomorSp2d, setNomorSp2d] = useState("")
+  const [penerimaPembayaran, setPenerimaPembayaran] = useState("")
+  const [potonganPajak, setPotonganPajak] = useState("")
+
+  const handleJumlahChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setJumlah(sanitizeCurrencyInput(e.target.value))
+  }
+  const [periode, setPeriode] = useState(new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" }))
   const [fileName, setFileName] = useState("")
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadedFileData, setUploadedFileData] = useState<FileUploadResponse | null>(null)
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  const [loading, setLoading] = useState<boolean>(true)
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
-  const selectedAccount = ACCOUNT_OPTIONS.find((item) => item.kode === kodeAkun)
-  const remaining = selectedAccount ? selectedAccount.pagu - selectedAccount.realisasi : 0
-  const numericAmount = Number(jumlah) || 0
-  const isOverBudget = Boolean(selectedAccount && numericAmount > remaining)
+  // Fetch active Tahun Anggaran and Paguary from backend
+  useEffect(() => {
+    let isMounted = true
+    const initData = async () => {
+      setLoading(true)
+      try {
+        const taRes = await tahunAnggaranApi.getAll({ status: "active", limit: 1 })
+        // Fall back to scanning all years if the status filter finds nothing (e.g. legacy labels).
+        let active = taRes.items[0] || null
+        if (!active) {
+          const all = await tahunAnggaranApi.getAll({ limit: 100 }).catch(() => ({ total: 0, items: [] as typeof taRes.items }))
+          active = all.items.find((t) => ["active", "aktif"].includes(String(t.status).trim().toLowerCase())) || null
+        }
+        if (!isMounted) return
+        setActiveTahun(active)
 
-  const formatRupiah = (value: number) => `Rp ${new Intl.NumberFormat("id-ID").format(value)}`
+        if (active) {
+          const paguRes = await paguAnggaranApi.getAll({
+            id_tahun_anggaran: active.id_tahun_anggaran,
+            limit: 500,
+          })
+          if (!isMounted) return
+          setPaguList(paguRes.items)
+          if (paguRes.items.length > 0) {
+            setSelectedPaguId(paguRes.items[0].id_pagu)
+          }
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setMessage({
+            type: "error",
+            text: err.message || "Gagal memuat alokasi pagu anggaran aktif dari server",
+          })
+        }
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+
+    initData()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const selectedPagu = paguList.find((p) => p.id_pagu === selectedPaguId)
+  const remaining = selectedPagu ? Number(selectedPagu.sisa_anggaran) || 0 : 0
+  const numericAmount = parseCurrencyValue(jumlah)
+  const numericPajak = parseCurrencyValue(potonganPajak)
+  const numericNetto = Math.max(0, numericAmount - numericPajak)
+  const isOverBudget = Boolean(selectedPagu && numericAmount > remaining)
+
   const inputClass = `w-full rounded-xl border px-3 py-2.5 text-xs font-semibold outline-none transition-colors ${
     isDark
       ? "bg-[#0f172a] border-white/10 text-white placeholder:text-slate-500 focus:border-red-500"
       : "bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-red-500"
   }`
 
-  const validate = () => {
-    if (!tanggal || !nomorDokumen.trim() || !kodeAkun || !uraian.trim() || numericAmount <= 0) {
-      setMessage({ type: "error", text: "Lengkapi seluruh kolom wajib sebelum menyimpan realisasi." })
-      return false
-    }
-    if (isOverBudget) {
-      setMessage({ type: "error", text: "Jumlah realisasi melebihi sisa anggaran akun yang dipilih." })
-      return false
-    }
-    return true
-  }
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null)
+    if (!e.target.files || !e.target.files[0]) return
 
-  const save = async (status: "draft" | "submit") => {
-    if (!validate()) return
+    const file = e.target.files[0]
+    const allowed = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png"]
+    const ext = "." + file.name.split(".").pop()?.toLowerCase()
+
+    if (!allowed.includes(ext)) {
+      setUploadError("Format berkas tidak didukung. Harap pilih PDF, Word, Excel, CSV, atau Gambar.")
+      return
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      setUploadError("Ukuran berkas melebihi batas maksimal 25 MB.")
+      return
+    }
+
+    // Replacing the file: discard the previous, now unused, upload.
+    if (uploadedFileData) void filesApi.discard(uploadedFileData.file_id)
+    setUploadedFileData(null)
+    setSelectedFile(file)
+    setFileName(file.name)
+    setIsUploading(true)
 
     try {
-      await createRealisasiAnggaranApi({
-        tanggal,
-        nomor_dokumen: nomorDokumen,
-        kode_akun: kodeAkun,
-        uraian,
-        jumlah: numericAmount,
-        file_bukti: fileName || "bukti_transaksi.pdf",
-        status: status === "draft" ? "draft" : "menunggu_verifikasi",
-      })
-    } catch (err) {
-      console.warn("Backend offline, saving locally", err)
+      const uploadRes = await filesApi.upload(file, "realisasi")
+      setUploadedFileData(uploadRes)
+    } catch (err: any) {
+      setUploadError(err.message || "Gagal mengunggah berkas ke server.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleHapusFile = () => {
+    // The upload is not referenced by any transaction yet; remove it from the server.
+    if (uploadedFileData) void filesApi.discard(uploadedFileData.file_id)
+    setSelectedFile(null)
+    setFileName("")
+    setUploadedFileData(null)
+    setUploadError(null)
+  }
+
+  const handleSimpanDraft = async () => {
+    setMessage(null)
+
+    if (isUploading) {
+      setMessage({ type: "error", text: "Mohon tunggu hingga proses unggah berkas selesai." })
+      return
     }
 
-    setMessage({
-      type: "success",
-      text:
-        status === "draft"
-          ? `Draft realisasi ${nomorDokumen} berhasil disimpan.`
-          : `Realisasi ${nomorDokumen} berhasil dikirim untuk verifikasi bendahara.`,
-    })
+    if (uploadError) {
+      setMessage({ type: "error", text: "Unggah berkas gagal. Harap perbaiki atau hapus berkas sebelum menyimpan." })
+      return
+    }
+
+    if (!selectedPaguId) {
+      setMessage({ type: "error", text: "Silakan pilih Pagu Anggaran terlebih dahulu." })
+      return
+    }
+
+    if (!tanggal || !nomorDokumen.trim() || !uraian.trim() || numericAmount <= 0) {
+      setMessage({ type: "error", text: "Lengkapi seluruh kolom formulir transaksi sebelum menyimpan realisasi." })
+      return
+    }
+
+    if (isOverBudget) {
+      setMessage({ type: "error", text: "Jumlah realisasi melebihi sisa anggaran pagu yang dipilih." })
+      return
+    }
+
+    if (numericPajak >= numericAmount) {
+      setMessage({ type: "error", text: "Potongan pajak harus lebih kecil dari nominal bruto realisasi." })
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const res = await realisasiAnggaranApi.createDraft({
+        id_pagu: selectedPaguId,
+        tanggal_transaksi: tanggal,
+        nomor_dokumen: nomorDokumen.trim(),
+        uraian_kegiatan: uraian.trim(),
+        jumlah_realisasi: numericAmount,
+        mekanisme_bayar: mekanismeBayar,
+        jenis_dokumen_bayar: jenisDokumenBayar,
+        nomor_sp2d: nomorSp2d.trim() || null,
+        penerima_pembayaran: penerimaPembayaran.trim() || null,
+        potongan_pajak: numericPajak,
+        periode,
+        bukti_file_path: uploadedFileData ? `/api/v1/files/${uploadedFileData.file_id}` : null,
+        bukti_file_nama: uploadedFileData ? uploadedFileData.filename : null,
+        bukti_file_ukuran: uploadedFileData ? uploadedFileData.size : null,
+        bukti_file_mime: uploadedFileData ? uploadedFileData.mime_type : null,
+      })
+
+      setMessage({
+        type: "success",
+        text: `Draft realisasi ${res.nomor_dokumen} berhasil disimpan (Status: ${res.status}). Ajukan transaksi pada menu Daftar Transaksi untuk pemeriksaan terpisah.`,
+      })
+
+      // Reset form
+      setNomorDokumen("")
+      setUraian("")
+      setJumlah("")
+      setNomorSp2d("")
+      setPenerimaPembayaran("")
+      setPotonganPajak("")
+      setFileName("")
+      setSelectedFile(null)
+      setUploadedFileData(null)
+      setUploadError(null)
+
+      // Reload pagu to update remaining budget
+      if (activeTahun) {
+        const paguRes = await paguAnggaranApi.getAll({
+          id_tahun_anggaran: activeTahun.id_tahun_anggaran,
+          limit: 500,
+        })
+        setPaguList(paguRes.items)
+      }
+    } catch (err: any) {
+      setMessage({
+        type: "error",
+        text: err.message || "Gagal memproses realisasi anggaran pada server",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6 animate-in fade-in duration-200">
       <div>
         <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400">
           Realisasi Anggaran
         </p>
         <h1 className={`m-0 text-xl font-bold tracking-tight ${isDark ? "text-white" : "text-black"}`}>
-          Input Realisasi
+          Input Transaksi
         </h1>
-        <p className={`mt-1 text-xs font-medium ${isDark ? "text-gray-400" : "text-slate-600"}`}>
-          Tambah transaksi realisasi anggaran baru untuk TA 2025.
+        <p className={`mt-1 text-xs font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
+          Draft → Pengajuan → Pemeriksaan terpisah • TA {activeTahun?.tahun ?? "Aktif"}
         </p>
       </div>
 
+      <ReadOnlyFieldset readOnly={readOnly}>
       <Card
         className={`overflow-hidden rounded-2xl border shadow-lg ${
           isDark ? "bg-[#1e293b]/70 border-white/10" : "bg-white border-slate-200"
-        }`}
+        } backdrop-blur-md`}
       >
-        <CardContent className="space-y-5 p-5 sm:p-6">
+        <CardContent className="p-6 sm:p-7 space-y-6 text-xs">
           {message && (
             <div
-              className={`flex items-center gap-2 rounded-xl border p-3 text-xs font-semibold ${
+              className={`p-3.5 rounded-xl border flex items-center gap-2 text-xs font-semibold ${
                 message.type === "success"
-                  ? "border-red-500/20 bg-red-600/10 text-red-600 dark:text-red-300"
-                  : "border-red-500/30 bg-red-950/20 text-red-600 dark:text-red-300"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                  : "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400"
               }`}
             >
-              <CheckCircle2 className="h-4 w-4 shrink-0" /> {message.text}
+              {message.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{message.text}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="space-y-1.5 text-xs font-bold">
-              Tanggal Transaksi <span className="text-red-500">*</span>
-              <input
+          {/* Baris 1: Tanggal Transaksi & Nomor Dokumen */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Tanggal Transaksi <span className="text-red-500">*</span>
+              </label>
+              <Input
                 type="date"
-                required
                 value={tanggal}
-                onChange={(event) => setTanggal(event.target.value)}
-                min="2025-01-01"
-                max="2025-12-31"
+                onChange={(e) => setTanggal(e.target.value)}
+                disabled={isSubmitting}
                 className={inputClass}
               />
-            </label>
-            <label className="space-y-1.5 text-xs font-bold">
-              Nomor Dokumen <span className="text-red-500">*</span>
-              <input
-                required
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Nomor Dokumen / SPD <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                placeholder="Contoh: 001/SPD/KPU-SULUT/XI/2026"
                 value={nomorDokumen}
-                onChange={(event) => setNomorDokumen(event.target.value)}
-                placeholder="Contoh: SPD-0125/2025"
+                onChange={(e) => setNomorDokumen(e.target.value)}
+                disabled={isSubmitting}
                 className={inputClass}
               />
-            </label>
+            </div>
           </div>
 
-          <label className="block space-y-1.5 text-xs font-bold">
-            Akun Anggaran <span className="text-red-500">*</span>
-            <select value={kodeAkun} onChange={(event) => setKodeAkun(event.target.value)} className={inputClass}>
-              <option value="">-- Pilih Akun Anggaran --</option>
-              {ACCOUNT_OPTIONS.map((item) => (
-                <option key={item.kode} value={item.kode}>
-                  {item.kode} - {item.nama} ({item.subbagian})
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div
-            className={`rounded-2xl border border-dashed p-4 ${
-              isDark ? "bg-[#111b2e] border-white/10" : "bg-slate-50 border-slate-300"
-            }`}
-          >
-            {selectedAccount ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-red-600 p-2.5 text-white">
-                    <Wallet className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold">{selectedAccount.nama}</p>
-                    <p className="text-[10px] text-slate-500">
-                      {selectedAccount.kode} - Subbagian {selectedAccount.subbagian}
-                    </p>
-                  </div>
+          {/* Baris 2: Alokasi Pagu Anggaran & Periode Anggaran */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Pilih Alokasi Pagu Anggaran <span className="text-red-500">*</span>
+              </label>
+              {loading ? (
+                <div className="p-2.5 text-xs text-slate-500 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                  <span>Memuat daftar pagu aktif...</span>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Pagu Anggaran</p>
-                    <p className={`mt-1 text-xs font-black ${isDark ? "text-white" : "text-slate-900"}`}>
-                      {formatRupiah(selectedAccount.pagu)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sudah Direalisasi</p>
-                    <p className="mt-1 text-xs font-black text-red-600 dark:text-red-400">
-                      {formatRupiah(selectedAccount.realisasi)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sisa Anggaran</p>
-                    <p className={`mt-1 text-xs font-black ${isDark ? "text-white" : "text-slate-900"}`}>
-                      {formatRupiah(remaining)}
-                    </p>
-                  </div>
+              ) : paguList.length === 0 ? (
+                <div className="p-2.5 text-xs text-red-500 font-semibold border rounded-xl border-red-500/20 bg-red-500/5">
+                  Tidak ada pagu aktif ditemukan. Pastikan Tahun Anggaran aktif telah memiliki alokasi Pagu.
                 </div>
-              </div>
-            ) : (
-              <div className="flex min-h-28 flex-col items-center justify-center gap-2 text-center text-xs text-slate-500">
-                <Wallet className="h-6 w-6 opacity-40" />
-                <span>Pilih akun anggaran untuk melihat informasi pagu.</span>
-              </div>
-            )}
-          </div>
+              ) : (
+                <select
+                  value={selectedPaguId ?? ""}
+                  onChange={(e) => setSelectedPaguId(Number(e.target.value))}
+                  disabled={isSubmitting}
+                  className={`${inputClass} font-mono cursor-pointer`}
+                >
+                  {paguList.map((p) => (
+                    <option key={p.id_pagu} value={p.id_pagu}>
+                      {p.kode_akun} - {p.nama_akun} ({p.nama_bagian || "Umum"}) — Sisa: {formatRupiah(Number(p.sisa_anggaran) || 0)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
 
-          <label className="block space-y-1.5 text-xs font-bold">
-            Uraian / Keterangan <span className="text-red-500">*</span>
-            <textarea
-              rows={4}
-              required
-              value={uraian}
-              onChange={(event) => setUraian(event.target.value)}
-              placeholder="Masukkan uraian kegiatan..."
-              className={inputClass}
-            />
-          </label>
-
-          <label className="block space-y-1.5 text-xs font-bold">
-            Jumlah (Rp) <span className="text-red-500">*</span>
-            <input
-              type="number"
-              min={0}
-              required
-              value={jumlah}
-              onChange={(event) => setJumlah(event.target.value)}
-              placeholder="Rp 0"
-              className={`${inputClass} ${isOverBudget ? "border-red-500 text-red-500" : ""}`}
-            />
-            {numericAmount > 0 && (
-              <span className={`block text-[10px] ${isOverBudget ? "text-red-500" : "text-slate-500"}`}>
-                {isOverBudget ? "Jumlah melebihi sisa anggaran" : `Terbaca: ${formatRupiah(numericAmount)}`}
-              </span>
-            )}
-          </label>
-
-          <div className="space-y-1.5 text-xs font-bold">
-            Lampiran SPJ / Bukti Transaksi
-            <label
-              className={`flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed p-4 text-center transition-colors ${
-                fileName
-                  ? "border-red-500/40 bg-red-600/10"
-                  : isDark
-                  ? "border-white/10 bg-[#111b2e] hover:border-red-500/40"
-                  : "border-slate-300 bg-slate-50 hover:border-red-400"
-              }`}
-            >
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                className="hidden"
-                onChange={(event) => setFileName(event.target.files?.[0]?.name || "")}
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Periode Anggaran <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                value={periode}
+                onChange={(e) => setPeriode(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
               />
-              {fileName ? (
+            </div>
+          </div>
+
+          {selectedPagu && (
+            <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              isDark ? "bg-[#11192b] border-red-600/30" : "bg-red-50/50 border-red-200"
+            }`}>
+              <div>
+                <p className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400">Informasi Pagu Terpilih</p>
+                <p className="font-bold text-sm my-0.5">{selectedPagu.nama_akun}</p>
+                <span className="text-[11px] text-slate-400">Bagian: {selectedPagu.nama_bagian || "Umum"}</span>
+              </div>
+              <div className="sm:text-right">
+                <p className="text-[11px] text-slate-500">Pagu Aktif: {formatRupiah(Number(selectedPagu.pagu_aktif) || 0)}</p>
+                <p className="text-sm font-black text-red-600 dark:text-red-400">
+                  Sisa: {formatRupiah(remaining)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Baris 3: Uraian Transaksi Belanja & Nominal Realisasi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Uraian Transaksi Belanja <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="text"
+                placeholder="Contoh: Belanja Operasional Rapat Evaluasi Anggaran"
+                value={uraian}
+                onChange={(e) => setUraian(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                  Nominal Realisasi (Rp) <span className="text-red-500">*</span>
+                </label>
+                {isOverBudget && (
+                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400 animate-pulse">
+                    Nominal melebihi sisa anggaran!
+                  </span>
+                )}
+              </div>
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={formatCurrencyInput(jumlah)}
+                onChange={handleJumlahChange}
+                disabled={isSubmitting}
+                className={`${inputClass} font-mono ${isOverBudget ? "border-red-500 text-red-500" : ""}`}
+              />
+            </div>
+          </div>
+
+          {/* Baris 3b: Mekanisme Pembayaran, Rantai Dokumen & Pajak (PMK 62/2023) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Mekanisme Bayar
+              </label>
+              <select
+                value={mekanismeBayar}
+                onChange={(e) => setMekanismeBayar(e.target.value as "UP" | "TUP" | "GUP" | "LS")}
+                disabled={isSubmitting}
+                className={inputClass}
+              >
+                <option value="LS">LS (Langsung)</option>
+                <option value="UP">UP (Uang Persediaan)</option>
+                <option value="TUP">TUP (Tambahan UP)</option>
+                <option value="GUP">GUP (Ganti UP)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Jenis Dokumen
+              </label>
+              <select
+                value={jenisDokumenBayar}
+                onChange={(e) => setJenisDokumenBayar(e.target.value as "SPBy" | "SPP" | "SPM" | "SP2D" | "Kuitansi")}
+                disabled={isSubmitting}
+                className={inputClass}
+              >
+                <option value="SP2D">SP2D</option>
+                <option value="SPM">SPM</option>
+                <option value="SPP">SPP</option>
+                <option value="SPBy">SPBy</option>
+                <option value="Kuitansi">Kuitansi</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Nomor SP2D (Opsional)
+              </label>
+              <Input
+                type="text"
+                placeholder="No. SP2D KPPN"
+                value={nomorSp2d}
+                onChange={(e) => setNomorSp2d(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Penerima / Rekanan
+              </label>
+              <Input
+                type="text"
+                placeholder="Nama penyedia / bendahara"
+                value={penerimaPembayaran}
+                onChange={(e) => setPenerimaPembayaran(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+                Potongan Pajak (Rp)
+              </label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={formatCurrencyInput(potonganPajak)}
+                onChange={(e) => setPotonganPajak(sanitizeCurrencyInput(e.target.value))}
+                disabled={isSubmitting}
+                className={`${inputClass} font-mono`}
+              />
+              {numericAmount > 0 && (
+                <p className="text-[10px] font-bold text-slate-500">
+                  Netto dibayarkan: {formatRupiah(numericNetto)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Baris 4: Lampiran Bukti Transaksi */}
+          <div className="space-y-1.5 pt-1">
+            <label className={`font-bold block ${isDark ? "text-gray-200" : "text-slate-800"}`}>
+              Lampiran Bukti Transaksi (Kuitansi / SPJ / Nota)
+            </label>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="file"
+                  id="input-bukti-file"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png"
+                  onChange={handleFileSelect}
+                  disabled={isSubmitting || isUploading}
+                />
+                <label
+                  htmlFor="input-bukti-file"
+                  className={`px-3.5 py-2 rounded-xl border flex items-center gap-2 font-bold text-xs cursor-pointer transition-all active:scale-95 shadow-2xs ${
+                    isDark
+                      ? "bg-[#0f172a] border-white/10 hover:bg-slate-800 text-slate-200"
+                      : "bg-slate-50 border-slate-300 hover:bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                  ) : (
+                    <Upload className="w-4 h-4 text-red-500" />
+                  )}
+                  <span>{isUploading ? "Mengunggah..." : "Pilih Berkas Bukti"}</span>
+                </label>
+
+                {fileName ? (
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="truncate text-xs font-mono font-semibold text-red-600 dark:text-red-400">
+                      {fileName}
+                    </span>
+                    {uploadedFileData && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                        ✓ Terunggah ({Math.round(uploadedFileData.size / 1024)} KB)
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleHapusFile}
+                      disabled={isSubmitting || isUploading}
+                      className="p-1 rounded-lg text-slate-400 hover:text-red-500 cursor-pointer"
+                      title="Hapus berkas"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    PDF, DOCX, XLSX, JPG, PNG (Maks. 25 MB)
+                  </span>
+                )}
+              </div>
+
+              {uploadError && (
+                <p className="text-[11px] text-red-500 font-semibold flex items-center gap-1.5 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{uploadError}</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Baris Tombol Aksi */}
+          <div className="pt-4 border-t border-slate-200/60 dark:border-white/10 flex justify-end">
+            <Button
+              type="button"
+              disabled={readOnly || isSubmitting || isOverBudget || !selectedPaguId}
+              onClick={handleSimpanDraft}
+              className="btn-kpu-red px-6 py-2.5 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-md"
+            >
+              {isSubmitting ? (
                 <>
-                  <FileText className="h-6 w-6 text-red-600" />
-                  <span className="text-red-600 dark:text-red-400">{fileName}</span>
-                  <span className="text-[10px] font-medium text-slate-500">Klik untuk mengganti berkas</span>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Memproses Realisasi...</span>
                 </>
               ) : (
                 <>
-                  <Upload className="h-6 w-6 text-slate-500" />
-                  <span className={isDark ? "text-gray-300" : "text-slate-700"}>
-                    Seret file ke sini atau <span className="text-red-600">pilih file</span>
-                  </span>
-                  <span className="text-[10px] font-medium text-slate-500">PDF, JPG, PNG - maksimal 10 MB</span>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Simpan Draft</span>
                 </>
               )}
-            </label>
-          </div>
-
-          <div
-            className={`flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end ${
-              isDark ? "border-white/10" : "border-slate-200"
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => save("draft")}
-              className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold cursor-pointer ${
-                isDark ? "border-white/10 bg-[#0f172a] text-gray-300" : "border-slate-300 bg-white text-slate-700"
-              }`}
-            >
-              <Save className="h-4 w-4" /> Simpan Draft
-            </button>
-            <button
-              type="button"
-              onClick={() => save("submit")}
-              className="btn-kpu-red flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white cursor-pointer"
-            >
-              <Send className="h-4 w-4" /> Submit untuk Verifikasi
-            </button>
+            </Button>
           </div>
         </CardContent>
       </Card>
+      </ReadOnlyFieldset>
     </div>
   )
 }

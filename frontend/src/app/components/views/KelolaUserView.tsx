@@ -1,241 +1,466 @@
-﻿import { useState } from "react"
-import { UserPlus, X, CheckCircle2, Shield, Mail, Building, Key } from "lucide-react"
-import { Card, CardContent } from "../ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table"
+import { useEffect, useRef, useState } from 'react'
+import { request, message } from '../../../services/operations'
+import type { Employee, Department } from '../../../services/operations'
+import { Workspace, field, button, buttonSecondary, useOperation, SkeletonTable } from '../ui/operations'
+import { UserPlus, Edit3, UserCheck, UserX, Loader2, Clock, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react'
 
-export function KelolaUserView({ theme }: { theme: "light" | "dark" }) {
-  const isDark = theme === "dark"
-  const [users, setUsers] = useState([
-    { id: 1, name: "Admin KPU Sulut", email: "admin@kpu.go.id", role: "Admin", status: "Aktif", subbagian: "RENDATIN (Perencanaan, Data dan Informasi)" },
-    { id: 2, name: "Ahmad Kurniawan", email: "ahmad.kurniawan@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Teknis Penyelenggaraan Pemilu" },
-    { id: 3, name: "Siti Rahmawati", email: "siti.rahma@kpu.go.id", role: "Operator", status: "Aktif", subbagian: "Hukum" },
-    { id: 4, name: "Budi Santoso", email: "budi.santoso@kpu.go.id", role: "Operator", status: "Non-Aktif", subbagian: "UMLOG (Umum dan Logistik)" },
-  ])
+interface AccountRequest {
+  id_request: number
+  nama: string
+  nip: string
+  jabatan: string
+  unit_bagian: string
+  id_bagian: number | null
+  nama_subbagian: string | null
+  status: string
+  catatan_admin?: string | null
+  created_at: string
+}
 
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [nip, setNip] = useState("")
-  const [email, setEmail] = useState("")
-  const [subbagian, setSubbagian] = useState("RENDATIN (Perencanaan, Data dan Informasi)")
-  const [role, setRole] = useState<"Admin" | "Operator">("Operator")
-  const [successToast, setSuccessToast] = useState<string | null>(null)
+export function KelolaUserView({ theme }: { theme: 'light' | 'dark' }) {
+  const isDark = theme === 'dark'
+  const [users, setUsers] = useState<Employee[]>([])
+  const [parts, setParts] = useState<Department[]>([])
+  const [requests, setRequests] = useState<AccountRequest[]>([])
+  const [showRequests, setShowRequests] = useState(false)
+  const [edit, setEdit] = useState<number | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const blank = { nama: '', nip: '', password: '', role: 'Operator', id_bagian: '', jabatan: '' }
+  const [form, setForm] = useState(blank)
+  const { busy, error, run, setError } = useOperation()
 
-  const toggleStatus = (id: number) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: u.status === "Aktif" ? "Non-Aktif" : "Aktif" } : u))
-    )
+  const load = async () => {
+    const [u, b, r] = await Promise.all([
+      request<Employee[]>('/pegawai/?limit=1000'),
+      request<Department[]>('/bagian/?limit=1000'),
+      request<AccountRequest[]>('/pegawai/requests?status=pending'),
+    ])
+    setUsers(u)
+    setParts(b)
+    setRequests(r)
   }
 
-  const handleCreateUser = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name.trim() || !email.trim()) return
-
-    const newUser = {
-      id: Date.now(),
-      name: name.trim(),
-      email: email.trim(),
-      role,
-      status: "Aktif",
-      subbagian,
-    }
-
-    setUsers((prev) => [...prev, newUser])
-    setSuccessToast(`User ${newUser.name} berhasil didaftarkan ke sistem.`)
-    setTimeout(() => setSuccessToast(null), 4000)
-
-    // Reset & Close
-    setName("")
-    setNip("")
-    setEmail("")
-    setIsModalOpen(false)
-  }
+  useEffect(() => {
+    load().catch(e => setError(message(e)))
+  }, [])
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
-            Manajemen User & Hak Akses
-          </h1>
-          <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-            Kelola daftar operator instansi dan penetapan role Admin/Operator PTP-KPU
-          </p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="btn-kpu-red px-4 py-2 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shrink-0 transition-all active:scale-95 shadow-md"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Tambah User Baru</span>
-        </button>
-      </div>
-
-      {successToast && (
-        <div className="flex items-center gap-2 p-3 text-xs font-bold rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500">
-          <CheckCircle2 className="w-4 h-4" />
-          <span>{successToast}</span>
+    <Workspace
+      theme={theme}
+      category="Administrator"
+      title="Kelola Pengguna"
+      description="Manajemen Akun Pegawai, Hak Akses Peran, dan Penugasan Subbagian KPU Provinsi Sulawesi Utara"
+    >
+      {error && (
+        <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-semibold">
+          {error}
         </div>
       )}
 
-      <Card className={isDark ? "bg-[#0d1322] border-white/10" : "bg-white border-slate-200 shadow-sm"}>
-        <div className={`p-4 border-b ${isDark ? "border-white/10" : "border-slate-200"}`}>
-          <h3 className={`text-sm font-bold ${isDark ? "text-white" : "text-black"}`}>Daftar Akun Terdaftar</h3>
+      {/* Form Card */}
+      <form
+        ref={formRef}
+        onSubmit={e => {
+          e.preventDefault()
+          void run(async () => {
+            const { password, nip, ...rest } = form
+            const data = {
+              ...rest,
+              id_bagian: form.id_bagian ? Number(form.id_bagian) : null,
+              ...(password ? { password } : {}),
+              ...(edit ? {} : { nip }),
+            }
+            await request(edit ? `/pegawai/${edit}` : '/pegawai/', edit ? 'PUT' : 'POST', data)
+            setForm(blank)
+            setEdit(null)
+            await load()
+          })
+        }}
+        className={`p-5 sm:p-6 rounded-2xl border transition-all ${
+          isDark
+            ? 'bg-[#111827]/70 border-white/10 shadow-md'
+            : 'bg-slate-50 border-slate-200 shadow-xs'
+        }`}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <UserPlus className="w-5 h-5 text-red-600 dark:text-red-500" />
+          <h2 className="font-bold text-base text-slate-900 dark:text-white">
+            {edit ? 'Ubah Akun Pengguna' : 'Tambah Pengguna Baru'}
+          </h2>
         </div>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className={isDark ? "border-b border-white/30 bg-[#0a0e1a]" : "border-b border-slate-200 bg-slate-100"}>
-                <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Nama Pengguna</TableHead>
-                <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Email</TableHead>
-                <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Subbagian</TableHead>
-                <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Role</TableHead>
-                <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Status</TableHead>
-                <TableHead className={`text-[11px] font-extrabold uppercase ${isDark ? "text-white" : "text-black"}`}>Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.id} className={isDark ? "border-b border-white/20" : "border-b border-slate-100"}>
-                  <TableCell className={`font-bold text-xs ${isDark ? "text-white" : "text-black"}`}>{u.name}</TableCell>
-                  <TableCell className={`text-xs font-mono font-semibold ${isDark ? "text-gray-300" : "text-slate-800"}`}>{u.email}</TableCell>
-                  <TableCell className={`text-xs font-bold ${isDark ? "text-gray-200" : "text-black"}`}>{u.subbagian}</TableCell>
-                  <TableCell>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${u.role === "Admin" ? "bg-red-600 text-white" : isDark ? "bg-white text-black font-bold" : "bg-slate-900 text-white font-bold"}`}>
-                      {u.role}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`status-badge px-2.5 py-0.5 rounded-full border text-[10px] font-semibold ${u.status === "Aktif" ? "bg-black text-white border-black dark:border-slate-700" : isDark ? "bg-slate-800 text-slate-300 border-slate-600" : "bg-slate-100 text-slate-700 border-slate-300"}`}>
-                      {u.status}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      onClick={() => toggleStatus(u.id)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-colors ${isDark ? "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700" : "bg-slate-100 hover:bg-slate-200 text-black border border-slate-300"
-                        }`}
-                    >
-                      {u.status === "Aktif" ? "Nonaktifkan" : "Aktifkan"}
-                    </button>
-                  </TableCell>
-                </TableRow>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+              Nama
+            </label>
+            <input
+              className={field}
+              type="text"
+              required
+              placeholder="Contoh: Drs. Nama Lengkap, M.Si"
+              value={form.nama}
+              onChange={e => setForm({ ...form, nama: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+              NIP
+            </label>
+            <input
+              className={field}
+              type="text"
+              disabled={edit !== null}
+              required
+              placeholder="Nomor Induk Pegawai (18 digit)"
+              value={form.nip}
+              onChange={e => setForm({ ...form, nip: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+              Jabatan
+            </label>
+            <select
+              required
+              className={field}
+              value={form.jabatan}
+              onChange={e => setForm({ ...form, jabatan: e.target.value })}
+            >
+              <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                Pilih jabatan
+              </option>
+              {['Staf', 'Kepala Subbagian', 'Kepala Bagian'].map(j => (
+                <option key={j} value={j} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                  {j}
+                </option>
               ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              {form.jabatan && !['Staf', 'Kepala Subbagian', 'Kepala Bagian'].includes(form.jabatan) && (
+                <option value={form.jabatan} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                  {form.jabatan}
+                </option>
+              )}
+            </select>
+          </div>
 
-      {/* Modal Tambah User */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl animate-in zoom-in-95 duration-150 ${isDark ? "bg-[#0f172a] border-white/10 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-white/10">
-              <div className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-red-600" />
-                <h3 className="text-base font-bold">Tambah Pengguna Baru</h3>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-white">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+              Kata sandi (minimal 8 karakter)
+            </label>
+            <input
+              className={field}
+              type="password"
+              autoComplete="new-password"
+              required={!edit}
+              minLength={8}
+              placeholder={edit ? 'Kosongkan jika tidak ingin mengubah kata sandi' : 'Minimal 8 karakter'}
+              value={form.password}
+              onChange={e => setForm({ ...form, password: e.target.value })}
+            />
+          </div>
 
-            <form onSubmit={handleCreateUser} className="space-y-4 pt-4 text-xs font-semibold">
-              <div>
-                <label className="block mb-1">Nama Lengkap & Gelar</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Misal: Michael Senduk, S.Kom"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className={`w-full rounded-xl border px-3 py-2 outline-none ${isDark ? "bg-[#1e293b] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`}
-                />
-              </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+              Bagian / Subbagian
+            </label>
+            <select
+              required
+              className={field}
+              value={form.id_bagian}
+              onChange={e => setForm({ ...form, id_bagian: e.target.value })}
+            >
+              <option value="" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                Pilih bagian
+              </option>
+              {parts.map(p => (
+                <option key={p.id_bagian} value={p.id_bagian} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                  {p.nama_bagian}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div>
-                <label className="block mb-1">NIP (Nomor Induk Pegawai)</label>
-                <input
-                  type="text"
-                  placeholder="Misal: 199304122022011005"
-                  value={nip}
-                  onChange={(e) => setNip(e.target.value)}
-                  className={`w-full rounded-xl border px-3 py-2 outline-none ${isDark ? "bg-[#1e293b] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`}
-                />
-              </div>
-
-              <div>
-                <label className="block mb-1">Email Instansi KPU</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="nama@kpu.go.id"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={`w-full rounded-xl border px-3 py-2 outline-none ${isDark ? "bg-[#1e293b] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`}
-                />
-              </div>
-
-              <div>
-                <label className="block mb-1">Subbagian / Unit Kerja</label>
-                <select
-                  value={subbagian}
-                  onChange={(e) => setSubbagian(e.target.value)}
-                  className={`w-full rounded-xl border px-3 py-2 outline-none ${isDark ? "bg-[#1e293b] border-white/10 text-white focus:border-red-500" : "bg-slate-50 border-slate-300 text-slate-900 focus:border-red-500"}`}
-                >
-                  <option value="RENDATIN (Perencanaan, Data dan Informasi)">RENDATIN (Perencanaan, Data dan Informasi)</option>
-                  <option value="Teknis Penyelenggaraan Pemilu">Teknis Penyelenggaraan Pemilu</option>
-                  <option value="Hukum dan Pengawasan">Hukum dan Pengawasan</option>
-                  <option value="SDM dan Partisipasi Masyarakat">SDM dan Partisipasi Masyarakat</option>
-                  <option value="UMLOG (Umum dan Logistik)">UMLOG (Umum dan Logistik)</option>
-                  <option value="Keuangan">Keuangan</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block mb-1">Hak Akses Role</label>
-                <div className="flex gap-4 pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="role"
-                      value="Operator"
-                      checked={role === "Operator"}
-                      onChange={() => setRole("Operator")}
-                    />
-                    <span>Operator</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="role"
-                      value="Admin"
-                      checked={role === "Admin"}
-                      onChange={() => setRole("Admin")}
-                    />
-                    <span>Administrator</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/10 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="btn-kpu-red px-5 py-2 rounded-xl text-white text-xs font-bold shadow-md cursor-pointer"
-                >
-                  Simpan User
-                </button>
-              </div>
-            </form>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+              Peran Akun
+            </label>
+            <select
+              className={field}
+              value={form.role}
+              onChange={e => setForm({ ...form, role: e.target.value })}
+            >
+              {[
+                { value: 'Operator', label: 'Pegawai' },
+                { value: 'Admin', label: 'Admin' },
+              ].map(x => (
+                <option key={x.value} value={x.value} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-white">
+                  {x.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Action Buttons */}
+        <div className="pt-4 mt-2 flex items-center gap-3">
+          <button disabled={busy} className={button}>
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <span>{busy ? 'Menyimpan…' : edit ? 'Simpan Perubahan' : 'Tambah Pengguna'}</span>
+          </button>
+          {edit && (
+            <button
+              type="button"
+              className={buttonSecondary}
+              onClick={() => {
+                setEdit(null)
+                setForm(blank)
+              }}
+            >
+              Batal
+            </button>
+          )}
+        </div>
+      </form>
+
+      {/* Table Section */}
+      <div className="space-y-3 pt-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="font-bold text-base text-slate-900 dark:text-white">
+              {showRequests
+                ? `Permintaan Verifikasi Akun Baru (${requests.length})`
+                : `Daftar Akun Pengguna (${users.length})`}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowRequests(!showRequests)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 border transition-all cursor-pointer active:scale-95 ${
+                showRequests
+                  ? 'bg-red-700 text-white border-red-700 shadow-xs'
+                  : isDark
+                  ? 'border-white/15 bg-slate-800/80 text-slate-200 hover:bg-slate-800'
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {showRequests ? (
+                <>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Daftar Akun Pengguna</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Request</span>
+                  {requests.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-red-600 text-white">
+                      {requests.length}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {showRequests ? (
+          requests.length === 0 ? (
+            <div
+              className={`p-8 rounded-2xl border text-center space-y-2 ${
+                isDark ? 'border-white/10 bg-[#111827]/40 text-slate-400' : 'border-slate-200 bg-white text-slate-500'
+              }`}
+            >
+              <Clock className="w-8 h-8 mx-auto opacity-40" />
+              <p className="text-sm font-semibold">Belum ada permintaan verifikasi akun baru</p>
+              <p className="text-xs">Akun yang mendaftar melalui halaman Sign Up akan muncul di sini.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {requests.map((req) => (
+                <div
+                  key={req.id_request}
+                  className={`p-4 sm:p-5 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all ${
+                    isDark
+                      ? 'border-white/10 bg-[#111827]/60 text-slate-200'
+                      : 'border-slate-200 bg-white text-slate-800 shadow-xs'
+                  }`}
+                >
+                  <div className="space-y-2 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-sm text-slate-900 dark:text-white">{req.nama}</span>
+                      <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        NIP: {req.nip}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        <Clock className="w-3 h-3" />
+                        Menunggu Verifikasi
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs pt-1">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Jabatan</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{req.jabatan}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Unit Bagian</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{req.unit_bagian}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Subbagian</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">
+                          {req.nama_subbagian || 'Tingkat Bagian (Tanpa Subbagian)'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Waktu Pengajuan</span>
+                        <span className="font-medium text-slate-600 dark:text-slate-300">
+                          {new Date(req.created_at).toLocaleString('id-ID', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          await request(`/pegawai/requests/${req.id_request}/accept`, 'POST')
+                          await load()
+                        })
+                      }
+                      className="px-4 py-2 text-xs font-bold rounded-xl inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Accept</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          await request(`/pegawai/requests/${req.id_request}/reject`, 'POST', {})
+                          await load()
+                        })
+                      }
+                      className="px-3.5 py-2 text-xs font-bold rounded-xl inline-flex items-center gap-1.5 border border-red-300 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-950/30 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Tolak</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : busy && users.length === 0 ? (
+          <SkeletonTable rows={5} cols={4} />
+        ) : (
+          <div className={`overflow-x-auto rounded-2xl border ${
+          isDark ? 'border-white/10 bg-[#111827]/40' : 'border-slate-200 bg-white shadow-xs'
+        }`}>
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className={`border-b text-xs font-bold uppercase tracking-wider ${
+                isDark ? 'border-white/10 text-gray-300 bg-slate-800/60' : 'border-slate-200 text-slate-700 bg-slate-100/70'
+              }`}>
+                <th className="p-3.5">Nama / NIP</th>
+                <th className="p-3.5">Peran</th>
+                <th className="p-3.5">Status</th>
+                <th className="p-3.5 text-right">Tindakan</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
+              {users.map(u => (
+                <tr
+                  key={u.id_pegawai}
+                  className={`transition-colors ${
+                    isDark ? 'hover:bg-slate-800/40 text-gray-200' : 'hover:bg-slate-50/80 text-slate-800'
+                  }`}
+                >
+                  <td className="p-3.5">
+                    <div className="font-bold">{u.nama}</div>
+                    <div className="text-xs font-mono text-slate-400">{u.nip}</div>
+                  </td>
+                  <td className="p-3.5">
+                    <span className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-semibold border ${
+                      u.role.toLowerCase() === 'admin' || u.role.toLowerCase() === 'administrator'
+                        ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                        : 'bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                    }`}>
+                      {u.role.toLowerCase() === 'admin' || u.role.toLowerCase() === 'administrator' ? 'Admin' : 'Pegawai'}
+                    </span>
+                  </td>
+                  <td className="p-3.5">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                      u.is_online
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                        : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${u.is_online ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                      {u.is_online ? 'Aktif' : 'Tidak Aktif'}
+                    </span>
+                  </td>
+                  <td className="p-3.5 text-right space-x-2 whitespace-nowrap">
+                    <button
+                      className={buttonSecondary}
+                      onClick={() => {
+                        setEdit(u.id_pegawai)
+                        setForm({
+                          nama: u.nama,
+                          nip: u.nip || '',
+                          role: u.role.toLowerCase() === 'admin' || u.role.toLowerCase() === 'administrator' ? 'Admin' : 'Operator',
+                          id_bagian: String(u.id_bagian || ''),
+                          jabatan: u.jabatan || '',
+                          password: '',
+                        })
+                        document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'smooth' })
+                        window.scrollTo({ top: 0, behavior: 'smooth' })
+                      }}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Ubah</span>
+                    </button>
+                    <button
+                      className={`px-3 py-2 text-xs font-bold rounded-xl inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 border ${
+                        u.is_active
+                          ? 'border-red-300 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-950/30'
+                          : 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-950/30'
+                      }`}
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          await request(`/pegawai/${u.id_pegawai}`, 'PUT', { is_active: !u.is_active })
+                          await load()
+                        })
+                      }
+                    >
+                      {u.is_active ? (
+                        <>
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>Nonaktifkan</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Aktifkan</span>
+                        </>
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        )}
+      </div>
+    </Workspace>
   )
 }

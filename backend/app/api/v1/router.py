@@ -1,5 +1,5 @@
-﻿from fastapi import APIRouter
-from app.api.v1.endpoints import bagian, pegawai, arsip, anggaran, surat, ai, auth, satker
+from fastapi import APIRouter
+from app.api.v1.endpoints import bagian, pegawai, arsip, anggaran, surat, ai, auth, satker, files
 
 api_router = APIRouter()
 
@@ -9,6 +9,7 @@ async def status():
 
 # Authentication
 api_router.include_router(auth.router, prefix="/auth", tags=["Autentikasi"])
+api_router.include_router(files.router)
 
 # Master & Pegawai
 api_router.include_router(bagian.router, prefix="/bagian", tags=["Bagian"])
@@ -21,7 +22,7 @@ api_router.include_router(arsip.router, prefix="/arsip", tags=["Arsip"])
 # Tata Persuratan (Surat Keluar, Surat Tugas, Klasifikasi, Jenis Surat)
 api_router.include_router(surat.router, tags=["Persuratan"])
 
-# AI Chatbot KIRANA (Local Ollama LLM)
+# AI Chatbot KIRANA (in-process local model)
 api_router.include_router(ai.router, prefix="/ai", tags=["AI KIRANA Assistant"])
 
 # Modul Realisasi Anggaran Endpoints
@@ -31,3 +32,9 @@ api_router.include_router(anggaran.pagu_router, prefix="/pagu-anggaran", tags=["
 api_router.include_router(anggaran.revisi_router, prefix="/revisi-anggaran", tags=["Revisi Anggaran"])
 api_router.include_router(anggaran.realisasi_router, prefix="/realisasi-anggaran", tags=["Realisasi Anggaran"])
 api_router.include_router(anggaran.dashboard_router, prefix="/anggaran", tags=["Ringkasan Anggaran"])
+
+from app.api.v1.endpoints import operations, backups, dashboard, authority
+api_router.include_router(operations.router)
+api_router.include_router(dashboard.router)
+api_router.include_router(backups.router)
+api_router.include_router(authority.router)

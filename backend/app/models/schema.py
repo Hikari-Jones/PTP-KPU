@@ -96,6 +96,7 @@ class Pegawai(Base):
 
     nip: Mapped[Optional[str]] = mapped_column(
         String(30),
+        unique=True,
         nullable=True,
     )
 
@@ -115,6 +116,12 @@ class Pegawai(Base):
         default="pegawai",
         server_default="pegawai",
     )
+
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+
+    is_online: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
 
     # Relationships
     bagian: Mapped[Optional["Bagian"]] = relationship(
@@ -141,6 +148,13 @@ class Pegawai(Base):
     disposisi: Mapped[List["Disposisi"]] = relationship(
         "Disposisi",
         back_populates="pegawai",
+        foreign_keys="Disposisi.id_pegawai",
+    )
+
+    disposisi_dikirim: Mapped[List["Disposisi"]] = relationship(
+        "Disposisi",
+        back_populates="pengirim",
+        foreign_keys="Disposisi.id_pengirim",
     )
 
     dokumen_arsip: Mapped[List["DokumenArsip"]] = relationship(
@@ -463,6 +477,40 @@ class SuratKeluar(Base):
         nullable=True,
     )
 
+    tembusan: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    penandatangan_nama: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    penandatangan_jabatan: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    atas_nama: Mapped[Optional[str]] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+
+    file_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "file_record.id_file",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    content_sha256: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     file_surat: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
@@ -578,6 +626,11 @@ class SuratTugas(Base):
         nullable=False,
     )
 
+    dasar_tugas: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
     tempat_tugas: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -598,6 +651,24 @@ class SuratTugas(Base):
         nullable=True,
         default="DIPA KPU Provinsi Sulawesi Utara",
         server_default="DIPA KPU Provinsi Sulawesi Utara",
+    )
+
+    id_pagu: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "pagu_anggaran.id_pagu",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    laporan_file_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "file_record.id_file",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
 
     # Relationships
@@ -758,6 +829,22 @@ class Disposisi(Base):
         nullable=False,
     )
 
+    id_pengirim: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("pegawai.id_pegawai", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=True,
+    )
+
+    id_parent: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("disposisi.id_disposisi", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="terkirim", server_default="terkirim"
+    )
+
+    diterima_pada: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     instruksi: Mapped[str] = mapped_column(
         Text,
         nullable=False,
@@ -777,7 +864,48 @@ class Disposisi(Base):
     pegawai: Mapped["Pegawai"] = relationship(
         "Pegawai",
         back_populates="disposisi",
+        foreign_keys=[id_pegawai],
     )
+
+    pengirim: Mapped[Optional["Pegawai"]] = relationship(
+        "Pegawai",
+        foreign_keys=[id_pengirim],
+        back_populates="disposisi_dikirim",
+    )
+
+    parent: Mapped[Optional["Disposisi"]] = relationship(
+        "Disposisi",
+        remote_side=[id_disposisi],
+        back_populates="children",
+    )
+
+    children: Mapped[List["Disposisi"]] = relationship(
+        "Disposisi",
+        back_populates="parent",
+        cascade="all, delete-orphan",
+    )
+
+
+class FileRecord(Base):
+    __tablename__ = "file_record"
+
+    id_file: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    relative_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
+    uploaded_by: Mapped[int] = mapped_column(
+        ForeignKey("pegawai.id_pegawai", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp()
+    )
+
+    uploader: Mapped["Pegawai"] = relationship("Pegawai")
 
 
 # =========================================================
@@ -786,6 +914,10 @@ class Disposisi(Base):
 
 class DokumenArsip(Base):
     __tablename__ = "dokumen_arsip"
+    # One archive row per source record (letters, budget evidence) so syncing is idempotent.
+    __table_args__ = (
+        UniqueConstraint("ref_tipe", "ref_id", name="uq_dokumen_arsip_ref"),
+    )
 
     id_dokumen: Mapped[int] = mapped_column(
         Integer,
@@ -803,14 +935,15 @@ class DokumenArsip(Base):
         nullable=True,
     )
 
-    # Relasi dengan Klasifikasi Arsip
-    id_klasifikasi: Mapped[int] = mapped_column(
+    # Relasi dengan Klasifikasi Arsip (opsional: unggahan arsip umum tidak
+    # selalu memiliki kode klasifikasi, dan instalasi baru belum memiliki data master)
+    id_klasifikasi: Mapped[Optional[int]] = mapped_column(
         ForeignKey(
             "kode_klasifikasi_arsip.id_klasifikasi",
             onupdate="CASCADE",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
     )
 
     # Pemilik / Pengunggah
@@ -866,7 +999,7 @@ class DokumenArsip(Base):
         default=0,
     )
 
-    # Hak akses
+    # Hak akses (4-tier SKKAAD PKPU 7/2021: biasa/internal/publik, terbatas, rahasia, sangat_rahasia)
     hak_akses: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -874,6 +1007,61 @@ class DokumenArsip(Base):
         server_default="internal",
         index=True,
     )
+
+    # Jadwal Retensi Arsip (PKPU 17/2023) & Tata Kelola Fisik/Digital
+    status_retensi: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="aktif",
+        server_default="aktif",
+        index=True,
+    )  # aktif | inaktif | siap_susut | disusutkan
+    nasib_akhir: Mapped[Optional[str]] = mapped_column(
+        String(30),
+        nullable=True,
+    )  # musnah | permanen | dinilai_kembali
+    tanggal_retensi_aktif: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    tanggal_retensi_inaktif: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    arsip_vital: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    legal_hold_alasan: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    lokasi_fisik: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    nomor_berkas: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    versi_dokumen: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    parent_dokumen_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("dokumen_arsip.id_dokumen", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Asal dokumen: "arsip" (unggahan manual), "surat" (Surat Menyurat), "realisasi" (Realisasi Anggaran)
+    sumber_modul: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="arsip",
+        server_default="arsip",
+        index=True,
+    )
+    # Sub-kategori dalam modul: Surat Masuk/Keluar/Tugas, atau akun anggaran untuk bukti realisasi
+    sub_kategori: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+        index=True,
+    )
+    # Rekaman sumber (mis. "workflow_letter", "surat_keluar", "realisasi") dan ID-nya
+    ref_tipe: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    ref_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Permintaan hapus permanen: pengguna mengajukan, administrator menyetujui/menolak
+    hapus_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)  # diajukan | ditolak
+    hapus_diajukan_oleh: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("pegawai.id_pegawai", onupdate="CASCADE", ondelete="SET NULL"), nullable=True
+    )
+    hapus_diajukan_pada: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hapus_alasan: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    hapus_catatan_admin: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Soft delete
     status_hapus: Mapped[bool] = mapped_column(
@@ -935,6 +1123,13 @@ class DokumenArsip(Base):
         back_populates="dokumen_dihapus",
     )
 
+    # Pegawai yang mengajukan hapus permanen (dimuat langsung agar nama tampil untuk admin)
+    pengaju_hapus: Mapped[Optional["Pegawai"]] = relationship(
+        "Pegawai",
+        foreign_keys=[hapus_diajukan_oleh],
+        lazy="selectin",
+    )
+
     # =====================================================
     # Helper Properties
     # =====================================================
@@ -948,11 +1143,23 @@ class DokumenArsip(Base):
         return self.penghapus.nama if self.penghapus else None
 
     @property
+    def nama_pengaju_hapus(self) -> Optional[str]:
+        return self.pengaju_hapus.nama if self.pengaju_hapus else None
+
+    @property
     def nama_bagian(self) -> Optional[str]:
         if self.pegawai and self.pegawai.bagian:
             return self.pegawai.bagian.nama_bagian
 
         return None
+
+    @property
+    def kode_klasifikasi(self) -> Optional[str]:
+        return self.klasifikasi.kode_klasifikasi if self.klasifikasi else None
+
+    @property
+    def nama_klasifikasi(self) -> Optional[str]:
+        return self.klasifikasi.nama_klasifikasi if self.klasifikasi else None
 
 
 # =========================================================
@@ -1033,11 +1240,97 @@ class TahunAnggaran(Base):
 
 
 # =========================================================
+# 12B. AUDIT AKTIVASI TAHUN ANGGARAN
+# =========================================================
+
+class AuditAktivasiTahunAnggaran(Base):
+    __tablename__ = "audit_aktivasi_tahun_anggaran"
+
+    id_audit: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    id_tahun_sebelum: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "tahun_anggaran.id_tahun_anggaran",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    tahun_sebelum: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    id_tahun_aktif: Mapped[int] = mapped_column(
+        ForeignKey(
+            "tahun_anggaran.id_tahun_anggaran",
+            onupdate="CASCADE",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+
+    tahun_aktif: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    id_pegawai: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "pegawai.id_pegawai",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    nama_pegawai: Mapped[Optional[str]] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    alasan: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    waktu_aktivasi: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+    )
+
+    # Relationships
+    tahun_sebelum_rel: Mapped[Optional["TahunAnggaran"]] = relationship(
+        "TahunAnggaran",
+        foreign_keys=[id_tahun_sebelum],
+    )
+
+    tahun_aktif_rel: Mapped["TahunAnggaran"] = relationship(
+        "TahunAnggaran",
+        foreign_keys=[id_tahun_aktif],
+    )
+
+    pegawai: Mapped[Optional["Pegawai"]] = relationship(
+        "Pegawai",
+        foreign_keys=[id_pegawai],
+    )
+
+
+# =========================================================
 # 13. AKUN ANGGARAN
 # =========================================================
 
 class AkunAnggaran(Base):
     __tablename__ = "akun_anggaran"
+    __table_args__ = (
+        UniqueConstraint("id_bagian", "kode_akun", name="uq_akun_bagian_kode"),
+    )
 
     id_akun_anggaran: Mapped[int] = mapped_column(
         Integer,
@@ -1057,7 +1350,7 @@ class AkunAnggaran(Base):
     kode_akun: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
-        unique=True,
+        index=True,
     )
 
     nama_akun: Mapped[str] = mapped_column(
@@ -1175,6 +1468,41 @@ class PaguAnggaran(Base):
         server_default="0",
     )
 
+    pagu_blokir: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_1: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_2: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_3: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    rpd_triwulan_4: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     nomor_sk: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,
@@ -1282,6 +1610,19 @@ class RevisiAnggaran(Base):
         nullable=False,
     )
 
+    jenis_revisi: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="DIPA",
+        server_default="DIPA",
+    )
+
+    batch_kode: Mapped[Optional[str]] = mapped_column(
+        String(60),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
@@ -1374,6 +1715,53 @@ class RealisasiAnggaran(Base):
         nullable=False,
         default=0,
         server_default="0",
+    )
+
+    mekanisme_bayar: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="LS",
+        server_default="LS",
+    )
+
+    jenis_dokumen_bayar: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="SP2D",
+        server_default="SP2D",
+    )
+
+    nomor_sp2d: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    penerima_pembayaran: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+    )
+
+    potongan_pajak: Mapped[Decimal] = mapped_column(
+        DECIMAL(18, 2),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    is_koreksi: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+
+    koreksi_dari_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "realisasi_anggaran.id_realisasi",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(
@@ -1545,3 +1933,53 @@ class ChatMessage(Base):
         "ChatSession",
         back_populates="messages",
     )
+
+
+# =========================================================
+# SATUAN KERJA (SATKER)
+# =========================================================
+
+class Satker(Base):
+    """Satuan kerja KPU (provinsi dan kabupaten/kota). Diisi oleh administrator."""
+    __tablename__ = "satker"
+
+    id_satker: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kode_satker: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    nama_satker: Mapped[str] = mapped_column(String(200), nullable=False)
+    tingkat: Mapped[str] = mapped_column(String(30), nullable=False, default="Kabupaten/Kota")
+    alamat: Mapped[str] = mapped_column(String(255), nullable=False)
+    pagu: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), nullable=False, default=0, server_default="0")
+    realisasi: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), nullable=False, default=0, server_default="0")
+    status_dipa: Mapped[str] = mapped_column(String(30), nullable=False, default="Aktif", server_default="Aktif")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+    )
+
+
+# =========================================================
+# PERMINTAAN VERIFIKASI AKUN BARU (SIGN UP)
+# =========================================================
+
+class PermintaanAkun(Base):
+    """Pendaftaran akun pegawai baru yang menunggu verifikasi administrator."""
+    __tablename__ = "permintaan_akun"
+
+    id_request: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nama: Mapped[str] = mapped_column(String(150), nullable=False)
+    nip: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+    jabatan: Mapped[str] = mapped_column(String(100), nullable=False)
+    unit_bagian: Mapped[str] = mapped_column(String(150), nullable=False)
+    id_bagian: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("bagian.id_bagian", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+    nama_subbagian: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", server_default="pending")
+    catatan_admin: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reviewed_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    bagian: Mapped[Optional["Bagian"]] = relationship("Bagian")

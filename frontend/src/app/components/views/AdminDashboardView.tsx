@@ -1,69 +1,161 @@
-import { Users, Server, Activity, Database, Shield } from "lucide-react"
-import { Card, CardContent } from "../ui/card"
+import { useEffect, useState } from 'react'
+import { request, message } from '../../../services/operations'
+import { Workspace, button, buttonSecondary, SkeletonCards } from '../ui/operations'
+import { Users, UserCheck, Mail, Database, ShieldAlert, Clock, RefreshCw } from 'lucide-react'
 
-export function AdminDashboardView({ theme }: { theme: "light" | "dark" }) {
-  const isDark = theme === "dark"
+type Status = {
+  users: number
+  active_users: number
+  letters: number
+  budget_events: number
+  official_issuance_enabled: boolean
+  checked_at: string
+}
 
-  const systemStats = [
-    { title: "Pengguna Aktif", val: "28 Operator", icon: Users, isRed: true },
-    { title: "Status Server", val: "99.9% Online", icon: Server, isRed: false },
-    { title: "Kirim KIRANA Bot", val: "142 Query/Hari", icon: Activity, isRed: true },
-    { title: "Total Database", val: "1.4 GB", icon: Database, isRed: false },
-  ]
+export function AdminDashboardView({ theme }: { theme: 'light' | 'dark' }) {
+  const isDark = theme === 'dark'
+  const [status, setStatus] = useState<Status | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      setStatus(await request<Status>('/operations/admin-status'))
+    } catch (e) {
+      setError(message(e))
+      setStatus(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+  }, [])
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      <div>
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-red-600" />
-          <h1 className={`text-2xl font-bold tracking-tight my-0 ${isDark ? "text-white" : "text-black"}`}>
-            Dashboard Administrator
-          </h1>
+    <Workspace
+      theme={theme}
+      category="Administrator"
+      title="Dashboard Administrator"
+      description="Ringkasan status basis data, aktivitas persuratan, dan audit anggaran sistem PTP-KPU"
+    >
+      {error && (
+        <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-semibold">
+          {error}
         </div>
-        <p className={`text-xs mt-1 font-medium ${isDark ? "text-gray-300" : "text-slate-700"}`}>
-          Panel kontrol pusat pengawasan infrastruktur dan akun pengguna Sistem Informasi KPU Sulut
-        </p>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {systemStats.map((item, idx) => {
-          const Icon = item.icon
-          return (
-            <Card key={idx} className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? "text-gray-300" : "text-slate-800"}`}>{item.title}</p>
-                  <h3 className={`text-lg font-black mt-1 ${isDark ? "text-white" : "text-black"}`}>{item.val}</h3>
-                </div>
-                <div className={`p-3 rounded-xl shadow-xs ${item.isRed ? "bg-red-600 text-white" : "bg-slate-900 text-white dark:bg-white dark:text-slate-950"}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+      {busy && !status && <SkeletonCards count={4} />}
 
-      {/* Admin Audit Log */}
-      <Card className={isDark ? "bg-[#0d1322] border-[#1e293b]" : "bg-white border-slate-200 shadow-sm"}>
-        <div className={`p-4 border-b ${isDark ? "border-[#1e293b]" : "border-slate-200"}`}>
-          <h3 className={`text-sm font-bold ${isDark ? "text-white" : "text-black"}`}>Audit Log Sistem Terkini</h3>
+      {status && (
+        <div className="space-y-6">
+          {/* Metric Cards - Pola Desain PTP-KPU */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Akun Terdaftar */}
+            <div className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+              isDark
+                ? 'bg-[#111827]/70 border-white/10 shadow-md'
+                : 'bg-slate-50 border-slate-200 shadow-xs'
+            }`}>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  Akun Terdaftar
+                </span>
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {status.users}
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Users className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 2: Akun Aktif */}
+            <div className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+              isDark
+                ? 'bg-[#111827]/70 border-white/10 shadow-md'
+                : 'bg-slate-50 border-slate-200 shadow-xs'
+            }`}>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  Akun Aktif
+                </span>
+                <span className="text-2xl font-black text-red-600 dark:text-red-400">
+                  {status.active_users}
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <UserCheck className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 3: Alur Surat Tersimpan */}
+            <div className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+              isDark
+                ? 'bg-[#111827]/70 border-white/10 shadow-md'
+                : 'bg-slate-50 border-slate-200 shadow-xs'
+            }`}>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  Alur Surat
+                </span>
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {status.letters}
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Mail className="w-6 h-6" />
+              </div>
+            </div>
+
+            {/* Card 4: Audit Anggaran */}
+            <div className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+              isDark
+                ? 'bg-[#111827]/70 border-white/10 shadow-md'
+                : 'bg-slate-50 border-slate-200 shadow-xs'
+            }`}>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  Audit Anggaran
+                </span>
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {status.budget_events}
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <Database className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+
+          {/* Info Status Operasional */}
+          <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+            isDark ? 'bg-[#111827]/40 border-white/10 text-slate-300' : 'bg-slate-100/70 border-slate-200 text-slate-700'
+          }`}>
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
+              <span>
+                Penerbitan Resmi:{' '}
+                <strong className={status.official_issuance_enabled ? 'text-red-500 font-semibold' : 'text-slate-500'}>
+                  {status.official_issuance_enabled ? 'Diaktifkan dalam konfigurasi' : 'Dinonaktifkan'}
+                </strong>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-slate-400 font-mono">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Database Sync: {new Date(status.checked_at).toLocaleString('id-ID')}</span>
+            </div>
+          </div>
         </div>
-        <CardContent className="p-4 space-y-3 text-xs">
-          <div className="flex items-center justify-between p-3 rounded-lg border border-red-600/30 bg-red-600/10">
-            <span className="font-bold text-red-600 dark:text-red-400">[ADMIN] Sesi login baru dideteksi dari IP 180.252.12.9</span>
-            <span className={`text-[10px] font-mono font-bold ${isDark ? "text-gray-300" : "text-slate-800"}`}>10:55 WITA</span>
-          </div>
-          <div className={`flex items-center justify-between p-3 rounded-lg border ${isDark ? "border-slate-800 bg-[#111827]" : "border-slate-200 bg-slate-50"}`}>
-            <span className={`font-bold ${isDark ? "text-white" : "text-black"}`}>[SYSTEM] Backup database otomatis selesai disimpan</span>
-            <span className={`text-[10px] font-mono font-bold ${isDark ? "text-gray-400" : "text-slate-600"}`}>06:00 WITA</span>
-          </div>
-          <div className={`flex items-center justify-between p-3 rounded-lg border ${isDark ? "border-slate-800 bg-[#111827]" : "border-slate-200 bg-slate-50"}`}>
-            <span className={`font-bold ${isDark ? "text-white" : "text-black"}`}>[BOT] KIRANA Agent memproses 45 draf dokumen otomatis</span>
-            <span className={`text-[10px] font-mono font-bold ${isDark ? "text-gray-400" : "text-slate-600"}`}>Kemarin</span>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      )}
+
+      <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed pt-2">
+        Catatan: Uptime server, kapasitas penyimpanan disk fisik, dan alokasi memori dipantau melalui dashboard monitoring server internal.
+      </p>
+    </Workspace>
   )
 }

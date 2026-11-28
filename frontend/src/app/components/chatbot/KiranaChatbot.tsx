@@ -1,465 +1,770 @@
-import { useState, useRef, useEffect } from "react"
-import { MessageSquare, Send, Bot, User, Minimize2, Download, FileText, Loader2, Sparkles } from "lucide-react"
+import { showToast } from "../../../services/activity"
+import { saveFile } from "../../../services/csv"
+import { useState, useRef, useEffect, useCallback } from "react"
+import {
+  MessageSquare,
+  Send,
+  Bot,
+  User,
+  Minimize2,
+  Maximize2,
+  Download,
+  Loader2,
+  Sparkles,
+  Square,
+  Copy,
+  Check,
+  RotateCcw,
+  SquarePen,
+  Database,
+  History,
+  Trash2,
+  Plus,
+  ChevronLeft,
+} from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "../ui/card"
 import { Button } from "../ui/button"
-import { Input } from "../ui/input"
-import { ScrollArea } from "../ui/scroll-area"
 import { Avatar, AvatarFallback } from "../ui/avatar"
-
-export interface GeneratedFile {
-  name: string
-  content: string
-  mimeType: string
-  sizeStr: string
-}
+import { streamChatMessage, type ChatTurn } from "../../../services/api"
+import { MarkdownMessage } from "./MarkdownMessage"
 
 export interface ChatMessage {
   id: string
   sender: "user" | "bot"
   text: string
   timestamp: string
-  fileAttachment?: GeneratedFile
+  /** Answer came from the database tool */
+  usedDatabase?: boolean
+  /** Request failed; excluded from the history sent to the model */
+  isError?: boolean
 }
 
-export function KiranaChatbot({ theme = "light" }: { theme?: "light" | "dark" }) {
+export interface ChatThread {
+  id: string
+  title: string
+  updatedAt: string
+  messages: ChatMessage[]
+}
+
+const STORAGE_THREADS_KEY = "ptp_kpu_kirana_threads_v2"
+const MAX_STORED_THREADS = 30
+const MAX_STORED_MESSAGES_PER_THREAD = 60
+const MAX_HISTORY_TURNS = 12
+
+const WELCOME_TEXT =
+  "Halo! Saya **KIRANA**, asisten AI Sistem Informasi KPU Sulut. Saya bisa menjawab pertanyaan, menyusun draf surat, dan membaca data surat, arsip, pegawai, serta anggaran langsung dari database. Ada yang bisa saya bantu?"
+
+const SUGGESTIONS: { label: string; prompt: string }[] = [
+  { label: "Rekap surat", prompt: "Berapa jumlah surat keluar per status saat ini?" },
+  { label: "Surat terbaru", prompt: "Tampilkan 5 surat keluar terbaru beserta perihal dan statusnya." },
+  { label: "Realisasi anggaran", prompt: "Berapa total pagu aktif dan total realisasi anggaran yang sudah terverifikasi?" },
+  { label: "Arsip", prompt: "Dokumen arsip apa saja yang terakhir diunggah?" },
+  { label: "Draf nota dinas", prompt: "Buatkan draf nota dinas tentang permohonan pengadaan alat tulis kantor." },
+]
+
+const timeNow = () => {
+  const now = new Date()
+  return `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`
+}
+
+const welcomeMessage = (): ChatMessage => ({
+  id: "welcome",
+  sender: "bot",
+  text: WELCOME_TEXT,
+  timestamp: timeNow(),
+})
+
+const createNewThread = (): ChatThread => ({
+  id: `thread-${Date.now()}`,
+  title: "Percakapan Baru",
+  updatedAt: new Date().toISOString(),
+  messages: [welcomeMessage()],
+})
+
+const loadThreads = (storageKey: string): ChatThread[] => {
+  try {
+    const saved = localStorage.getItem(storageKey)
+    if (saved) {
+      const parsed = JSON.parse(saved) as ChatThread[]
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.slice(0, MAX_STORED_THREADS)
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return [createNewThread()]
+}
+
+export function KiranaChatbot({ theme = "light", userKey }: { theme?: "light" | "dark"; userKey: string }) {
+  const threadsStorageKey = `${STORAGE_THREADS_KEY}:${userKey}`
+  const [threads, setThreads] = useState<ChatThread[]>(() => loadThreads(threadsStorageKey))
+  const [activeThreadId, setActiveThreadId] = useState<string>(() => threads[0]?.id || `thread-${Date.now()}`)
+  const [showHistory, setShowHistory] = useState(false)
+
+  // Sinkronisasi ulang data threads saat akun yang login (userKey) berganti
+  useEffect(() => {
+    const loaded = loadThreads(threadsStorageKey)
+    setThreads(loaded)
+    setActiveThreadId(loaded[0]?.id || `thread-${Date.now()}`)
+    setShowHistory(false)
+  }, [threadsStorageKey])
+
   const [isOpen, setIsOpen] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [inputMessage, setInputMessage] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
-
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      sender: "bot",
-      text: "Halo! Saya KIRANA Agent, Asisten AI Sistem Informasi KPU Sulut. Silakan ketik perintah atau klik salah satu Chip Cepat di bawah ini untuk membuat dokumen & laporan otomatis.",
-      timestamp: "09:00",
-    },
-  ])
+  const [statusText, setStatusText] = useState("")
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const stickToBottomRef = useRef(true)
   const isDark = theme === "dark"
 
-  const quickChips = [
-    "Surat Dinas",
-    "Nota Dinas",
-    "Lap. Anggaran",
-    "Rekap Surat",
-    "Jadwal"
-  ]
+  const activeThread = threads.find((t) => t.id === activeThreadId) || threads[0] || createNewThread()
+  const messages = activeThread.messages
+
+  // Simpan threads ke LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(threadsStorageKey, JSON.stringify(threads.slice(0, MAX_STORED_THREADS)))
+    } catch {
+      // storage quota
+    }
+  }, [threads, threadsStorageKey])
+
+  // Scroll otomatis ke bawah
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [messages, isOpen, isProcessing, statusText, showHistory])
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages, isOpen, isProcessing])
+    if (isOpen && !showHistory) inputRef.current?.focus()
+  }, [isOpen, showHistory])
 
-  // Pattern matching logic for agent processing
-  const processAgent = (query: string): { reply: string; fileAttachment?: GeneratedFile } => {
-    const lower = query.toLowerCase()
+  useEffect(() => () => abortRef.current?.abort(), [])
 
-    if (lower.includes("surat dinas") || lower.includes("surat_dinas")) {
-      const fileContent = `KPU PROVINSI SULAWESI UTARA
-Jl. Diponegoro No. 12, Manado
---------------------------------------------------
-SURAT DINAS
-Nomor : 045/SD/KPU-SULUT/VIII/2026
-Lamp. : 1 Berkas
-Hal   : Koordinasi Logistik Pilkada Sulut 2026
-
-Kepada Yth.
-Ketua KPU Kabupaten/Kota se-Sulawesi Utara
-
-Dengan hormat,
-Sehubungan dengan pelaksanaan tahapan Pilkada 2026, bersama ini disampaikan jadwal verifikasi dan distribusi logistik ke daerah masing-masing.
-
-Dimohon seluruh Ketua KPU Kab/Kota menugaskan UMLOG (Umum dan Logistik) untuk hadir pada:
-Hari/Tanggal : Senin, 10 Agustus 2026
-Waktu        : 09.00 WITA - Selesai
-Tempat       : Aula KPU Provinsi Sulut
-
-Demikian surat dinas ini disampaikan untuk dilaksanakan sebagaimana mestinya.
-
-Manado, 6 Agustus 2026
-Ketua KPU Provinsi Sulawesi Utara
-
-[DRAFT GENERATED BY KIRANA AGENT]`
-
-      return {
-        reply: "Tentu! KIRANA telah menyusun draf Surat Dinas Koordinasi Logistik Pilkada 2026. Anda dapat mengunduh berkas lengkapnya di bawah ini.",
-        fileAttachment: {
-          name: "Surat_Dinas_KPU_Sulut_045.txt",
-          content: fileContent,
-          mimeType: "text/plain",
-          sizeStr: "1.2 KB",
-        },
-      }
-    }
-
-    if (lower.includes("nota dinas") || lower.includes("nota_dinas")) {
-      const fileContent = `KPU PROVINSI SULAWESI UTARA
-==================================================
-NOTA DINAS
-Nomor: ND-102/KPU-SULUT/SUBBAG-TEKNIS/2026
-
-Kepada Yth : Sekretaris KPU Provinsi Sulawesi Utara
-Dari       : Kasubbag Teknis Penyelenggaraan
-Tanggal    : 6 Agustus 2026
-Sifat      : Penting
-Perihal    : Pengajuan Kebutuhan Alat Tulis & Sistem Informasi Rapat Pleno
-
-Sehubungan dengan persiapan Rapat Pleno Terbuka Rekapitulasi Pemilih, dengan ini diajukan dukungan sarana penunjang operasional berupa unit pengolahan data dan ruang server backup.
-
-Demikian Nota Dinas ini kami sampaikan. Mohon petunjuk lebih lanjut.`
-
-      return {
-        reply: "Berikut draf Nota Dinas Pengajuan Sarana Rapat Pleno yang dibuat oleh KIRANA Agent. Silakan unduh dokumen untuk keperluan internal.",
-        fileAttachment: {
-          name: "Nota_Dinas_Subbag_Teknis.txt",
-          content: fileContent,
-          mimeType: "text/plain",
-          sizeStr: "0.8 KB",
-        },
-      }
-    }
-
-    if (lower.includes("lap. anggaran") || lower.includes("laporan anggaran") || lower.includes("anggaran")) {
-      const csvContent = `Kode_PA,Program_Anggaran,Pagu_PTP,Realisasi_Bulan_Ini,Sisa_Anggaran,Persentase
-001,Honorarium Panitia Pemilihan,750000000,520000000,230000000,69.3%
-002,Pengadaan Logistik & Kotak Suara,1200000000,980000000,220000000,81.6%
-003,Sosialisasi & Edukasi Pemilih,450000000,310000000,140000000,68.8%
-004,Sistem Informasi & Infrastruktur PTP,300000000,245000000,55000000,81.6%
-TOTAL,,2700000000,2055000000,645000000,76.1%`
-
-      return {
-        reply: "Berikut Ringkasan Laporan Rekapitulasi Realisasi Anggaran PTP-KPU Sulut Tahun 2026. Berkas format CSV siap diunduh.",
-        fileAttachment: {
-          name: "Laporan_Realisasi_Anggaran_KPU_2026.csv",
-          content: csvContent,
-          mimeType: "text/csv",
-          sizeStr: "2.4 KB",
-        },
-      }
-    }
-
-    if (lower.includes("rekap surat") || lower.includes("rekap_surat")) {
-      const csvContent = `No_Surat,Tanggal,Pengirim,Perihal,Status,Kategori
-001/KPU-SU/VI/2026,20 Jun 2026,Ketua KPU Provinsi,Undangan Rapat Pleno DPT,terkirim,Surat Keluar
-002/KPU-SU/VI/2026,19 Jun 2026,KPU Kab. Minahasa,Laporan DPT Minahasa 2026,diterima,Surat Masuk
-003/KPU-SU/VI/2026,18 Jun 2026,Bawaslu Sulut,Klarifikasi Data Pemilih,diproses,Surat Masuk
-004/KPU-SU/VI/2026,17 Jun 2026,Subbagian Logistik,Nota Dinas Pengadaan Logistik,draft,Internal`
-
-      return {
-        reply: "KIRANA telah merekapitulasi seluruh daftar Surat Masuk & Keluar terbaru dalam file CSV berikut.",
-        fileAttachment: {
-          name: "Rekapitulasi_Surat_Menyurat_2026.csv",
-          content: csvContent,
-          mimeType: "text/csv",
-          sizeStr: "1.8 KB",
-        },
-      }
-    }
-
-    if (lower.includes("jadwal") || lower.includes("agenda")) {
-      const fileContent = `JADWAL TAHAPAN & AGENDA KPU PROVINSI SULUT (AGUSTUS 2026)
-============================================================
-1. 08 Agustus 2026 - Rapat Koordinasi Teknis Penyelenggaraan Pilkada (Aula KPU)
-2. 12 Agustus 2026 - Batas Akhir Penyerahan Perbaikan Berkas DPT Kab/Kota
-3. 15 Agustus 2026 - Pleno Terbuka Penetapan DPT Tingkat Provinsi
-4. 20 Agustus 2026 - Simulasi Pemungutan & Penghitungan Suara Digital PTP
-5. 25 Agustus 2026 - Bimbingan Teknis Petugas KPPS & PPK`
-
-      return {
-        reply: "Berikut jadwal lengkap tahapan agenda kegiatan KPU Sulawesi Utara untuk bulan Agustus 2026.",
-        fileAttachment: {
-          name: "Jadwal_Agenda_KPU_Sulut_Agustus_2026.txt",
-          content: fileContent,
-          mimeType: "text/plain",
-          sizeStr: "0.9 KB",
-        },
-      }
-    }
-
-    if (lower.includes("arsip") || lower.includes("dokumen")) {
-      const fileContent = `DAFTAR ARSIP DOKUMEN SISTEM INFORMASI KPU SULUT
-------------------------------------------------
-1. ARSIP-2026-001: SK Penetapan Tahapan Pilkada Sulut
-2. ARSIP-2026-002: Berita Acara Rapat Pleno DPT Minahasa & Sangihe
-3. ARSIP-2026-003: Draf MOU Kerjasama Media Massa & Sosialisasi
-4. ARSIP-2026-004: Laporan Audit Keuangan Operasional Tahunan`
-
-      return {
-        reply: "Daftar berkas Arsip Dokumen KPU Sulut telah dikompilasi oleh KIRANA Agent.",
-        fileAttachment: {
-          name: "Daftar_Arsip_KPU_2026.txt",
-          content: fileContent,
-          mimeType: "text/plain",
-          sizeStr: "0.7 KB",
-        },
-      }
-    }
-
-    // Default unrecognized reply
-    return {
-      reply: "Maaf, perintah belum dikenali oleh KIRANA Agent. Silakan pilih salah satu Chip Cepat di atas seperti [Surat Dinas], [Nota Dinas], [Lap. Anggaran], [Rekap Surat], atau [Jadwal] agar KIRANA dapat langsung memprosesnya.",
-    }
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (el) stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
   }
 
-  const handleSendMessageText = (userText: string) => {
-    if (!userText.trim() || isProcessing) return
+  const autoGrow = (el: HTMLTextAreaElement | null) => {
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }
 
-    const now = new Date()
-    const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now
-      .getMinutes()
-      .toString()
-      .padStart(2, "0")}`
+  const updateActiveThreadMessages = (updater: (prevMessages: ChatMessage[]) => ChatMessage[], newTitle?: string) => {
+    setThreads((prevThreads) =>
+      prevThreads.map((t) => {
+        if (t.id === activeThreadId) {
+          const updatedMsgs = updater(t.messages).slice(-MAX_STORED_MESSAGES_PER_THREAD)
+          return {
+            ...t,
+            title: newTitle || t.title,
+            updatedAt: new Date().toISOString(),
+            messages: updatedMsgs,
+          }
+        }
+        return t
+      })
+    )
+  }
 
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      sender: "user",
-      text: userText,
-      timestamp: timeStr,
-    }
+  const patchMessage = (id: string, patch: (msg: ChatMessage) => ChatMessage) => {
+    updateActiveThreadMessages((prev) => prev.map((msg) => (msg.id === id ? patch(msg) : msg)))
+  }
 
-    setMessages((prev) => [...prev, userMsg])
+  const askKirana = useCallback(
+    async (question: string, currentThreadId: string) => {
+      const targetThread = threads.find((t) => t.id === currentThreadId) || activeThread
+      const previous = targetThread.messages
+
+      const history: ChatTurn[] = previous
+        .filter((msg) => msg.id !== "welcome" && !msg.isError && msg.text.trim())
+        .slice(-MAX_HISTORY_TURNS)
+        .map((msg) => ({ role: msg.sender === "user" ? "user" : "assistant", content: msg.text }))
+
+      const botId = `bot-${Date.now()}`
+      const controller = new AbortController()
+      abortRef.current = controller
+      stickToBottomRef.current = true
+
+      // Update judul thread jika ini percakapan baru
+      const needsTitle = targetThread.title === "Percakapan Baru" || previous.filter((m) => m.sender === "user").length === 0
+      const threadTitle = needsTitle ? question.slice(0, 32) + (question.length > 32 ? "…" : "") : targetThread.title
+
+      setThreads((prevThreads) =>
+        prevThreads.map((t) => {
+          if (t.id === currentThreadId) {
+            return {
+              ...t,
+              title: threadTitle,
+              updatedAt: new Date().toISOString(),
+              messages: [
+                ...t.messages,
+                { id: `user-${Date.now()}`, sender: "user", text: question, timestamp: timeNow() },
+                { id: botId, sender: "bot", text: "", timestamp: timeNow() },
+              ],
+            }
+          }
+          return t
+        })
+      )
+
+      setIsProcessing(true)
+      setStatusText("KIRANA sedang berpikir…")
+
+      try {
+        await streamChatMessage(
+          question,
+          history,
+          (event) => {
+            if (event.type === "token") {
+              setStatusText("")
+              patchMessage(botId, (msg) => ({ ...msg, text: msg.text + event.text }))
+            } else if (event.type === "reset") {
+              patchMessage(botId, (msg) => ({ ...msg, text: "" }))
+            } else if (event.type === "status") {
+              setStatusText(event.text)
+            } else if (event.type === "done") {
+              patchMessage(botId, (msg) => ({ ...msg, usedDatabase: event.used_database }))
+            } else if (event.type === "error") {
+              patchMessage(botId, (msg) => ({ ...msg, isError: true, text: `${msg.text}\n\n_${event.text}_` }))
+            }
+          },
+          controller.signal
+        )
+      } catch (error) {
+        const stopped = controller.signal.aborted
+        patchMessage(botId, (msg) => {
+          if (stopped) return msg.text.trim() ? msg : { ...msg, text: "_Jawaban dihentikan._", isError: true }
+          return {
+            ...msg,
+            isError: true,
+            text:
+              (msg.text ? `${msg.text}\n\n` : "") +
+              (error instanceof Error ? error.message : "Layanan AI tidak dapat dihubungi. Coba lagi."),
+          }
+        })
+        if (!stopped) console.warn("KIRANA request failed", error)
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null
+        setIsProcessing(false)
+        setStatusText("")
+      }
+    },
+    [threads, activeThread]
+  )
+
+  const sendMessage = (text: string) => {
+    const question = text.trim()
+    if (!question || isProcessing) return
     setInputMessage("")
-    setIsProcessing(true)
+    if (inputRef.current) inputRef.current.style.height = "auto"
+    void askKirana(question, activeThreadId)
+  }
 
-    // Simulate Agent Processing Delay
-    setTimeout(() => {
-      const agentResult = processAgent(userText)
+  const stopGenerating = () => abortRef.current?.abort()
 
-      const botMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: "bot",
-        text: agentResult.reply,
-        timestamp: timeStr,
-        fileAttachment: agentResult.fileAttachment,
+  const regenerate = () => {
+    if (isProcessing) return
+    let lastUser = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender === "user") {
+        lastUser = i
+        break
       }
-
-      setMessages((prev) => [...prev, botMsg])
-      setIsProcessing(false)
-    }, 700)
+    }
+    if (lastUser === -1) return
+    const question = messages[lastUser].text
+    // Hapus pesan setelah user terakhir
+    updateActiveThreadMessages((prev) => prev.slice(0, lastUser))
+    void askKirana(question, activeThreadId)
   }
 
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    handleSendMessageText(inputMessage)
+  const startNewThread = () => {
+    abortRef.current?.abort()
+    const newT = createNewThread()
+    setThreads((prev) => [newT, ...prev])
+    setActiveThreadId(newT.id)
+    setShowHistory(false)
+    setInputMessage("")
+    setTimeout(() => inputRef.current?.focus(), 100)
   }
 
-  const handleDownloadFile = (file: GeneratedFile) => {
-    const blob = new Blob([file.content], { type: file.mimeType })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = file.name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+  const switchThread = (id: string) => {
+    if (id === activeThreadId) {
+      setShowHistory(false)
+      return
+    }
+    abortRef.current?.abort()
+    setActiveThreadId(id)
+    setShowHistory(false)
   }
+
+  const deleteThread = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    const remaining = threads.filter((t) => t.id !== id)
+    if (remaining.length === 0) {
+      const fallback = createNewThread()
+      setThreads([fallback])
+      setActiveThreadId(fallback.id)
+    } else {
+      setThreads(remaining)
+      if (activeThreadId === id) {
+        setActiveThreadId(remaining[0].id)
+      }
+    }
+  }
+
+  const copyMessage = async (msg: ChatMessage) => {
+    try {
+      await navigator.clipboard.writeText(msg.text)
+      setCopiedId(msg.id)
+      window.setTimeout(() => setCopiedId((current) => (current === msg.id ? null : current)), 1500)
+    } catch {
+      showToast("error", "Gagal menyalin: browser memblokir akses clipboard. Salin teks secara manual.")
+    }
+  }
+
+  const downloadMessage = (msg: ChatMessage) => {
+    const blob = new Blob([msg.text], { type: "text/plain;charset=utf-8" })
+    saveFile(`KIRANA_${new Date().toISOString().slice(0, 10)}.txt`, blob)
+  }
+
+  const lastMessage = messages[messages.length - 1]
+  const hasConversation = messages.some((msg) => msg.sender === "user")
+  const actionButtonClass = `p-1 rounded transition-colors cursor-pointer ${
+    isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-slate-800 hover:bg-slate-200"
+  }`
+  const headerButtonClass = `p-1.5 rounded-lg transition-colors cursor-pointer ${
+    isDark ? "text-gray-400 hover:text-white hover:bg-[#1e293b]" : "text-slate-400 hover:text-slate-800 hover:bg-slate-200"
+  }`
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
       {isOpen ? (
-        <Card
-          className={`w-80 md:w-96 h-[520px] shadow-2xl flex flex-col backdrop-blur-md transition-all duration-200 animate-in fade-in slide-in-from-bottom-5 ${isDark
-              ? "border-[#1e293b] bg-[#0c1220]/95 text-gray-100"
-              : "border-slate-200 bg-white/95 text-slate-800 shadow-slate-300/60"
-            }`}
+        <div
+          style={{ backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }}
+          className={`shadow-2xl flex flex-col transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-2xl overflow-hidden border ${
+            isExpanded
+              ? "w-[800px] h-[820px]"
+              : "w-[440px] sm:w-[480px] h-[650px]"
+          } ${
+            isDark
+              ? "border-white/10 bg-black/25 text-gray-100 shadow-black/80"
+              : "border-slate-300/60 bg-white/30 text-slate-800 shadow-2xl"
+          }`}
         >
           {/* Header */}
-          <CardHeader
-            className={`p-3.5 border-b flex flex-row items-center justify-between shrink-0 ${isDark ? "border-[#1e293b] bg-[#11192b]" : "border-slate-200 bg-slate-50"
-              }`}
+          <div
+            style={{ backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+            className={`p-3.5 sm:p-4 border-b flex flex-row items-center justify-between shrink-0 transition-colors ${
+              isDark ? "border-white/10 bg-[#0a101f]/60" : "border-slate-200/60 bg-white/60"
+            }`}
           >
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-600 font-bold">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div>
-                <CardTitle
-                  className={`text-sm font-bold flex items-center gap-1.5 ${isDark ? "text-gray-100" : "text-slate-900"
-                    }`}
+              {showHistory ? (
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(false)}
+                  className="p-1 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-500/10 transition-colors"
+                  title="Kembali ke chat"
                 >
-                  KIRANA Agent
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              ) : null}
+
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-red-800 border border-red-500/40 flex items-center justify-center text-white font-bold shadow-xs">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle
+                  className={`text-sm font-bold flex items-center gap-1.5 truncate ${
+                    isDark ? "text-gray-100" : "text-slate-900"
+                  }`}
+                >
+                  <span className="truncate">{showHistory ? "Riwayat Percakapan" : "KIRANA AI"}</span>
+                  {!showHistory && (
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        isProcessing ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+                      }`}
+                    />
+                  )}
                 </CardTitle>
-                <p className={`text-[10px] ${isDark ? "text-gray-400" : "text-slate-500"}`}>
-                  AI Agent KPU Sulut | Standby
+                <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-slate-500"}`}>
+                  {showHistory
+                    ? `${threads.length} topik tersimpan`
+                    : `${activeThread.title} · ${isProcessing ? "Menjawab…" : "Aktif"}`}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1">
+              {/* Tombol Toggle History Chat */}
               <button
+                type="button"
+                onClick={() => setShowHistory((prev) => !prev)}
+                className={`${headerButtonClass} ${showHistory ? "bg-red-600 text-white hover:bg-red-700" : ""}`}
+                title="Riwayat Topik Obrolan"
+                aria-label="Riwayat Obrolan"
+              >
+                <History className="w-4 h-4" />
+              </button>
+
+              {/* Tombol Buat Percakapan Baru */}
+              <button
+                type="button"
+                onClick={startNewThread}
+                className={headerButtonClass}
+                title="Percakapan baru (+)"
+                aria-label="Percakapan baru"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+
+              {/* Tombol Maximize/Expand */}
+              <button
+                type="button"
+                onClick={() => setIsExpanded((value) => !value)}
+                className={headerButtonClass}
+                title={isExpanded ? "Ukuran Standar" : "Perbesar Penuh"}
+                aria-label={isExpanded ? "Ukuran Standar" : "Perbesar Penuh"}
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+
+              {/* Tombol Minimize/Tutup */}
+              <button
+                type="button"
                 onClick={() => setIsOpen(false)}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isDark
-                    ? "text-gray-400 hover:text-white hover:bg-[#1e293b]"
-                    : "text-slate-400 hover:text-slate-800 hover:bg-slate-200"
-                  }`}
-                title="Perkecil Widget"
+                className={headerButtonClass}
+                title="Tutup"
+                aria-label="Tutup"
               >
                 <Minimize2 className="w-4 h-4" />
               </button>
             </div>
-          </CardHeader>
-
-          {/* Quick Suggestions Chips Section */}
-          <div
-            className={`px-3 py-2 border-b flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0 ${isDark ? "bg-[#090e1a] border-[#1e293b]" : "bg-slate-100/70 border-slate-200"
-              }`}
-          >
-            <span className="text-[10px] font-bold text-red-600 dark:text-red-400 shrink-0 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Chip Cepat:
-            </span>
-            {quickChips.map((chip, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSendMessageText(chip)}
-                disabled={isProcessing}
-                className={`px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all cursor-pointer border shrink-0 ${isDark
-                    ? "bg-[#131d30] border-[#1e293b] text-gray-300 hover:border-red-500 hover:text-white hover:bg-red-950/40"
-                    : "bg-white border-slate-300 text-slate-700 hover:border-red-500 hover:text-red-600 hover:bg-red-50"
-                  }`}
-              >
-                [{chip}]
-              </button>
-            ))}
           </div>
 
-          {/* Messages Area */}
-          <CardContent className="p-3 flex-1 overflow-hidden">
-            <ScrollArea className="h-full pr-2" ref={scrollRef}>
-              <div className="space-y-3">
-                {messages.map((msg) => (
+          {/* Body: Tampilan History ATAU Percakapan Aktif */}
+          {showHistory ? (
+            /* Panel Daftar Topik Percakapan (History) */
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-transparent">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/60 dark:border-white/10">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Topik Obrolan Sebelumnya
+                </span>
+                <button
+                  type="button"
+                  onClick={startNewThread}
+                  className="btn-kpu-red px-2.5 py-1 text-white text-[11px] font-bold rounded-lg flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Chat Baru
+                </button>
+              </div>
+
+              {threads.map((t) => {
+                const isActive = t.id === activeThreadId
+                const promptCount = t.messages.filter((m) => m.sender === "user").length
+                return (
                   <div
-                    key={msg.id}
-                    className={`flex items-start gap-2.5 ${msg.sender === "user" ? "flex-row-reverse" : "flex-row"
-                      }`}
+                    key={t.id}
+                    onClick={() => switchThread(t.id)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 group ${
+                      isActive
+                        ? isDark
+                          ? "bg-red-950/30 border-red-500/50 text-white"
+                          : "bg-red-50 border-red-300 text-red-900"
+                        : isDark
+                        ? "bg-[#111827]/60 border-white/5 hover:border-white/20 text-gray-200"
+                        : "bg-white/60 border-slate-200 hover:border-slate-300 text-slate-800"
+                    }`}
                   >
-                    <Avatar className="w-7 h-7 shrink-0">
-                      <AvatarFallback
-                        className={
-                          msg.sender === "user"
-                            ? "bg-red-600 text-white text-[10px]"
-                            : isDark
-                              ? "bg-[#1e293b] text-red-400 text-[10px]"
-                              : "bg-red-50 text-red-600 border border-red-200 text-[10px]"
-                        }
-                      >
-                        {msg.sender === "user" ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    <div
-                      className={`max-w-[82%] rounded-xl px-3 py-2 text-xs leading-relaxed ${msg.sender === "user"
-                          ? "bg-red-600 text-white rounded-tr-none shadow-sm"
-                          : isDark
-                            ? "bg-[#162032] text-gray-200 border border-[#1e293b] rounded-tl-none shadow-sm"
-                            : "bg-slate-100 text-slate-800 border border-slate-200 rounded-tl-none shadow-sm"
-                        }`}
-                    >
-                      <p>{msg.text}</p>
-
-                      {/* File Attachment Box & Download Button */}
-                      {msg.fileAttachment && (
-                        <div
-                          className={`mt-2.5 p-2.5 rounded-lg border flex items-center justify-between gap-2 ${isDark
-                              ? "bg-[#0b101c] border-red-500/30 text-gray-200"
-                              : "bg-white border-red-200 text-slate-800 shadow-xs"
-                            }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <FileText className="w-4 h-4 text-red-500 shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[11px] truncate">{msg.fileAttachment.name}</p>
-                              <span className="text-[9px] text-gray-400 block">{msg.fileAttachment.sizeStr}</span>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadFile(msg.fileAttachment!)}
-                            className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-[10px] font-semibold flex items-center gap-1 shrink-0 cursor-pointer shadow-xs transition-all"
-                            title="Unduh file hasil generate"
-                          >
-                            <Download className="w-3 h-3" />
-                            <span>Unduh</span>
-                          </button>
-                        </div>
-                      )}
-
-                      <span
-                        className={`text-[9px] block mt-1 text-right ${msg.sender === "user" ? "text-red-100" : isDark ? "text-gray-400" : "text-slate-400"
-                          }`}
-                      >
-                        {msg.timestamp}
-                      </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold truncate">{t.title}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {promptCount} prompt · {new Date(t.updatedAt).toLocaleDateString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
                     </div>
-                  </div>
-                ))}
 
-                {/* Processing Indicator */}
-                {isProcessing && (
+                    <button
+                      type="button"
+                      onClick={(e) => deleteThread(e, t.id)}
+                      title="Hapus topik ini"
+                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-red-500/20 text-slate-400 hover:text-red-500 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            /* Panel Pesan Obrolan (Transparan dengan Sedikit Blur) */
+            <div className="p-0 flex-1 min-h-0 relative bg-transparent flex flex-col">
+              <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className="h-full overflow-y-auto custom-scrollbar p-4 space-y-4 bg-transparent"
+              >
+                {messages.map((msg) => {
+                  const isUser = msg.sender === "user"
+                  const isStreamingThis = isProcessing && msg.id === lastMessage?.id && !isUser
+                  if (isStreamingThis && !msg.text) return null
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex items-start gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}
+                    >
+                      <Avatar className="w-8 h-8 shrink-0 shadow-xs">
+                        <AvatarFallback
+                          className={
+                            isUser
+                              ? "bg-red-600 text-white text-[11px]"
+                              : isDark
+                              ? "bg-[#1e293b] text-red-400 text-[11px] border border-red-500/20"
+                              : "bg-red-50 text-red-600 border border-red-200 text-[11px]"
+                          }
+                        >
+                          {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      <div
+                        className={`max-w-[85%] min-w-0 rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-xs ${
+                          isUser
+                            ? "bg-red-600 text-white rounded-tr-xs"
+                            : isDark
+                            ? "bg-[#141d33]/85 text-gray-100 border border-white/10 rounded-tl-xs"
+                            : "bg-slate-100/85 text-slate-900 border border-slate-200 rounded-tl-xs"
+                        }`}
+                      >
+                        {isUser ? (
+                          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                        ) : (
+                          <MarkdownMessage text={msg.text} />
+                        )}
+
+                        <div className="flex items-center justify-between gap-2 mt-1.5 pt-1 border-t border-black/5 dark:border-white/5">
+                          {!isUser && !isStreamingThis && msg.id !== "welcome" ? (
+                            <div className="flex items-center gap-1 -ml-1">
+                              <button
+                                type="button"
+                                onClick={() => void copyMessage(msg)}
+                                className={actionButtonClass}
+                                title="Salin jawaban"
+                                aria-label="Salin jawaban"
+                              >
+                                {copiedId === msg.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadMessage(msg)}
+                                className={actionButtonClass}
+                                title="Unduh sebagai berkas .txt"
+                                aria-label="Unduh sebagai berkas .txt"
+                              >
+                                <Download className="w-3 h-3" />
+                              </button>
+                              {msg.id === lastMessage?.id && (
+                                <button
+                                  type="button"
+                                  onClick={regenerate}
+                                  className={actionButtonClass}
+                                  title="Jawab ulang"
+                                  aria-label="Jawab ulang"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                </button>
+                              )}
+                              {msg.usedDatabase && (
+                                <span
+                                  className={`ml-1 flex items-center gap-1 text-[9px] font-semibold ${
+                                    isDark ? "text-emerald-400" : "text-emerald-600"
+                                  }`}
+                                  title="Jawaban disusun dari data di database"
+                                >
+                                  <Database className="w-3 h-3" /> dari database
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span />
+                          )}
+                          <span
+                            className={`text-[9px] shrink-0 font-medium ${
+                              isUser ? "text-red-100" : isDark ? "text-gray-400" : "text-slate-400"
+                            }`}
+                          >
+                            {msg.timestamp}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Status Berpikir */}
+                {isProcessing && statusText && (
                   <div className="flex items-start gap-2.5">
-                    <Avatar className="w-7 h-7 shrink-0">
+                    <Avatar className="w-8 h-8 shrink-0 shadow-xs">
                       <AvatarFallback
                         className={
                           isDark
-                            ? "bg-[#1e293b] text-red-400 text-[10px]"
-                            : "bg-red-50 text-red-600 border border-red-200 text-[10px]"
+                            ? "bg-[#1e293b] text-red-400 text-[11px] border border-red-500/20"
+                            : "bg-red-50 text-red-600 border border-red-200 text-[11px]"
                         }
                       >
-                        <Bot className="w-3.5 h-3.5" />
+                        <Bot className="w-4 h-4" />
                       </AvatarFallback>
                     </Avatar>
                     <div
-                      className={`rounded-xl px-3 py-2 text-xs flex items-center gap-2 italic ${isDark ? "bg-[#162032] text-red-400 border border-[#1e293b]" : "bg-red-50 text-red-600 border border-red-200"
-                        }`}
+                      className={`rounded-2xl px-3.5 py-2.5 text-xs flex items-center gap-2 italic ${
+                        isDark
+                          ? "bg-[#141d33]/85 text-red-400 border border-white/10"
+                          : "bg-red-50/90 text-red-600 border border-red-200"
+                      }`}
                     >
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>KIRANA sedang memproses...</span>
+                      <span>{statusText}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Prompt Suggestions */}
+                {!hasConversation && (
+                  <div className="pt-2">
+                    <p className="text-[11px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1.5 mb-2">
+                      <Sparkles className="w-3.5 h-3.5" /> Rekomendasi Pertanyaan:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SUGGESTIONS.map((suggestion) => (
+                        <button
+                          key={suggestion.label}
+                          type="button"
+                          onClick={() => sendMessage(suggestion.prompt)}
+                          disabled={isProcessing}
+                          title={suggestion.prompt}
+                          className={`px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all cursor-pointer border shadow-2xs ${
+                            isDark
+                              ? "bg-[#111827]/70 border-white/10 text-gray-300 hover:border-red-500 hover:text-white hover:bg-red-950/40"
+                              : "bg-white/80 border-slate-200 text-slate-700 hover:border-red-500 hover:text-red-600 hover:bg-red-50"
+                          }`}
+                        >
+                          {suggestion.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
-            </ScrollArea>
-          </CardContent>
+            </div>
+          )}
 
-          {/* Input Area */}
-          <CardFooter
-            className={`p-3 border-t shrink-0 ${isDark ? "border-[#1e293b] bg-[#0c1220]" : "border-slate-200 bg-white"
+          {/* Footer Input Chat (Hanya Muncul saat Membuka Chat Aktif) */}
+          {!showHistory && (
+            <div
+              style={{ backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}
+              className={`p-3.5 border-t shrink-0 flex flex-col items-stretch gap-1.5 ${
+                isDark ? "border-white/10 bg-[#0a101f]/60" : "border-slate-200/60 bg-white/60"
               }`}
-          >
-            <form onSubmit={handleSubmit} className="flex items-center gap-2 w-full">
-              <Input
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Tulis pesan atau pilih chip..."
-                disabled={isProcessing}
-                className={`text-xs focus:border-red-500 ${isDark
-                    ? "bg-[#131b2e] border-[#1e293b] text-gray-100 placeholder:text-gray-500"
-                    : "bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white"
-                  }`}
-              />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={isProcessing || !inputMessage.trim()}
-                className="shrink-0 bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+            >
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendMessage(inputMessage)
+                }}
+                className="flex items-end gap-2 w-full"
               >
-                <Send className="w-4 h-4" />
-              </Button>
-            </form>
-          </CardFooter>
-        </Card>
+                <textarea
+                  ref={inputRef}
+                  value={inputMessage}
+                  rows={1}
+                  onChange={(e) => {
+                    setInputMessage(e.target.value)
+                    autoGrow(e.target)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault()
+                      sendMessage(inputMessage)
+                    }
+                  }}
+                  placeholder="Tanyakan informasi persuratan, anggaran, arsip, atau draf surat…"
+                  aria-label="Pesan untuk KIRANA"
+                  className={`flex-1 resize-none rounded-xl border px-3.5 py-2.5 text-xs outline-none focus:border-red-500 shadow-2xs transition-all ${
+                    isDark
+                      ? "bg-[#111827]/80 border-white/10 text-gray-100 placeholder:text-gray-500 focus:bg-[#111827]"
+                      : "bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white"
+                  }`}
+                />
+                {isProcessing ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    onClick={stopGenerating}
+                    title="Hentikan jawaban"
+                    aria-label="Hentikan jawaban"
+                    className="shrink-0 bg-slate-700 hover:bg-slate-800 text-white cursor-pointer rounded-xl h-10 w-10"
+                  >
+                    <Square className="w-4 h-4 fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!inputMessage.trim()}
+                    title="Kirim Pesan"
+                    aria-label="Kirim Pesan"
+                    className="shrink-0 bg-red-600 hover:bg-red-700 text-white cursor-pointer rounded-xl h-10 w-10 shadow-xs active:scale-95 transition-all"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                )}
+              </form>
+              <p className={`text-[10px] text-center ${isDark ? "text-gray-400" : "text-slate-400"}`}>
+                Enter untuk kirim · Shift+Enter baris baru · Respon AI terintegrasi basis data lokal KPU Sulut.
+              </p>
+            </div>
+          )}
+        </div>
       ) : (
         <button
           onClick={() => setIsOpen(true)}
-          className="relative group p-4 rounded-2xl btn-kpu-red text-white hover:scale-105 active:scale-95 transition-all duration-200 flex items-center justify-center cursor-pointer"
-          title="Buka KIRANA Agent"
+          className={`relative group p-3.5 sm:p-4 rounded-2xl transition-all duration-300 flex items-center justify-center cursor-pointer active:scale-95 hover:scale-105 border ${
+            isDark
+              ? "bg-gradient-to-br from-red-600 via-red-700 to-red-900 border-red-500/30 text-white shadow-[0_8px_25px_-5px_rgba(220,38,38,0.5)] hover:shadow-[0_12px_30px_-4px_rgba(220,38,38,0.65)] hover:border-red-400/50"
+              : "bg-gradient-to-br from-red-500 via-red-600 to-red-700 border-red-400/40 text-white shadow-[0_8px_20px_-3px_rgba(220,38,38,0.4)] hover:shadow-[0_12px_28px_-3px_rgba(220,38,38,0.55)] hover:border-red-300"
+          }`}
+          title="Buka Asisten AI KIRANA"
+          aria-label="Buka Asisten AI KIRANA"
         >
-          <MessageSquare className="w-6 h-6" />
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-black text-white dark:bg-white dark:text-black rounded-full text-[9px] font-black flex items-center justify-center border border-white/20 shadow-xs">
+          {/* Subtle Glow Effect di Balik Icon */}
+          <div className="absolute inset-0 rounded-2xl bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+          {/* Icon Chatbot dengan Sparkle Subtil */}
+          <div className="relative flex items-center justify-center">
+            <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 drop-shadow-sm transition-transform duration-300 group-hover:-translate-y-0.5" />
+            <Sparkles className="w-3 h-3 text-amber-300 absolute -top-1.5 -right-2 animate-pulse" />
+          </div>
+
+          {/* Badge AI Modern & Rapi */}
+          <span
+            className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold tracking-wider border shadow-sm transition-transform duration-300 group-hover:scale-110 flex items-center justify-center ${
+              isDark
+                ? "bg-[#0b1120] text-red-400 border-red-500/40"
+                : "bg-white text-red-600 border-red-200"
+            }`}
+          >
             AI
           </span>
         </button>

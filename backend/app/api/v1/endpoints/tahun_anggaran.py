@@ -1,15 +1,17 @@
-from typing import Any, Optional
+from typing import Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import get_current_user, require_admin, require_rendatin_or_keuangan
 from app.models.schema import Pegawai
 from app.schemas.anggaran import (
     TahunAnggaranCreate,
     TahunAnggaranUpdate,
     TahunAnggaranResponse,
     TahunAnggaranListResponse,
+    TahunAnggaranActivatePayload,
+    AuditAktivasiTahunResponse,
 )
 from app.services.anggaran import tahun_anggaran
 
@@ -17,14 +19,34 @@ router = APIRouter()
 
 
 @router.get(
+    "/active",
+    response_model=TahunAnggaranResponse,
+    summary="Tahun Anggaran Aktif Global",
+    description="Mengambil satu-satunya tahun anggaran yang berstatus active sebagai sumber kebenaran global (Single Source of Truth) untuk seluruh modul.",
+)
+async def read_active_tahun_anggaran(
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
+) -> Any:
+    active_obj = await tahun_anggaran.get_active_year(db)
+    if not active_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tidak ada tahun anggaran yang berstatus aktif saat ini. Hubungi Administrator.",
+        )
+    return await tahun_anggaran.enrich_tahun_response(db, active_obj)
+
+
+@router.get(
     "/",
     response_model=TahunAnggaranListResponse,
     summary="List Tahun Anggaran",
-    description="Mengambil daftar tahun anggaran dengan filter status, search, dan pagination.",
+    description="Mengambil daftar tahun anggaran dengan filter status, search, dan pagination. Dapat dibaca oleh seluruh staf terautentikasi.",
 )
 async def read_tahun_anggaran(
     response: Response,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
     search: Optional[str] = Query(None, description="Pencarian deskripsi atau tahun"),
     status: Optional[str] = Query(None, pattern="^(draft|active|closed)$", description="Filter status tahun: draft, active, closed"),
     skip: int = Query(0, ge=0, description="Offset data"),
@@ -45,11 +67,12 @@ async def read_tahun_anggaran(
     "/{id_tahun_anggaran}",
     response_model=TahunAnggaranResponse,
     summary="Detail Tahun Anggaran",
-    description="Mengambil informasi detail tahun anggaran beserta statistik pagu dan realisasinya.",
+    description="Mengambil informasi detail tahun anggaran beserta statistik pagu dan realisasinya. Dapat dibaca oleh seluruh staf terautentikasi.",
 )
 async def read_tahun_anggaran_by_id(
     id_tahun_anggaran: int,
     db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(get_current_user),
 ) -> Any:
     db_obj = await tahun_anggaran.get(db, id_tahun_anggaran)
     if not db_obj:
@@ -65,17 +88,20 @@ async def read_tahun_anggaran_by_id(
     response_model=TahunAnggaranResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Tambah Tahun Anggaran",
-    description="Membuka tahun anggaran baru. Membutuhkan role Administrator.",
+    description="Membuka tahun anggaran baru. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def create_tahun_anggaran(
     tahun_in: TahunAnggaranCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
+    if not current_user.role or current_user.role.lower() not in ["admin", "administrator"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Akses ditolak: Hanya Administrator yang memiliki izin untuk operasi ini")
     db_obj = await tahun_anggaran.create_tahun(
         db,
         obj_in=tahun_in,
         current_user_id=current_user.id_pegawai,
+        current_user_name=current_user.nama,
     )
     return await tahun_anggaran.enrich_tahun_response(db, db_obj)
 
@@ -84,33 +110,80 @@ async def create_tahun_anggaran(
     "/{id_tahun_anggaran}",
     response_model=TahunAnggaranResponse,
     summary="Update Tahun Anggaran",
-    description="Memperbarui informasi tahun anggaran. Membutuhkan role Administrator.",
+    description="Memperbarui informasi tahun anggaran. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def update_tahun_anggaran(
     id_tahun_anggaran: int,
     tahun_in: TahunAnggaranUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
+    if not current_user.role or current_user.role.lower() not in ["admin", "administrator"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Akses ditolak: Hanya Administrator yang memiliki izin untuk operasi ini")
     db_obj = await tahun_anggaran.update_tahun(
         db,
         id_tahun=id_tahun_anggaran,
         obj_in=tahun_in,
+        current_user_id=current_user.id_pegawai,
+        current_user_name=current_user.nama,
     )
     return await tahun_anggaran.enrich_tahun_response(db, db_obj)
+
+
+@router.post(
+    "/{id_tahun_anggaran}/activate",
+    response_model=TahunAnggaranResponse,
+    summary="Aktivasi Otomatis Tahun Anggaran",
+    description="Mengaktifkan tahun anggaran yang dipilih (draft/closed). Tahun aktif sebelumnya otomatis berubah menjadi closed. Proses atomik dengan database lock & audit log. Membutuhkan role Administrator Keuangan/RENDATIN.",
+)
+async def activate_tahun_anggaran(
+    id_tahun_anggaran: int,
+    payload: Optional[TahunAnggaranActivatePayload] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
+) -> Any:
+    if not current_user.role or current_user.role.lower() not in ["admin", "administrator"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Akses ditolak: Hanya Administrator yang memiliki izin untuk operasi ini")
+    target_year, _, _ = await tahun_anggaran.switch_active_fiscal_year(
+        db,
+        target_id=id_tahun_anggaran,
+        current_user_id=current_user.id_pegawai,
+        current_user_name=current_user.nama,
+        alasan=payload.alasan if payload else None,
+    )
+    return await tahun_anggaran.enrich_tahun_response(db, target_year)
+
+
+@router.get(
+    "/audit-aktivasi/history",
+    response_model=List[AuditAktivasiTahunResponse],
+    summary="Riwayat Audit Aktivasi Tahun Anggaran",
+    description="Mengambil jejak audit pergantian Tahun Anggaran (siapa, kapan, tahun sebelum, tahun aktif, alasan). Hanya untuk Keuangan dan RENDATIN.",
+)
+async def read_audit_aktivasi(
+    db: AsyncSession = Depends(get_db),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
+) -> Any:
+    from app.models.schema import AuditAktivasiTahunAnggaran
+    from sqlalchemy import select, desc
+    stmt = select(AuditAktivasiTahunAnggaran).order_by(desc(AuditAktivasiTahunAnggaran.waktu_aktivasi)).limit(100)
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
 
 
 @router.delete(
     "/{id_tahun_anggaran}",
     response_model=TahunAnggaranResponse,
     summary="Hapus Tahun Anggaran",
-    description="Menghapus tahun anggaran jika belum memiliki alokasi pagu. Membutuhkan role Administrator.",
+    description="Menghapus tahun anggaran jika belum memiliki alokasi pagu. Membutuhkan role Administrator Keuangan/RENDATIN.",
 )
 async def delete_tahun_anggaran(
     id_tahun_anggaran: int,
     db: AsyncSession = Depends(get_db),
-    current_user: Pegawai = Depends(require_admin),
+    current_user: Pegawai = Depends(require_rendatin_or_keuangan),
 ) -> Any:
+    if not current_user.role or current_user.role.lower() not in ["admin", "administrator"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Akses ditolak: Hanya Administrator yang memiliki izin untuk operasi ini")
     db_obj = await tahun_anggaran.get(db, id_tahun_anggaran)
     if not db_obj:
         raise HTTPException(

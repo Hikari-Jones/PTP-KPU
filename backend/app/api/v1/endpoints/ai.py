@@ -1,17 +1,54 @@
-﻿import json
-import httpx
-from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import asyncio
+import json
+import os
+import threading
+from contextlib import aclosing
+import logging
+from typing import AsyncIterator, List, Literal, Optional
 
-from app.core.config import settings
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.auth import get_current_user
+from app.models.schema import Pegawai
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+FALLBACK_MODEL_NAME = "KIRANA"
+
+
+_inference_slots = asyncio.Semaphore(2)
+# Last inference failure (e.g. a corrupt model file). Reported by /ai/status so an
+# administrator is not told "ready" while every question fails; cleared on success.
+_last_inference_error: Optional[str] = None
+
+
+def _record_inference(error: Optional[BaseException]) -> None:
+    global _last_inference_error
+    _last_inference_error = None if error is None else f"{type(error).__name__}: {error}"[:300]
+
+
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+
+
 class ChatRequest(BaseModel):
-    message: str
-    context: Optional[str] = None
-    history: Optional[List[Dict[str, str]]] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+    message: str = Field(min_length=1, max_length=8000)
+    context: Optional[str] = Field(None, max_length=12000)
+    history: List[HistoryMessage] = Field(default_factory=list, max_length=12)
+
+
+async def _acquire_slot():
+    try:
+        await asyncio.wait_for(_inference_slots.acquire(), timeout=0.1)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(429, "Asisten sedang sibuk. Coba lagi sebentar.") from exc
+
 
 class GeneratedFileOut(BaseModel):
     name: str
@@ -19,181 +56,216 @@ class GeneratedFileOut(BaseModel):
     mimeType: str
     sizeStr: str
 
+
 class ChatResponse(BaseModel):
     reply: str
     model_used: str
-    source: str  # "local_ollama" or "fallback_agent"
+    source: str  # "local_model" or "fallback_agent"
+    used_database: bool = False
     fileAttachment: Optional[GeneratedFileOut] = None
 
-KPU_SYSTEM_PROMPT = """Anda adalah KIRANA Agent, Asisten AI Cerdas Sistem Informasi PTP-KPU (Pengelolaan Tata Persuratan & Realisasi Anggaran) Komisi Pemilihan Umum Provinsi Sulawesi Utara.
-Tugas utama Anda:
-1. Membantu staf KPU menyusun draf persuratan dinas (Surat Dinas, Nota Dinas, Surat Tugas, Surat Keputusan/Kpt).
-2. Memberikan panduan kode klasifikasi arsip KPU (misal: PL.01 untuk Perencanaan Pemilu, HK.01 untuk Hukum, KU.01 untuk Keuangan).
-3. Memberikan asistensi verifikasi dan pemantauan realisasi anggaran DIPA KPU Sulut.
-4. Menjawab pertanyaan seputar alur disposisi, TTE, dan administrasi perkantoran KPU.
 
-Gunakan bahasa Indonesia yang baku, profesional, sopan, dan jelas khas tata persuratan dinas instansi pemerintah Republik Indonesia."""
+def _fallback_reply(query: str) -> str:
+    """Rule-based answer used only when the local model cannot run."""
+    return (
+        "Maaf, model AI lokal KIRANA sedang tidak tersedia sehingga saya belum dapat "
+        "menjawab pertanyaan ini. Pastikan dependensi backend sudah terpasang "
+        "(`pip install -r requirements.txt`) dan periksa `/api/v1/ai/status`. "
+        "Data surat, arsip, dan anggaran tetap dapat dilihat langsung pada modul masing-masing."
+    )
 
-def create_document_attachment(query: str) -> Optional[GeneratedFileOut]:
-    lower = query.lower()
-    if "surat dinas" in lower or "surat_dinas" in lower:
-        content = """KOMISI PEMILIHAN UMUM PROVINSI SULAWESI UTARA
-Jl. Diponegoro No. 12, Manado, Sulawesi Utara
-======================================================================
-SURAT DINAS
-Nomor   : 088/PL.02.1-SD/71/X/2026
-Sifat   : Penting
-Lampiran: 1 (satu) Berkas
-Perihal : Koordinasi Pemutakhiran Data Pemilih Berkelanjutan Semester II
 
-Kepada Yth.
-Ketua KPU Kabupaten/Kota Se-Provinsi Sulawesi Utara
-di Tempat
+# Background model download, so a chat request never blocks on a 2 GB transfer.
+_download_thread: Optional[threading.Thread] = None
+_download_error: Optional[str] = None
 
-Dengan hormat,
-Sehubungan dengan pelaksanaan tahapan pemutakhiran data pemilih berkelanjutan tahun anggaran 2026, bersama ini disampaikan hal-hal sebagai berikut:
-1. Seluruh Satuan Kerja KPU Kabupaten/Kota agar melakukan sinkronisasi data pleno berkala.
-2. Rapat koordinasi teknis wilayah akan diselenggarakan pada hari Senin, tanggal 10 November 2026 di Aula KPU Sulut.
-3. Dimohon menugaskan operator Subbagian Rendatin untuk hadir tepat waktu.
 
-Demikian disampaikan untuk menjadi perhatian dan dilaksanakan sebagaimana mestinya.
+def _start_background_download(llm) -> None:
+    global _download_thread, _download_error
+    if _download_thread is not None and _download_thread.is_alive():
+        return
 
-Manado, 30 Oktober 2026
-Ketua KPU Provinsi Sulawesi Utara,
+    def work():
+        global _download_error
+        try:
+            _download_error = None
+            llm.ensure_model()
+            logger.info("KIRANA model download finished")
+        except Exception as exc:  # offline server, disk full, ...
+            _download_error = str(exc)
+            logger.error("KIRANA model download failed: %s", exc)
 
-[TANDA TANGAN ELEKTRONIK]
-"""
-        return GeneratedFileOut(
-            name="Draf_Surat_Dinas_KPU_Sulut.txt",
-            content=content,
-            mimeType="text/plain",
-            sizeStr="1.4 KB"
-        )
-    elif "nota dinas" in lower or "nota_dinas" in lower:
-        content = """KOMISI PEMILIHAN UMUM PROVINSI SULAWESI UTARA
-======================================================================
-NOTA DINAS
-Nomor : 042/ND-RENDATIN/71/X/2026
+    _download_thread = threading.Thread(target=work, name="kirana-model-download", daemon=True)
+    _download_thread.start()
 
-Yth  : Sekretaris KPU Provinsi Sulawesi Utara
-Dari : Kepala Subbagian Perencanaan, Data dan Informasi
-Hal  : Pengadaan Lisensi dan Peremajaan Server Database Lokal PTP-KPU
 
-Disampaikan dengan hormat bahwa untuk menunjang kelancaran sistem operasional lokal, dibutuhkan penambahan kapasitas penyimpanan data arsip digital.
+def _model_unavailable_message() -> Optional[str]:
+    """None when the weights are on disk; otherwise a message for the user."""
+    try:
+        import kirana_llm as llm
+    except Exception:
+        return None  # let the agent fail and use the regular fallback
+    if llm.downloaded_path() is not None:
+        return None
+    if os.environ.get("KIRANA_AUTO_DOWNLOAD", "1") != "0":
+        _start_background_download(llm)
+        return ("Model AI KIRANA sedang disiapkan (diunduh sekitar 2 GB) dan belum dapat menjawab. "
+                "Silakan coba lagi beberapa menit lagi. Administrator dapat menyiapkannya lebih dulu dengan "
+                "`python -m kirana_llm --download`." + (f" Unduhan terakhir gagal: {_download_error}" if _download_error else ""))
+    return ("Model AI KIRANA belum terpasang di server. Administrator perlu menjalankan "
+            "`python -m kirana_llm --download` atau mengatur KIRANA_MODEL_PATH.")
 
-Mohon arahan dan persetujuan lebih lanjut.
 
-Manado, 30 Oktober 2026
-Kasubbag RENDATIN KPU Sulut
-"""
-        return GeneratedFileOut(
-            name="Draf_Nota_Dinas_RENDATIN.txt",
-            content=content,
-            mimeType="text/plain",
-            sizeStr="950 B"
-        )
-    return None
+async def _unavailable_events(message: str) -> AsyncIterator[dict]:
+    yield {"type": "token", "text": message}
+    yield {"type": "done", "model": f"{FALLBACK_MODEL_NAME} (model belum tersedia)",
+           "source": "fallback_agent", "used_database": False}
+
+
+def _run_agent(payload: ChatRequest, user: Pegawai) -> AsyncIterator[dict]:
+    unavailable = _model_unavailable_message()
+    if unavailable:
+        return _unavailable_events(unavailable)
+    # Imported here so the API still starts (and falls back) if the model
+    # package or its dependencies are missing.
+    from app.services.kirana_agent import run_agent
+
+    return run_agent(payload.message.strip(), [turn.model_dump() for turn in payload.history], payload.context, user=user)
+
 
 @router.get("/status")
 async def get_ai_status():
-    """Check connectivity to local Ollama model host."""
-    host = settings.OLLAMA_HOST.rstrip("/")
+    """Report the local model's state without loading it."""
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{host}/api/tags")
-            if resp.status_code == 200:
-                data = resp.json()
-                models = [m.get("name") for m in data.get("models", [])]
-                return {
-                    "status": "online",
-                    "ollama_host": host,
-                    "active_model": settings.OLLAMA_MODEL,
-                    "available_models": models,
-                    "message": "Local Ollama LLM service is active and ready."
-                }
+        import kirana_llm as llm
     except Exception as e:
         return {
             "status": "offline",
-            "ollama_host": host,
-            "active_model": settings.OLLAMA_MODEL,
-            "available_models": [],
-            "message": f"Local Ollama is not currently detected at {host}. Start Ollama service on office PC to activate real-time inference.",
-            "error": str(e)
+            "active_model": FALLBACK_MODEL_NAME,
+            "downloaded": False,
+            "loaded": False,
+            "message": "Paket kirana_llm belum terpasang. Jalankan 'pip install -r requirements.txt' di folder backend.",
+            "error": str(e),
         }
 
+    downloaded = llm.downloaded_path() is not None
+    downloading = _download_thread is not None and _download_thread.is_alive()
+    if downloaded and _last_inference_error:
+        return {
+            "status": "error",
+            "active_model": llm.MODEL_NAME,
+            "downloaded": True,
+            "downloading": False,
+            "loaded": llm.is_loaded(),
+            "message": ("Berkas model ada, tetapi model gagal dimuat atau menjawab. Kemungkinan berkas rusak: "
+                        "hapus lalu unduh ulang dengan 'python -m kirana_llm --download'."),
+            "error": _last_inference_error,
+        }
+    if downloaded:
+        message = "Model lokal siap digunakan."
+    elif downloading:
+        message = "Model sedang diunduh di latar belakang."
+    elif _download_error:
+        message = f"Unduhan model gagal: {_download_error}. Jalankan 'python -m kirana_llm --download'."
+    else:
+        message = "Model belum terunduh; jalankan 'python -m kirana_llm --download' sebelum digunakan."
+    return {
+        "status": "online" if downloaded else ("downloading" if downloading else "offline"),
+        "active_model": llm.MODEL_NAME,
+        "downloaded": downloaded,
+        "downloading": downloading,
+        "loaded": llm.is_loaded(),
+        "message": message,
+    }
+
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat_with_ai(payload: ChatRequest):
-    """Interact with local AI model with fallback."""
+async def chat_with_ai(payload: ChatRequest, user: Pegawai = Depends(get_current_user)):
+    """Ask KIRANA and get the whole answer at once."""
     query = payload.message.strip()
     if not query:
         raise HTTPException(status_code=400, detail="Pesan pertanyaan tidak boleh kosong")
 
-    doc_attachment = create_document_attachment(query)
-    host = settings.OLLAMA_HOST.rstrip("/")
-    model = settings.OLLAMA_MODEL
-
-    # Try calling local Ollama
+    await _acquire_slot()
     try:
-        ollama_prompt = f"{KPU_SYSTEM_PROMPT}\n\nPertanyaan Staf KPU: {query}\n\nJawaban KIRANA:"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{host}/api/generate",
-                json={
-                    "model": model,
-                    "prompt": ollama_prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.3,
-                        "top_p": 0.9
-                    }
-                }
+        parts: List[str] = []
+        model, used_database, source = FALLBACK_MODEL_NAME, False, "local_model"
+        async for event in _run_agent(payload, user):
+            if event["type"] == "token":
+                parts.append(event["text"])
+            elif event["type"] == "reset":
+                parts.clear()
+            elif event["type"] == "done":
+                model, used_database = event["model"], event["used_database"]
+                source = event.get("source", "local_model")
+        reply = "".join(parts).strip()
+        if reply:
+            if source == "local_model":
+                _record_inference(None)
+            return ChatResponse(
+                reply=reply, model_used=model, source=source, used_database=used_database
             )
-            if resp.status_code == 200:
-                ollama_json = resp.json()
-                reply_text = ollama_json.get("response", "").strip()
-                if reply_text:
-                    return ChatResponse(
-                        reply=reply_text,
-                        model_used=model,
-                        source="local_ollama",
-                        fileAttachment=doc_attachment
-                    )
-    except Exception:
-        # Fall through to graceful intelligent fallback
-        pass
-
-    # Intelligent local fallback response
-    lower = query.lower()
-    if "surat" in lower and ("dinas" in lower or "draf" in lower or "buat" in lower):
-        reply = (
-            "KIRANA telah menyusun draf dokumen resmi sesuai tata persuratan dinas KPU Provinsi Sulawesi Utara. "
-            "Anda dapat meninjau dan mengunduh berkas lengkapnya melalui lampiran di bawah ini."
-        )
-    elif "anggaran" in lower or "realisasi" in lower or "pagu" in lower:
-        reply = (
-            "Informasi Realisasi Anggaran KPU Sulut TA 2025/2026: Total pagu DIPA terdaftar sebesar Rp 45.78 Miliar "
-            "dengan serapan berjalan mencapai ~69.8%. Seluruh transaksi belanja operasional dan belanja modal "
-            "dapat dipantau secara real-time pada modul Realisasi Anggaran."
-        )
-    elif "klasifikasi" in lower or "arsip" in lower:
-        reply = (
-            "Kode Klasifikasi Arsip KPU yang umum digunakan:\n"
-            "• PL.01: Perencanaan Pemilu & Pilkada\n"
-            "• PL.02: Pemutakhiran Data Pemilih (DPT)\n"
-            "• HK.01: Peraturan & Keputusan KPU\n"
-            "• KU.01: DIPA & Pertanggungjawaban Keuangan\n"
-            "• HR.01: Surat Tugas & Kepegawaian"
-        )
-    else:
-        reply = (
-            f"Halo! Saya KIRANA Agent (Asisten Lokal PTP-KPU). Pertanyaan Anda: \"{query}\". "
-            "Sistem siap membantu proses pembuatan draf surat dinas, pemantauan DIPA anggaran, dan tata kelola arsip KPU Sulut. "
-            "(Catatan: Server AI Ollama lokal dapat diaktifkan pada PC kantor dengan menjalankan perintah 'ollama run qwen2.5')."
-        )
+    except Exception as exc:
+        logger.exception("Local model inference failed; using rule-based fallback")
+        _record_inference(exc)
+    finally:
+        _inference_slots.release()
 
     return ChatResponse(
-        reply=reply,
-        model_used=f"{model} (Rule-Based Fallback)",
+        reply=_fallback_reply(query),
+        model_used=f"{FALLBACK_MODEL_NAME} (Rule-Based Fallback)",
         source="fallback_agent",
-        fileAttachment=doc_attachment
+    )
+
+
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+@router.post("/chat/stream")
+async def chat_with_ai_stream(payload: ChatRequest, user: Pegawai = Depends(get_current_user)):
+    """Ask KIRANA and receive the answer as it is written (Server-Sent Events).
+
+    Each event is a JSON object: {"type": "token"|"status"|"reset"|"done"|"error", ...}.
+    Closing the connection stops the generation.
+    """
+    query = payload.message.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Pesan pertanyaan tidak boleh kosong")
+
+    await _acquire_slot()
+
+    async def events() -> AsyncIterator[str]:
+        wrote_text = False
+        try:
+            async with aclosing(_run_agent(payload, user)) as agent:
+                async for event in agent:
+                    if event["type"] == "token":
+                        wrote_text = True
+                    elif event["type"] == "reset":
+                        wrote_text = False
+                    if event["type"] == "done" and event.get("source", "local_model") == "local_model":
+                        _record_inference(None)
+                    yield _sse({"source": "local_model", **event} if event["type"] == "done" else event)
+        except Exception as exc:
+            logger.exception("Local model inference failed")
+            _record_inference(exc)
+            if wrote_text:
+                yield _sse({"type": "error", "text": "Jawaban terhenti karena terjadi galat pada model."})
+            else:
+                yield _sse({"type": "token", "text": _fallback_reply(query)})
+            yield _sse({
+                "type": "done",
+                "model": f"{FALLBACK_MODEL_NAME} (Rule-Based Fallback)",
+                "source": "fallback_agent",
+                "used_database": False,
+            })
+
+        finally:
+            _inference_slots.release()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
